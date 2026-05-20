@@ -1,0 +1,10 @@
+ALTER TABLE "report_templates" ADD COLUMN "componentPath" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE "report_templates" ADD COLUMN "showInPublic" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "report_templates" ADD COLUMN "publicBadge" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "category" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "allowedFileTypes" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "outputFormats" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "inputRules" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "sampleData" TEXT;
+ALTER TABLE "report_templates" ADD COLUMN "versionHistory" TEXT;

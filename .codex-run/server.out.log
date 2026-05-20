@@ -1,0 +1,96 @@
+
+> anything-llm-server@1.12.1 dev
+> cross-env NODE_ENV=development nodemon --ignore documents --ignore vector-cache --ignore storage --ignore swagger --trace-warnings index.js
+
+[33m[nodemon] 2.0.22[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,json[39m
+[32m[nodemon] starting `node --trace-warnings index.js`[39m
+yarn run v1.22.22
+$ node ./swagger/init.js
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[35m[TokenManager][0m Initialized new TokenManager instance for model: gpt-3.5-turbo
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+Done in 3.83s.
+[35m[TokenManager][0m Returning existing instance for model: gpt-3.5-turbo
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[TELEMETRY STUBBED][0m Anonymous Telemetry stubbed in development.
+[36m[CommunicationKey][0m RSA key pair generated for signed payloads within AnythingLLM services.
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[36m[BackgroundWorkerService][0m SINGLETON LOCK: Using existing BackgroundService.
+[36m[PushNotifications][0m Loaded existing VAPID keys!
+[36m[PushNotifications][0m Loading single user mode subscriptions...
+[36m[BackgroundWorkerService][0m Starting...
+[36m[BackgroundWorkerService][0m Service started with 2 jobs [ 'cleanup-orphan-documents', 'cleanup-generated-files' ]
+Primary server in HTTP mode listening on port 3001
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[19396:16200][0m: No direct uploads path found - exiting.
+[33m[19396:16200][0m: No direct uploads path found - exiting. { service: 'bg-worker', origin: 'cleanup-orphan-documents' }
+Worker for job "cleanup-orphan-documents" exited with code 0 undefined
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node --trace-warnings index.js`[39m
+yarn run v1.22.22
+yarn run v1.22.22
+$ node ./swagger/init.js
+$ node ./swagger/init.js
+yarn run v1.22.22
+$ node ./swagger/init.js
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[35m[TokenManager][0m Initialized new TokenManager instance for model: gpt-3.5-turbo
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+[35m[TokenManager][0m Returning existing instance for model: gpt-3.5-turbo
+Done in 7.36s.
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[TELEMETRY STUBBED][0m Anonymous Telemetry stubbed in development.
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+Done in 8.36s.
+Done in 7.88s.
+[36m[CommunicationKey][0m RSA key pair generated for signed payloads within AnythingLLM services.
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[36m[BackgroundWorkerService][0m SINGLETON LOCK: Using existing BackgroundService.
+[36m[PushNotifications][0m Loaded existing VAPID keys!
+[36m[PushNotifications][0m Loading single user mode subscriptions...
+[36m[BackgroundWorkerService][0m Starting...
+[36m[BackgroundWorkerService][0m Service started with 2 jobs [ 'cleanup-orphan-documents', 'cleanup-generated-files' ]
+Primary server in HTTP mode listening on port 3001
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[20536:17992][0m: No direct uploads path found - exiting.
+[33m[20536:17992][0m: No direct uploads path found - exiting. { service: 'bg-worker', origin: 'cleanup-orphan-documents' }
+Worker for job "cleanup-orphan-documents" exited with code 0 undefined
+Worker for job "cleanup-generated-files" exited with code 0 undefined
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node --trace-warnings index.js`[39m
+yarn run v1.22.22
+$ node ./swagger/init.js
+yarn run v1.22.22
+$ node ./swagger/init.js
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[35m[TokenManager][0m Initialized new TokenManager instance for model: gpt-3.5-turbo
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+Swagger-autogen: [32m Success  [0m
+Swagger-autogen:  [32mPatched servers.url ✔[0m
+[35m[TokenManager][0m Returning existing instance for model: gpt-3.5-turbo
+Done in 5.95s.
+Done in 5.96s.
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[TELEMETRY STUBBED][0m Anonymous Telemetry stubbed in development.
+[36m[CommunicationKey][0m RSA key pair generated for signed payloads within AnythingLLM services.
+[36m[EncryptionManager][0m Loaded existing key & salt for encrypting arbitrary data.
+[36m[BackgroundWorkerService][0m SINGLETON LOCK: Using existing BackgroundService.
+[36m[PushNotifications][0m Loaded existing VAPID keys!
+[36m[PushNotifications][0m Loading single user mode subscriptions...
+Primary server in HTTP mode listening on port 3001
+[36m[BackgroundWorkerService][0m Starting...
+[36m[BackgroundWorkerService][0m Service started with 2 jobs [ 'cleanup-orphan-documents', 'cleanup-generated-files' ]
+prisma:info Starting a sqlite pool with 5 connections.
+[33m[13136:18184][0m: No direct uploads path found - exiting.
+[33m[13136:18184][0m: No direct uploads path found - exiting. { service: 'bg-worker', origin: 'cleanup-orphan-documents' }
+Worker for job "cleanup-orphan-documents" exited with code 0 undefined
