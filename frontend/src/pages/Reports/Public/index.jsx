@@ -3,6 +3,9 @@ import Sidebar from "@/components/Sidebar";
 import { isMobile } from "react-device-detect";
 import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
+import CommercialBuildingEnergyAuditTemplate, {
+  sampleCommercialBuildingEnergyAuditData,
+} from "@/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate";
 import {
   CheckCircle,
   ArrowRight,
@@ -99,6 +102,17 @@ const TEMPLATE_CATALOG = [
     status: "coming_soon",
   },
 ];
+
+const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG = "commercial-building-energy-audit";
+
+function isCommercialBuildingEnergyAuditTemplate(template) {
+  return [
+    template?.catalogKey,
+    template?.key,
+    template?.slug,
+    template?.templateId,
+  ].includes(COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG);
+}
 
 // ─── Step metadata ─────────────────────────────────────────────────────────────
 const STEPS = [
@@ -569,7 +583,14 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
 }
 
 // ─── STEP 4 ── Generate ────────────────────────────────────────────────────────
-function Step4({ selectedTemplate, details, uploadedFiles, onGenerate, generating }) {
+function Step4({
+  selectedTemplate,
+  details,
+  uploadedFiles,
+  onGenerate,
+  onPreviewSample,
+  generating,
+}) {
   const filledDetails = Object.entries(details).filter(([k, v]) => k !== "outputFormat" && v?.trim?.());
   const labelMap = {
     clientName: "Client / Facility",
@@ -697,6 +718,18 @@ function Step4({ selectedTemplate, details, uploadedFiles, onGenerate, generatin
         )}
       </button>
 
+      {isCommercialBuildingEnergyAuditTemplate(selectedTemplate) && (
+        <button
+          type="button"
+          onClick={onPreviewSample}
+          disabled={generating}
+          className="flex items-center justify-center gap-x-2 w-full py-3 rounded-xl border border-amber-400/25 bg-amber-400/10 hover:bg-amber-400/15 text-amber-200 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Eye size={16} />
+          Preview Sample Template
+        </button>
+      )}
+
       {/* Progress bar */}
       {generating && (
         <div className="flex flex-col items-center gap-y-2 -mt-2">
@@ -721,11 +754,13 @@ function Step4({ selectedTemplate, details, uploadedFiles, onGenerate, generatin
 }
 
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
-function Step5({ report, onStartOver }) {
+function Step5({ report, selectedTemplate, onStartOver }) {
   const [copied, setCopied] = useState(false);
-  const [previewMode, setPreviewMode] = useState("raw"); // "raw"
 
   const content = report?.outputContent || "";
+  const shouldRenderEnergyAuditTemplate =
+    isCommercialBuildingEnergyAuditTemplate(selectedTemplate);
+  const reportData = sampleCommercialBuildingEnergyAuditData;
 
   const handleDownload = (ext = "md") => {
     const mime = ext === "md" ? "text/markdown" : "text/plain";
@@ -815,20 +850,34 @@ function Step5({ report, onStartOver }) {
       )}
 
       {/* Preview panel */}
-      <div className="rounded-2xl border border-white/8 overflow-hidden bg-[#0b0c10]">
+      <div
+        className={`rounded-2xl border border-white/8 overflow-hidden ${
+          shouldRenderEnergyAuditTemplate ? "bg-white" : "bg-[#0b0c10]"
+        }`}
+      >
         {/* Fake terminal bar */}
         <div className="flex items-center gap-x-2 px-4 py-2.5 bg-white/3 border-b border-white/6">
           <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
           <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
           <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
           <Eye size={12} className="ml-2 text-white/25" />
-          <span className="text-[11px] text-white/25 font-mono">report-output.md</span>
+          <span className="text-[11px] text-white/25 font-mono">
+            {shouldRenderEnergyAuditTemplate
+              ? "commercial-building-energy-audit-preview"
+              : "report-output.md"}
+          </span>
         </div>
 
         {/* Report content */}
-        <pre className="p-5 text-[13px] text-white/75 font-mono whitespace-pre-wrap overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed">
-          {content || "No content generated."}
-        </pre>
+        {shouldRenderEnergyAuditTemplate ? (
+          <div className="max-h-[720px] overflow-y-auto bg-white">
+            <CommercialBuildingEnergyAuditTemplate data={reportData} />
+          </div>
+        ) : (
+          <pre className="p-5 text-[13px] text-white/75 font-mono whitespace-pre-wrap overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed">
+            {content || "No content generated."}
+          </pre>
+        )}
       </div>
 
       {/* Start over */}
@@ -918,6 +967,14 @@ export default function PublicReports() {
     }
   };
 
+  const handlePreviewSample = () => {
+    setGeneratedReport({
+      outputContent: "Sample Commercial Building Energy Audit preview",
+      missingData: "[]",
+    });
+    setStep(5);
+  };
+
   const handleStartOver = () => {
     setStep(1);
     setSelectedTemplate(null);
@@ -1004,11 +1061,16 @@ export default function PublicReports() {
                 details={details}
                 uploadedFiles={uploadedFiles}
                 onGenerate={handleGenerate}
+                onPreviewSample={handlePreviewSample}
                 generating={generating}
               />
             )}
             {step === 5 && (
-              <Step5 report={generatedReport} onStartOver={handleStartOver} />
+              <Step5
+                report={generatedReport}
+                selectedTemplate={selectedTemplate}
+                onStartOver={handleStartOver}
+              />
             )}
           </div>
 
