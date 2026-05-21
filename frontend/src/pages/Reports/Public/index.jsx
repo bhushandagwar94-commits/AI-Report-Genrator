@@ -3,6 +3,7 @@ import Sidebar from "@/components/Sidebar";
 import { isMobile } from "react-device-detect";
 import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
+import { useReactToPrint } from "react-to-print";
 import CommercialBuildingEnergyAuditTemplate, {
   sampleCommercialBuildingEnergyAuditData,
 } from "@/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate";
@@ -754,13 +755,20 @@ function Step4({
 }
 
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
-function Step5({ report, selectedTemplate, onStartOver }) {
+function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
   const [copied, setCopied] = useState(false);
+  const reportRef = useRef(null);
 
   const content = report?.outputContent || "";
   const shouldRenderEnergyAuditTemplate =
     isCommercialBuildingEnergyAuditTemplate(selectedTemplate);
-  const reportData = sampleCommercialBuildingEnergyAuditData;
+  const reportData = generatedReportData || sampleCommercialBuildingEnergyAuditData;
+
+  const handlePrint = useReactToPrint({
+    content: () => reportRef.current,
+    documentTitle: "Energy_Audit_Report",
+    onPrintError: () => showToast("Failed to generate PDF.", "error"),
+  });
 
   const handleDownload = (ext = "md") => {
     const mime = ext === "md" ? "text/markdown" : "text/plain";
@@ -824,6 +832,20 @@ function Step5({ report, selectedTemplate, onStartOver }) {
             Download .md
           </button>
           <button
+            onClick={() => {
+              if (shouldRenderEnergyAuditTemplate && reportRef.current) {
+                handlePrint();
+              } else {
+                showToast("PDF download coming soon for this template!", "info");
+              }
+            }}
+            title="Download as PDF"
+            className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-semibold transition-all"
+          >
+            <DownloadSimple size={13} />
+            Download PDF
+          </button>
+          <button
             onClick={() => handleDownload("txt")}
             title="Download as plain text"
             className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-white/8 hover:bg-white/14 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-all"
@@ -871,7 +893,9 @@ function Step5({ report, selectedTemplate, onStartOver }) {
         {/* Report content */}
         {shouldRenderEnergyAuditTemplate ? (
           <div className="max-h-[720px] overflow-y-auto bg-white">
-            <CommercialBuildingEnergyAuditTemplate data={reportData} />
+            <div ref={reportRef} className="report-print-area">
+              <CommercialBuildingEnergyAuditTemplate data={reportData} />
+            </div>
           </div>
         ) : (
           <pre className="p-5 text-[13px] text-white/75 font-mono whitespace-pre-wrap overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed">
@@ -905,6 +929,7 @@ export default function PublicReports() {
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
+  const [generatedReportData, setGeneratedReportData] = useState(null);
 
   useEffect(() => {
     Reports.getPublicTemplates()
@@ -958,6 +983,31 @@ export default function PublicReports() {
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
         setGeneratedReport(res.report);
+        let parsedData = null;
+        try {
+          if (res.report?.outputContent) {
+            parsedData = JSON.parse(res.report.outputContent);
+          }
+        } catch (e) {
+          console.warn("Could not parse backend report JSON. Using mock mapper.");
+        }
+        if (!parsedData && isCommercialBuildingEnergyAuditTemplate(selectedTemplate)) {
+          parsedData = {
+            ...sampleCommercialBuildingEnergyAuditData,
+            reportInfo: {
+              ...sampleCommercialBuildingEnergyAuditData.reportInfo,
+              clientName: details.clientName || "Data required",
+              location: details.location || "Data required",
+              auditPeriod: details.auditPeriod || "Data required",
+              reportDate: details.reportDate || "Data required",
+            },
+            buildingProfile: {
+              ...sampleCommercialBuildingEnergyAuditData.buildingProfile,
+              facilityName: details.facilityName || "Data required",
+            }
+          };
+        }
+        setGeneratedReportData(parsedData);
         setStep(5);
       }
     } catch (err) {
@@ -981,6 +1031,7 @@ export default function PublicReports() {
     setDetails({ outputFormat: "pdf" });
     setUploadedFiles([]);
     setGeneratedReport(null);
+    setGeneratedReportData(null);
   };
 
   // Navigation guards
@@ -1070,6 +1121,7 @@ export default function PublicReports() {
                 report={generatedReport}
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
+                generatedReportData={generatedReportData}
               />
             )}
           </div>

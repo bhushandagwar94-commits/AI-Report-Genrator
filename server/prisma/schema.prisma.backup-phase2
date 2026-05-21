@@ -443,20 +443,9 @@ model report_templates {
   inputRules    String?
   sampleData    String?
   versionHistory String?
-  
-  // AnythingLLM Integration fields
-  anythingllmWorkspaceSlug String?
-  extractionPrompt         String?
-  jsonGenerationPrompt     String?
-  validationPrompt         String?
-  modelTemperature         Float?
-  maxTokens                Int?
-  useAnythingLLM           Boolean  @default(false)
-
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @default(now()) @updatedAt
   reports       generated_reports[]
-  versions      report_template_versions[]
 }
 
 model generated_reports {
@@ -472,38 +461,7 @@ model generated_reports {
   status         String          @default("pending") // pending | parsing | generating | completed | failed
   error          String?
   userId         Int?            // Optional association for user session
-  
-  // Phase 2 Metadata
-  templateVersionId Int?
-  qcStatus          String?         @default("not_checked")
-  qcChecks          String?         // JSON string of automated checks
-  adminNotes        String?         // JSON string of admin notes
-  mappedImages      String?         // JSON string tracking image maps
-
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @default(now()) @updatedAt
   template       report_templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  templateVersion report_template_versions? @relation(fields: [templateVersionId], references: [id])
-}
-
-model report_template_versions {
-  id                          Int      @id @default(autoincrement())
-  templateId                  Int
-  versionNumber               Int
-  status                      String   @default("draft") // draft | active | archived
-  templateName                String?
-  componentPath               String?
-  dataSchemaSnapshot          String?
-  promptsSnapshot             String?
-  extractionMappingSnapshot   String?
-  imageMappingRulesSnapshot   String?
-  anythingllmSettingsSnapshot String?
-  sampleDataSnapshot          String?
-  changeNote                  String?
-  createdBy                   Int?
-  createdAt                   DateTime @default(now())
-  publishedAt                 DateTime?
-
-  template                    report_templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  reports                     generated_reports[]
 }

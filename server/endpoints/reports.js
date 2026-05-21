@@ -8,8 +8,9 @@ const { getLLMProvider } = require("../utils/helpers");
 const { getModelTag } = require("./utils");
 const fs = require("fs");
 const path = require("path");
-const { directUploadsPath } = require("../utils/files");
+const { directUploadsPath, hotdirPath } = require("../utils/files");
 const extractJson = require("extract-json-from-string");
+const ExcelJS = require("exceljs");
 
 // ─── Slug → Template name mapping ──────────────────────────────────────────────
 // Allows public clients to reference templates by slug (e.g. seetech-ea-001)
@@ -392,26 +393,98 @@ function reportEndpoints(app) {
 
         // ── 1. Data Parsing & Consolidation ───────────────────────────────────
         let consolidatedText = "";
+        let extractedExcelData = { projects: [] };
+        let imageMetadata = [];
+        let fileTypesDetected = [];
+
         for (const file of uploadedFiles) {
-          const sourceFile = path.join(
-            directUploadsPath,
-            path.basename(file.location)
-          );
+          const ext = path.extname(file.filename).toLowerCase();
+          if (!fileTypesDetected.includes(ext)) fileTypesDetected.push(ext);
+
+          // PDF/DOCX/PPT text extraction (already handled by CollectorApi -> .json in directUploadsPath)
+          const sourceFile = path.join(directUploadsPath, path.basename(file.location));
           if (fs.existsSync(sourceFile)) {
             try {
               const fileContent = fs.readFileSync(sourceFile, "utf-8");
               const parsedJSON = JSON.parse(fileContent);
               if (parsedJSON.pageContent) {
-                consolidatedText += `\n--- Document: ${file.filename} ---\n${parsedJSON.pageContent}\n`;
+                consolidatedText += `\n--- Document Text (${file.filename}) ---\n${parsedJSON.pageContent}\n`;
               }
             } catch (err) {
-              console.error(
-                `Failed to read parsed file from direct uploads: ${file.filename}`,
-                err
-              );
+              console.error(`Failed to read parsed file from direct uploads: ${file.filename}`, err);
+            }
+          }
+
+          // Image Metadata Collection
+          if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+            imageMetadata.push({
+              filename: file.filename,
+              originalPath: file.location,
+              suggestedCaption: "Data required",
+            });
+          }
+
+          // Stage 1: Excel Extraction
+          if (template.slug === "commercial-building-energy-audit" && (ext === ".xlsx" || ext === ".xls")) {
+            const originalFilePath = path.join(hotdirPath, file.filename);
+            if (fs.existsSync(originalFilePath)) {
+              try {
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.readFile(originalFilePath);
+
+                workbook.eachSheet((worksheet) => {
+                  let headerMap = {};
+                  worksheet.eachRow((row) => {
+                    const values = row.values || [];
+                    const rowStr = values.map(v => String(v || '').toLowerCase()).join(' ');
+
+                    if (rowStr.includes('annual electricity consumption')) {
+                      const val = values.find(v => typeof v === 'number');
+                      if (val) extractedExcelData.annualElectricityConsumption = val;
+                    }
+                    if (rowStr.includes('annual electricity cost')) {
+                      const val = values.find(v => typeof v === 'number');
+                      if (val) extractedExcelData.annualElectricityCost = val;
+                    }
+                    if (rowStr.includes('average tariff')) {
+                      const val = values.find(v => typeof v === 'number');
+                      if (val) extractedExcelData.averageTariff = val;
+                    }
+
+                    if (rowStr.includes('project') || rowStr.includes('ecm') || rowStr.includes('investment')) {
+                      values.forEach((v, idx) => {
+                        const s = String(v || '').toLowerCase();
+                        if (s.includes('project') || s.includes('ecm') || s.includes('title')) headerMap[idx] = 'projectTitle';
+                        else if (s.includes('system')) headerMap[idx] = 'system';
+                        else if (s.includes('investment') || s.includes('cost')) headerMap[idx] = 'investment';
+                        else if (s.includes('saving')) headerMap[idx] = 'saving';
+                        else if (s.includes('payback')) headerMap[idx] = 'payback';
+                        else if (s.includes('priority')) headerMap[idx] = 'priority';
+                      });
+                    } else if (Object.keys(headerMap).length >= 2) {
+                      const project = {};
+                      let hasData = false;
+                      Object.keys(headerMap).forEach(idx => {
+                        const val = values[idx];
+                        if (val) {
+                          project[headerMap[idx]] = String(val);
+                          hasData = true;
+                        }
+                      });
+                      if (hasData && project.projectTitle && !project.projectTitle.toLowerCase().includes('project')) {
+                        project.projectNo = `Project ${extractedExcelData.projects.length + 1}`;
+                        extractedExcelData.projects.push(project);
+                      }
+                    }
+                  });
+                });
+              } catch (err) {
+                console.error(`Failed to read Excel file: ${file.filename}`, err);
+              }
             }
           }
         }
+
 
         await prisma.generated_reports.update({
           where: { id: reportRecord.id },
@@ -501,7 +574,23 @@ Rules:
         });
 
         // ── 4. Report Drafting ─────────────────────────────────────────────────
-        const draftSystemPrompt = `You are the SEE-Tech Solutions AI Technical Report Generation Engine.
+        let draftSystemPrompt;
+        if (template.slug === "commercial-building-energy-audit") {
+          draftSystemPrompt = `You are the SEE-Tech Solutions AI Technical Report Generation Engine.
+Generate the report purely as a valid JSON object. Do not return Markdown. Do not return explanatory text. Do not wrap JSON in \`\`\`json code fences.
+
+### System Prompt & Prompt Instructions:
+${template.prompt}
+
+### Report Formatting & Specific Guidelines:
+1. Adhere strictly to the requested JSON structure.
+2. Ensure all financial values use the Indian Rupee symbol (₹).
+3. Use proper technical/engineering units.
+4. If a required value was missing, output "Data required". Do not invent values.
+5. Observe the following custom rules:
+${template.rules || "None specified."}`;
+        } else {
+          draftSystemPrompt = `You are the SEE-Tech Solutions AI Technical Report Generation Engine.
 Generate a professional technical report in standard Markdown format.
 
 ### System Prompt & Prompt Instructions:
@@ -515,8 +604,9 @@ ${template.prompt}
 5. Never output conversational elements, greetings, helper text, or AI dialogue. Start immediately with the report markdown.
 6. If a required value was missing, output "Data required" inside the report where that field is placed. Do not invent values.
 7. Observe the following custom rules:
-${template.rules || "None specified."}
-`;
+${template.rules || "None specified."}`;
+        }
+
 
         const draftUserPrompt = `### Basic Details (User Supplied — Public Form):
 Client / Facility Name : ${inputDetails.clientName   || "Data required"}
@@ -529,6 +619,12 @@ Output Format          : ${inputDetails.outputFormat  || "PDF"}
 
 ### Extracted Technical and Financial Data:
 ${JSON.stringify(extractedData, null, 2)}
+
+${template.slug === "commercial-building-energy-audit" ? `### Extracted Excel Data (Structured):
+${JSON.stringify(extractedExcelData, null, 2)}
+
+### Uploaded Image Metadata:
+${JSON.stringify(imageMetadata, null, 2)}` : ""}
 
 ### Missing Required Fields:
 ${missingFields.length > 0 ? missingFields.join(", ") : "None."}
@@ -545,8 +641,85 @@ Please generate the final technical report now:`;
           ],
           { temperature: 0.3 }
         );
-        const finalReportContent =
+        let finalReportContent =
           draftingResult?.textResponse || "Failed to generate report content.";
+
+        // Backend Validation and Mapping for Commercial Building Template
+        if (template.slug === "commercial-building-energy-audit") {
+          try {
+            // Clean markdown fences if LLM ignored instructions
+            finalReportContent = finalReportContent.replace(/^```json/m, '').replace(/```$/m, '').trim();
+            
+            const parsed = JSON.parse(finalReportContent);
+            
+            // Ensure core objects/arrays exist
+            const reqKeysArrays = [
+              "buildingOperationDetails", "utilityAndEnergySources", 
+              "electricityBillingSummary", "majorEnergyConsumingSystems",
+              "hvacSystemDetails", "lightingSystemDetails", "pumpsAndMotors",
+              "buildingAutomationControls", "auditObservations", "projects"
+            ];
+            const reqKeysObj = [
+              "reportInfo", "executiveSummary", "buildingProfile", 
+              "electricalSupplyDetails", "specificEnergyBenchmark"
+            ];
+            for (let k of reqKeysArrays) { if (!Array.isArray(parsed[k])) parsed[k] = []; }
+            for (let k of reqKeysObj) { if (typeof parsed[k] !== 'object' || parsed[k] === null) parsed[k] = {}; }
+
+            // Validate: projects must be an array
+            if (!Array.isArray(parsed.projects)) {
+              throw new Error("projects must be an array");
+            }
+            if (!parsed.reportInfo) {
+              throw new Error("reportInfo must exist");
+            }
+
+            // Map public basicDetails fields
+            parsed.reportInfo.clientName = inputDetails.clientName || "Data required";
+            parsed.reportInfo.buildingType = "Commercial Building";
+            parsed.reportInfo.location = inputDetails.location || "Data required";
+            parsed.reportInfo.auditPeriod = inputDetails.auditPeriod || "Data required";
+            parsed.reportInfo.reportDate = inputDetails.reportDate || "Data required";
+            
+            parsed.buildingProfile.facilityName = inputDetails.facilityName || "Data required";
+            parsed.buildingProfile.typeOfBuilding = "Commercial Building";
+            parsed.buildingProfile.facilityContactPerson = inputDetails.contactPerson || "Data required";
+
+            // Force-inject Excel projects if LLM missed them
+            if (extractedExcelData.projects && extractedExcelData.projects.length > 0) {
+              const existingProjectNos = parsed.projects.map(p => p.projectNo);
+              for (const p of extractedExcelData.projects) {
+                if (!existingProjectNos.includes(p.projectNo)) {
+                  parsed.projects.push(p);
+                }
+              }
+            }
+
+            // Add one temporary demo project if no project data is extracted
+            if (parsed.projects.length === 0) {
+              parsed.projects.push({
+                projectNo: "Project 1",
+                projectTitle: "Data required",
+                system: "Data required",
+                implementationPriority: "Data required"
+              });
+            }
+
+            // Return JSON.stringify
+            finalReportContent = JSON.stringify(parsed);
+          } catch (e) {
+            throw new Error(`outputContent must be parseable JSON: ${e.message}`);
+          }
+        }
+
+        // Internal server logging for admin/debug only
+        console.log(`[GENERATION SUMMARY]
+Template: ${template.slug}
+Uploaded Files: ${uploadedFiles.length}
+File Types: ${fileTypesDetected.join(", ")}
+Excel Projects Extracted: ${extractedExcelData.projects ? extractedExcelData.projects.length : 0}
+Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}
+Missing Fields: ${missingFields.length}`);
 
         // ── 5. Complete DB record ─────────────────────────────────────────────
         const completedRecord = await prisma.generated_reports.update({
