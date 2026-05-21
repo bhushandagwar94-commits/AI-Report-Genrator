@@ -39,7 +39,7 @@ import {
 // Keys match the server-side TEMPLATE_SLUG_MAP (seetech-xxx-001 format)
 const TEMPLATE_CATALOG = [
   {
-    key: "seetech-ea-001",
+    key: "commercial-building-energy-audit",
     label: "Detailed Energy Audit Report",
     description: "Comprehensive facility-wide energy audit with ECM analysis, savings, investment, payback and implementation roadmap.",
     icon: Lightning,
@@ -272,13 +272,13 @@ function Step1({ templates, selected, onSelect, loading }) {
                   {cat.description}
                 </p>
 
-                {!isAvailable && (
+                {cat.status === "coming_soon" && (
                   <span className="absolute top-3 right-3 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-white/10 text-white/50 tracking-wider">
                     Coming Soon
                   </span>
                 )}
 
-                {isAvailable && !isSelected && (
+                {cat.status === "active" && isAvailable && !isSelected && (
                   <span className="absolute top-3 right-3 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 tracking-wider">
                     Available
                   </span>
@@ -928,7 +928,7 @@ export default function PublicReports() {
 
   // Navigation guards
   const canNext = () => {
-    if (step === 1) return !!selectedTemplate;
+    if (step === 1) return !!selectedTemplate && selectedTemplate.meta?.status === "active";
     if (step === 2) {
       // Required: Client Name, Location, Audit Period, Report Date
       return !!(
