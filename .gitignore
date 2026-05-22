@@ -1,12 +1,27 @@
 v-env
 .env
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 node_modules
+**/node_modules/
+frontend/node_modules/.vite/
 __pycache__
 v-env
 .DS_Store
 aws_cf_deploy_anything_llm.json
 yarn.lock
 *.bak
+*.db
+*.db-journal
+storage/
+**/storage/
+vector-cache/
+**/vector-cache/
+documents/
+**/documents/
+hotdir/
+**/hotdir/
 .idea

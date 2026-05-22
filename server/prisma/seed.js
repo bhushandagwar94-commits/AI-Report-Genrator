@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const { ensureAiReportGeneratorSeeded } = require("../utils/aiReportGeneratorSeed");
 const prisma = new PrismaClient();
 
 async function main() {
@@ -19,6 +20,8 @@ async function main() {
       });
     }
   }
+
+  await ensureAiReportGeneratorSeeded(prisma);
 }
 
 main()

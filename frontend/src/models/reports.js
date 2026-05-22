@@ -91,6 +91,22 @@ const Reports = {
       });
   },
 
+  validateUpload: async (formData) => {
+    const headers = baseHeaders();
+    delete headers["Content-Type"];
+
+    return await fetch(`${API_BASE}/reports/validate-upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    })
+      .then((res) => res.json())
+      .catch((e) => {
+        console.error(e);
+        return { success: false, files: [], error: e.message };
+      });
+  },
+
   /**
    * Generate a report using the NEW structured public payload.
    *

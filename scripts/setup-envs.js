@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const envFiles = [
+  [".env.example", ".env"],
   ["frontend/.env.example", "frontend/.env"],
+  ["server/.env.example", "server/.env"],
   ["server/.env.example", "server/.env.development"],
   ["collector/.env.example", "collector/.env"],
   ["docker/.env.example", "docker/.env"],

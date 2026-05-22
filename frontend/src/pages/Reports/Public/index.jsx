@@ -37,6 +37,7 @@ import {
   ClipboardText,
   FileText,
   Copy,
+  WarningCircle,
 } from "@phosphor-icons/react";
 
 // ─── Template definitions (shown in UI — no admin data exposed) ─────────────────
@@ -453,6 +454,69 @@ const ACCEPTED_TYPES = {
 
 const ALL_ACCEPT = Object.values(ACCEPTED_TYPES).map((t) => t.exts).join(",");
 
+const isExcelFileName = (filename = "") => /\.(xlsx|xls)$/i.test(filename);
+
+function validationTone(status) {
+  if (status === "valid") return "border-green-500/25 bg-green-500/10 text-green-300";
+  if (status === "warning") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-300";
+  if (status === "error") return "border-red-500/25 bg-red-500/10 text-red-300";
+  return "border-white/10 bg-white/5 text-white/45";
+}
+
+function ExcelValidationCard({ validation }) {
+  if (!validation) {
+    return (
+      <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone()}`}>
+        Excel validation pending.
+      </div>
+    );
+  }
+
+  const statusText = {
+    valid: `Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`,
+    warning: "Excel file uploaded, but some recommended columns are missing.",
+    error: "Excel validation failed. Please upload a sheet with project/ECM data.",
+  }[validation.status] || "Excel validation pending.";
+
+  const mapped = Object.entries(validation.mappedColumns || {}).filter(([, value]) => value);
+
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone(validation.status)}`}>
+      <div className="flex items-start gap-x-2">
+        {validation.status === "error" ? (
+          <X size={14} className="mt-0.5 shrink-0" />
+        ) : validation.status === "warning" ? (
+          <WarningCircle size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <CheckCircle size={14} weight="fill" className="mt-0.5 shrink-0" />
+        )}
+        <div className="min-w-0">
+          <p className="font-semibold">{statusText}</p>
+          <div className="mt-1.5 grid gap-1 text-white/55">
+            <p>Sheets scanned: {(validation.sheets || []).join(", ") || "Data required"}</p>
+            <p>Header row detected: {validation.headerRow || "Data required"}</p>
+            <p>Columns detected: {(validation.detectedColumns || []).join(", ") || "Data required"}</p>
+            <p>
+              Mapped columns:{" "}
+              {mapped.length
+                ? mapped.map(([field, column]) => `${field}: ${column}`).join(", ")
+                : "Data required"}
+            </p>
+            <p>Rows detected: {validation.projectRowsDetected || 0}</p>
+            {(validation.missingRecommendedColumns || []).length > 0 && (
+              <p>Missing columns: {validation.missingRecommendedColumns.join(", ")}</p>
+            )}
+            {(validation.missingRequiredColumns || []).length > 0 && (
+              <p>Missing required: {validation.missingRequiredColumns.join(", ")}</p>
+            )}
+            {(validation.errors || []).length > 0 && <p>Errors: {validation.errors.join(", ")}</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
   const dropRef = useRef(null);
   const inputRef = useRef(null);
@@ -497,7 +561,6 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); processFiles(e.dataTransfer.files); }}
-        onClick={() => inputRef.current?.click()}
         className={`relative flex flex-col items-center justify-center gap-y-3 border-2 border-dashed rounded-2xl p-8 cursor-pointer transition-all duration-200 ${
           dragging
             ? "border-primary-button bg-primary-button/8 scale-[1.01]"
@@ -510,7 +573,10 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
           multiple
           accept={ALL_ACCEPT}
           className="hidden"
-          onChange={(e) => processFiles(e.target.files)}
+          onChange={(e) => {
+            processFiles(e.target.files);
+            e.target.value = "";
+          }}
         />
         <div
           className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
@@ -531,6 +597,15 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
           </p>
         </div>
 
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="mt-1 inline-flex items-center gap-x-2 rounded-xl bg-primary-button px-4 py-2 text-sm font-bold text-white hover:opacity-90 transition-opacity"
+        >
+          <UploadSimple size={16} />
+          Upload Files
+        </button>
+
         {uploading && (
           <div className="absolute inset-0 rounded-2xl flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-y-2">
@@ -550,18 +625,28 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
           {uploadedFiles.map((f, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-x-3 px-3 py-2.5 bg-white/4 border border-white/8 rounded-xl group"
+              className="flex flex-wrap items-center gap-x-3 px-3 py-2.5 bg-white/4 border border-white/8 rounded-xl group"
             >
               <FileTypeIcon name={f.filename} size={18} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white font-medium truncate leading-tight">{f.filename}</p>
-                {f.token_count_estimate > 0 && (
-                  <p className="text-[11px] text-white/30 leading-none mt-0.5">
-                    ~{f.token_count_estimate.toLocaleString()} tokens
-                  </p>
-                )}
+                <p className="text-[11px] text-white/30 leading-none mt-0.5">
+                  {(fileExt(f.filename) || "file").toUpperCase()} - {formatBytes(f.size) || "Size unavailable"} -{" "}
+                  {isExcelFileName(f.filename)
+                    ? `Validation: ${f.validation?.status || "pending"}`
+                    : f.parsingStatus === "uploaded_unparsed"
+                      ? "Uploaded; parsing unavailable"
+                      : "Uploaded"}
+                  {f.token_count_estimate > 0 ? ` - ~${f.token_count_estimate.toLocaleString()} tokens` : ""}
+                </p>
               </div>
-              <CheckCircle size={14} weight="fill" className="text-green-400 shrink-0" />
+              {isExcelFileName(f.filename) && f.validation?.status === "error" ? (
+                <X size={14} className="text-red-400 shrink-0" />
+              ) : isExcelFileName(f.filename) && f.validation?.status === "warning" ? (
+                <WarningCircle size={14} className="text-yellow-400 shrink-0" />
+              ) : (
+                <CheckCircle size={14} weight="fill" className="text-green-400 shrink-0" />
+              )}
               <button
                 onClick={() => onRemove(idx)}
                 className="p-1 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
@@ -569,6 +654,11 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
               >
                 <X size={14} />
               </button>
+              {isExcelFileName(f.filename) && (
+                <div className="basis-full">
+                  <ExcelValidationCard validation={f.validation} />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -591,6 +681,7 @@ function Step4({
   onGenerate,
   onPreviewSample,
   generating,
+  hasInvalidExcel,
 }) {
   const filledDetails = Object.entries(details).filter(([k, v]) => k !== "outputFormat" && v?.trim?.());
   const labelMap = {
@@ -695,15 +786,22 @@ function Step4({
       )}
 
       {/* Generate button */}
+      {hasInvalidExcel && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          Please fix or remove the invalid Excel file before generating the report.
+        </div>
+      )}
       <button
         onClick={onGenerate}
-        disabled={generating}
+        disabled={generating || hasInvalidExcel}
         className="flex items-center justify-center gap-x-3 w-full py-4 rounded-2xl font-bold text-base text-white transition-all shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] disabled:opacity-55 disabled:cursor-not-allowed disabled:scale-100"
         style={{
           background: generating
             ? "rgba(70,200,255,0.3)"
+            : hasInvalidExcel
+              ? "rgba(239,68,68,0.25)"
             : "linear-gradient(135deg, #46c8ff 0%, #3b82f6 100%)",
-          boxShadow: generating ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
+          boxShadow: generating || hasInvalidExcel ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
         }}
       >
         {generating ? (
@@ -944,18 +1042,51 @@ export default function PublicReports() {
   const handleUpload = async (file) => {
     setUploading(true);
     try {
+      let validation = null;
+      if (isExcelFileName(file.name)) {
+        const validationForm = new FormData();
+        validationForm.append("files", file);
+        const validationResponse = await Reports.validateUpload(validationForm);
+        validation = validationResponse.files?.[0] || {
+          filename: file.name,
+          fileType: "excel",
+          status: "error",
+          sheets: [],
+          headerRow: 0,
+          detectedColumns: [],
+          mappedColumns: {},
+          projectRowsDetected: 0,
+          missingRequiredColumns: [],
+          missingRecommendedColumns: [],
+          warnings: [],
+          errors: [validationResponse.error || "Excel validation failed."],
+        };
+      }
+
       const fd = new FormData();
       fd.append("file", file);
       const res = await Reports.uploadFile(fd);
       if (res.success) {
-        setUploadedFiles((prev) => [
-          ...prev,
-          {
-            filename: res.filename,
-            location: res.location,
-            token_count_estimate: res.token_count_estimate || 0,
-          },
-        ]);
+        const uploadedFile = {
+          filename: res.filename,
+          location: res.location,
+          size: res.size || file.size,
+          mimetype: res.mimetype || file.type,
+          parsingStatus: res.parsingStatus || "uploaded",
+          token_count_estimate: res.token_count_estimate || 0,
+          validation,
+        };
+        setUploadedFiles((prev) => [...prev, uploadedFile]);
+        if (validation?.status === "error") {
+          showToast("Excel validation failed. Please fix or remove the file before generating.", "error");
+        } else if (validation?.status === "warning") {
+          showToast("Excel uploaded with validation warnings.", "warning");
+        } else if (validation?.status === "valid") {
+          showToast(`Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`, "success");
+        } else if (res.warning) {
+          showToast(res.warning, "warning");
+        }
+        return uploadedFile;
       } else {
         showToast(`Upload failed: ${res.error}`, "error");
       }
@@ -970,6 +1101,14 @@ export default function PublicReports() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const handleGenerate = async () => {
+    const hasInvalidExcel = uploadedFiles.some(
+      (file) => isExcelFileName(file.filename) && file.validation?.status === "error"
+    );
+    if (hasInvalidExcel) {
+      showToast("Please fix or remove the invalid Excel file before generating the report.", "error");
+      return;
+    }
+
     setGenerating(true);
     try {
       // Use slug (templateId) from the resolved catalog template.
@@ -1050,6 +1189,10 @@ export default function PublicReports() {
     return false;
   };
 
+  const hasInvalidExcel = uploadedFiles.some(
+    (file) => isExcelFileName(file.filename) && file.validation?.status === "error"
+  );
+
   return (
     <div className="w-screen h-screen overflow-hidden bg-theme-bg-container flex">
       <Sidebar />
@@ -1114,6 +1257,7 @@ export default function PublicReports() {
                 onGenerate={handleGenerate}
                 onPreviewSample={handlePreviewSample}
                 generating={generating}
+                hasInvalidExcel={hasInvalidExcel}
               />
             )}
             {step === 5 && (

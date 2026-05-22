@@ -384,11 +384,11 @@ const RULES = `1. The model must follow the report structure exactly — no addi
 12. Image handling: insert only when filename and caption are provided in the JSON payload.`;
 
 const COMMERCIAL_BUILDING_TEMPLATE = {
-  name: "Commercial Building Energy Audit Report",
+  name: "Detailed Energy Audit Report",
   slug: "commercial-building-energy-audit",
   model: "gemini-2.0-flash",
   componentPath:
-    "components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx",
+    "frontend/src/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx",
   status: "active",
   showInPublic: true,
   publicBadge: "Available",

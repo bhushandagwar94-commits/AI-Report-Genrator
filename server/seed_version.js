@@ -14,7 +14,10 @@ async function run() {
         prompt: 'Default system prompt for this template',
         status: 'active',
         showInPublic: true,
-        publicBadge: 'AVAILABLE'
+        publicBadge: 'Available',
+        componentPath: 'frontend/src/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx',
+        allowedFileTypes: JSON.stringify(['xlsx', 'xls', 'pdf', 'docx', 'pptx', 'jpg', 'jpeg', 'png']),
+        anythingllmWorkspaceSlug: 'commercial-building-energy-audit'
       }
     });
     console.log('Created missing template ID:', template.id);

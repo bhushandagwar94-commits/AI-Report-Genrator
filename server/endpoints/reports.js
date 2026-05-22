@@ -11,6 +11,8 @@ const path = require("path");
 const { directUploadsPath, hotdirPath } = require("../utils/files");
 const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
+const multer = require("multer");
+const { ensureAiReportGeneratorSeeded } = require("../utils/aiReportGeneratorSeed");
 
 // ─── Slug → Template name mapping ──────────────────────────────────────────────
 // Allows public clients to reference templates by slug (e.g. seetech-ea-001)
@@ -115,6 +117,253 @@ function normaliseGenerateBody(body) {
     publicForm:     null,
     status:         "submitted",
   };
+}
+
+const excelUpload = multer({ storage: multer.memoryStorage() }).array("files");
+
+const EXCEL_FIELD_SYNONYMS = {
+  projectTitle: [
+    "project", "project name", "project title", "ecm", "ecm name", "measure",
+    "energy conservation measure", "saving opportunity", "recommendation", "description",
+  ],
+  system: ["system", "area", "utility", "equipment type", "category", "project category", "department"],
+  investment: ["investment", "capex", "cost", "project cost", "estimated investment", "implementation cost", "rs", "inr"],
+  annualSaving: [
+    "annual saving", "annual savings", "cost saving", "monetary saving", "yearly saving",
+    "saving rs", "rs/year", "annual benefit",
+  ],
+  energySaving: [
+    "energy saving", "kwh saving", "electricity saving", "annual energy saving",
+    "kwh/year", "units saving", "kwh",
+  ],
+  payback: ["payback", "simple payback", "roi", "payback period", "years", "months"],
+  priority: ["priority", "implementation priority", "ranking", "action priority"],
+  location: ["location", "area", "plant room", "floor", "building area"],
+  equipmentCovered: ["equipment", "equipment covered", "machine", "asset", "load"],
+  implementationDuration: ["duration", "implementation duration", "timeline", "weeks", "months"],
+  co2Reduction: ["co2", "carbon", "emission", "emission reduction", "tco2", "tco2/year"],
+  emissionFactor: ["emission factor", "grid emission", "grid emission factor"],
+};
+
+const RECOMMENDED_EXCEL_COLUMNS = [
+  "projectTitle",
+  "system",
+  "investment",
+  "annualSaving",
+  "energySaving",
+  "payback",
+  "priority",
+  "location",
+  "equipmentCovered",
+  "implementationDuration",
+  "co2Reduction",
+];
+
+const EXCEL_COLUMN_LABELS = {
+  projectTitle: "Project title / ECM name",
+  system: "System / category",
+  investment: "Investment ₹",
+  annualSaving: "Annual saving ₹/year",
+  energySaving: "Energy saving kWh/year",
+  payback: "Payback",
+  priority: "Priority",
+  location: "Location",
+  equipmentCovered: "Equipment covered",
+  implementationDuration: "Implementation duration",
+  co2Reduction: "CO2 reduction",
+};
+
+const EXCEL_FIELD_MATCH_ORDER = [
+  "emissionFactor",
+  "co2Reduction",
+  "annualSaving",
+  "energySaving",
+  "payback",
+  "investment",
+  "priority",
+  "implementationDuration",
+  "equipmentCovered",
+  "system",
+  "location",
+  "projectTitle",
+];
+
+function normalizeExcelHeader(value) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[₹$€£]/g, " ")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function cellText(cell) {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell === "object") {
+    if (cell.text) return String(cell.text);
+    if (cell.result !== undefined) return String(cell.result);
+    if (cell.richText) return cell.richText.map((part) => part.text || "").join("");
+    if (cell.hyperlink && cell.text) return String(cell.text);
+  }
+  return String(cell);
+}
+
+function mapHeaderToField(header) {
+  const normalized = normalizeExcelHeader(header);
+  if (!normalized) return null;
+
+  for (const field of EXCEL_FIELD_MATCH_ORDER) {
+    const synonyms = EXCEL_FIELD_SYNONYMS[field] || [];
+    if (
+      synonyms.some((synonym) => {
+        const normalizedSynonym = normalizeExcelHeader(synonym);
+        return normalized === normalizedSynonym || normalized.includes(normalizedSynonym);
+      })
+    ) {
+      return field;
+    }
+  }
+  return null;
+}
+
+function mappedColumnsFromRow(values) {
+  const mappedByIndex = {};
+  const mappedColumns = {};
+  const detectedColumns = [];
+
+  values.forEach((value, index) => {
+    const header = cellText(value).trim();
+    if (!header) return;
+    detectedColumns.push(header);
+    const field = mapHeaderToField(header);
+    if (!field || mappedColumns[field]) return;
+    mappedByIndex[index] = field;
+    mappedColumns[field] = header;
+  });
+
+  return { mappedByIndex, mappedColumns, detectedColumns };
+}
+
+function isBlankExcelRow(values) {
+  return !values.some((value, index) => index > 0 && cellText(value).trim());
+}
+
+function isTotalExcelRow(values) {
+  return values.some((value) => /\b(total|grand total|subtotal)\b/i.test(cellText(value)));
+}
+
+async function validateExcelBuffer(file) {
+  const result = {
+    filename: file.originalname,
+    fileType: "excel",
+    status: "error",
+    sheets: [],
+    headerRow: 0,
+    detectedColumns: [],
+    mappedColumns: {
+      projectTitle: "",
+      system: "",
+      investment: "",
+      annualSaving: "",
+      energySaving: "",
+      payback: "",
+      priority: "",
+      location: "",
+      equipmentCovered: "",
+      implementationDuration: "",
+      co2Reduction: "",
+    },
+    projectRowsDetected: 0,
+    missingRequiredColumns: [],
+    missingRecommendedColumns: [],
+    warnings: [],
+    errors: [],
+  };
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file.buffer);
+    result.sheets = workbook.worksheets.map((sheet) => sheet.name);
+
+    let bestHeader = null;
+    const sheetHeaders = [];
+
+    workbook.eachSheet((worksheet) => {
+      let localBest = null;
+      worksheet.eachRow((row, rowNumber) => {
+        const values = row.values || [];
+        const mapping = mappedColumnsFromRow(values);
+        const score = Object.keys(mapping.mappedColumns).length;
+        if (score > (localBest?.score || 0)) {
+          localBest = { worksheet, rowNumber, score, ...mapping };
+        }
+      });
+
+      if (!localBest || localBest.score === 0) return;
+      sheetHeaders.push(localBest);
+      if (!bestHeader || localBest.score > bestHeader.score) bestHeader = localBest;
+    });
+
+    if (!bestHeader) {
+      result.errors.push("No usable header row was detected.");
+      result.missingRequiredColumns = [
+        "Project / ECM / Measure / Recommendation",
+        "Investment / Annual Saving / Energy Saving / Payback",
+      ];
+      return result;
+    }
+
+    result.headerRow = bestHeader.rowNumber;
+    result.detectedColumns = bestHeader.detectedColumns;
+    result.mappedColumns = { ...result.mappedColumns, ...bestHeader.mappedColumns };
+
+    for (const header of sheetHeaders) {
+      if (!header.mappedColumns.projectTitle) continue;
+      const projectColumnIndex = Number(
+        Object.entries(header.mappedByIndex).find(([, field]) => field === "projectTitle")?.[0]
+      );
+      header.worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber <= header.rowNumber) return;
+        const values = row.values || [];
+        if (isBlankExcelRow(values) || isTotalExcelRow(values)) return;
+        const projectValue = cellText(values[projectColumnIndex]).trim();
+        if (projectValue) result.projectRowsDetected += 1;
+      });
+    }
+
+    const hasProjectColumn = !!result.mappedColumns.projectTitle;
+    const hasUsableMetric = ["investment", "annualSaving", "energySaving", "payback"].some(
+      (field) => !!result.mappedColumns[field]
+    );
+
+    if (!hasProjectColumn) {
+      result.missingRequiredColumns.push("Project / ECM / Measure / Recommendation");
+    }
+    if (!hasUsableMetric) {
+      result.missingRequiredColumns.push("Investment / Annual Saving / Energy Saving / Payback");
+    }
+    if (result.projectRowsDetected === 0) {
+      result.errors.push("No project/ECM data rows were detected.");
+    }
+
+    result.missingRecommendedColumns = RECOMMENDED_EXCEL_COLUMNS
+      .filter((field) => !result.mappedColumns[field])
+      .map((field) => EXCEL_COLUMN_LABELS[field]);
+
+    if (result.missingRecommendedColumns.length > 0) {
+      result.warnings.push("Some recommended columns are missing.");
+    }
+
+    result.status =
+      result.missingRequiredColumns.length > 0 || result.errors.length > 0
+        ? "error"
+        : result.warnings.length > 0
+          ? "warning"
+          : "valid";
+    return result;
+  } catch (error) {
+    result.errors.push(`File is unreadable as an Excel workbook: ${error.message}`);
+    return result;
+  }
 }
 
 function reportEndpoints(app) {
@@ -280,6 +529,14 @@ function reportEndpoints(app) {
     [validatedRequest, flexUserRoleValid([ROLES.all])],
     async (request, response) => {
       try {
+        const requiredTemplate = await prisma.report_templates.findFirst({
+          where: { slug: "commercial-building-energy-audit" },
+        });
+
+        if (!requiredTemplate && process.env.NODE_ENV !== "production") {
+          await ensureAiReportGeneratorSeeded(prisma);
+        }
+
         const templates = await prisma.report_templates.findMany({
           where: {
             status: "active",
@@ -299,6 +556,14 @@ function reportEndpoints(app) {
           outputFormats: t.outputFormats,
         }));
 
+        if (!publicTemplates.length) {
+          return response.status(503).json({
+            error:
+              "No public report templates are configured. Run `yarn setup:dev` or `cd server && npx prisma db seed` to seed the AI Report Generator templates.",
+            templates: [],
+          });
+        }
+
         response.status(200).json({ templates: publicTemplates });
       } catch (e) {
         console.error(e.message, e);
@@ -313,22 +578,48 @@ function reportEndpoints(app) {
     [validatedRequest, flexUserRoleValid([ROLES.all]), handleFileUpload],
     async function (request, response) {
       try {
+        const { originalname, path: uploadedPath, size, mimetype } = request.file;
+        const ext = path.extname(originalname).toLowerCase();
+
+        if ([".xlsx", ".xls", ".jpg", ".jpeg", ".png"].includes(ext)) {
+          return response.status(200).json({
+            success: true,
+            location: uploadedPath || originalname,
+            filename: originalname,
+            size,
+            mimetype,
+            parsingStatus: "not_required",
+            token_count_estimate: 0,
+          });
+        }
+
         const Collector = new CollectorApi();
-        const { originalname } = request.file;
         const processingOnline = await Collector.online();
 
         if (!processingOnline) {
-          return response.status(500).json({
-            success: false,
-            error: "Document processing server is offline. Uploaded file cannot be parsed.",
+          return response.status(200).json({
+            success: true,
+            location: uploadedPath || originalname,
+            filename: originalname,
+            size,
+            mimetype,
+            parsingStatus: "uploaded_unparsed",
+            warning: "Document processing server is offline. File was uploaded but not parsed.",
+            token_count_estimate: 0,
           });
         }
 
         const { success, reason, documents } = await Collector.parseDocument(originalname);
         if (!success || !documents?.[0]) {
-          return response.status(500).json({
-            success: false,
-            error: reason || "Document parsing failed on the collector server.",
+          return response.status(200).json({
+            success: true,
+            location: uploadedPath || originalname,
+            filename: originalname,
+            size,
+            mimetype,
+            parsingStatus: "uploaded_unparsed",
+            warning: reason || "Document parsing failed on the collector server. File was uploaded but not parsed.",
+            token_count_estimate: 0,
           });
         }
 
@@ -337,12 +628,66 @@ function reportEndpoints(app) {
           success: true,
           location: doc.location,
           filename: originalname,
+          size,
+          mimetype,
+          parsingStatus: "parsed",
           token_count_estimate: doc.token_count_estimate || 0,
         });
       } catch (e) {
         console.error(e.message, e);
         response.sendStatus(500).end();
       }
+    }
+  );
+
+  app.post(
+    "/reports/validate-upload",
+    [validatedRequest, flexUserRoleValid([ROLES.all])],
+    function (request, response) {
+      excelUpload(request, response, async function (err) {
+        if (err) {
+          return response.status(400).json({
+            success: false,
+            files: [],
+            error: `Invalid file upload. ${err.message}`,
+          });
+        }
+
+        try {
+          const files = request.files || [];
+          const validations = await Promise.all(
+            files.map(async (file) => {
+              const ext = path.extname(file.originalname).toLowerCase();
+              if (![".xlsx", ".xls"].includes(ext)) {
+                return {
+                  filename: file.originalname,
+                  fileType: "other",
+                  status: "valid",
+                  sheets: [],
+                  headerRow: 0,
+                  detectedColumns: [],
+                  mappedColumns: {},
+                  projectRowsDetected: 0,
+                  missingRequiredColumns: [],
+                  missingRecommendedColumns: [],
+                  warnings: [],
+                  errors: [],
+                };
+              }
+              return await validateExcelBuffer(file);
+            })
+          );
+
+          return response.status(200).json({ success: true, files: validations });
+        } catch (e) {
+          console.error(e.message, e);
+          return response.status(500).json({
+            success: false,
+            files: [],
+            error: "Upload validation failed.",
+          });
+        }
+      });
     }
   );
 
