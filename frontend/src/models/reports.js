@@ -161,6 +161,63 @@ const Reports = {
       });
   },
 
+  recheckQC: async (id) => {
+    return await fetch(`${API_BASE}/reports/${id}/qc/recheck`, {
+      method: "POST",
+      headers: baseHeaders(),
+    })
+      .then((res) => res.json())
+      .catch((e) => {
+        console.error(e);
+        return { error: e.message };
+      });
+  },
+
+  downloadDocx: async (id, allowDraft = false) => {
+    return await fetch(`${API_BASE}/reports/${id}/export/docx${allowDraft ? '?allowDraft=true' : ''}`, {
+      method: "POST",
+      headers: baseHeaders(),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text();
+          let errJson;
+          try {
+            errJson = JSON.parse(text);
+          } catch (e) {
+            return { success: false, error: text };
+          }
+          return {
+            success: false,
+            error: errJson.error || "Export failed.",
+            qcFailed: errJson.qcFailed,
+            qcErrors: errJson.qcErrors,
+            qcWarnings: errJson.qcWarnings,
+            summary: errJson.summary
+          };
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get("Content-Disposition");
+        let filename = "SEE-Tech_Detailed_Energy_Audit_Report.docx";
+        if (disposition && disposition.indexOf("filename=") !== -1) {
+          filename = disposition.split("filename=")[1].replace(/"/g, "");
+        }
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+      })
+      .catch((e) => {
+        console.error(e);
+        return { success: false, error: e.message };
+      });
+  },
+
   // ── Shared ───────────────────────────────────────────────────────────────────
 
   getReports: async () => {

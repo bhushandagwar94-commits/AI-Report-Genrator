@@ -66,6 +66,22 @@ Do not commit local runtime state. AnythingLLM and the report generator store ru
 
 The seed script recreates the required public report setup without committing the local database.
 
+## Using OpenRouter API
+
+1. Create an OpenRouter API key.
+2. Add the following to `server/.env`:
+   ```env
+   LLM_PROVIDER=openrouter
+   OPENROUTER_API_KEY=your_key
+   OPENROUTER_MODEL=openrouter/free
+   ```
+3. Restart the server:
+   ```powershell
+   yarn dev:all
+   ```
+
+**Note on Automatic Fallback:** If the API key is missing or the provider fails, the system will automatically fall back to generating a report using extracted Excel/form data and "Data required" placeholders without failing.
+
 ## Safe Environment Files
 
 Use the example files as templates:

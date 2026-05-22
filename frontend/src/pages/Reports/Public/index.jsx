@@ -38,6 +38,9 @@ import {
   FileText,
   Copy,
   WarningCircle,
+  CaretDown,
+  CaretUp,
+  Info,
 } from "@phosphor-icons/react";
 
 // ─── Template definitions (shown in UI — no admin data exposed) ─────────────────
@@ -464,6 +467,8 @@ function validationTone(status) {
 }
 
 function ExcelValidationCard({ validation }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   if (!validation) {
     return (
       <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone()}`}>
@@ -472,46 +477,116 @@ function ExcelValidationCard({ validation }) {
     );
   }
 
-  const statusText = {
-    valid: `Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`,
-    warning: "Excel file uploaded, but some recommended columns are missing.",
-    error: "Excel validation failed. Please upload a sheet with project/ECM data.",
-  }[validation.status] || "Excel validation pending.";
-
-  const mapped = Object.entries(validation.mappedColumns || {}).filter(([, value]) => value);
+  const { status, readinessScore, professionalSummary, criticalIssues, highPriorityRecommendations, mediumPriorityRecommendations, optionalRecommendations, technicalDetails, mappedColumns } = validation;
 
   return (
-    <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone(validation.status)}`}>
-      <div className="flex items-start gap-x-2">
-        {validation.status === "error" ? (
-          <X size={14} className="mt-0.5 shrink-0" />
-        ) : validation.status === "warning" ? (
-          <WarningCircle size={14} className="mt-0.5 shrink-0" />
-        ) : (
-          <CheckCircle size={14} weight="fill" className="mt-0.5 shrink-0" />
-        )}
-        <div className="min-w-0">
-          <p className="font-semibold">{statusText}</p>
-          <div className="mt-1.5 grid gap-1 text-white/55">
-            <p>Sheets scanned: {(validation.sheets || []).join(", ") || "Data required"}</p>
-            <p>Header row detected: {validation.headerRow || "Data required"}</p>
-            <p>Columns detected: {(validation.detectedColumns || []).join(", ") || "Data required"}</p>
-            <p>
-              Mapped columns:{" "}
-              {mapped.length
-                ? mapped.map(([field, column]) => `${field}: ${column}`).join(", ")
-                : "Data required"}
-            </p>
-            <p>Rows detected: {validation.projectRowsDetected || 0}</p>
-            {(validation.missingRecommendedColumns || []).length > 0 && (
-              <p>Missing columns: {validation.missingRecommendedColumns.join(", ")}</p>
+    <div className={`mt-3 rounded-xl border p-4 text-sm ${validationTone(status)}`}>
+      <div className="flex flex-col gap-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-x-2 border-b border-current pb-2 border-opacity-10">
+          <div className="flex items-center gap-x-2">
+            {status === "error" ? (
+              <X size={20} className="shrink-0" />
+            ) : status === "warning" ? (
+              <WarningCircle size={20} className="shrink-0" />
+            ) : (
+              <CheckCircle size={20} weight="fill" className="shrink-0" />
             )}
-            {(validation.missingRequiredColumns || []).length > 0 && (
-              <p>Missing required: {validation.missingRequiredColumns.join(", ")}</p>
-            )}
-            {(validation.errors || []).length > 0 && <p>Errors: {validation.errors.join(", ")}</p>}
+            <span className="font-bold text-base">
+              {status === "valid" ? "Excel Validation: Passed" : status === "warning" ? "Excel Validation: Warning" : "Excel Validation: Error"}
+            </span>
           </div>
+          {readinessScore !== undefined && (
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">Data Readiness</span>
+              <span className="text-lg font-black">{readinessScore}%</span>
+            </div>
+          )}
         </div>
+
+        {/* Summary */}
+        <p className="opacity-90 leading-relaxed font-medium">
+          {professionalSummary || "Excel validation completed."}
+        </p>
+
+        {/* Critical Issues */}
+        {criticalIssues?.length > 0 && (
+          <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+            <p className="font-bold text-red-400 mb-1 flex items-center gap-x-1.5"><X size={16}/> Critical Blockers</p>
+            <ul className="list-disc list-inside text-red-300/80 text-xs space-y-1">
+              {criticalIssues.map((issue, i) => <li key={i}>{issue}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* High Priority Recommendations */}
+        {highPriorityRecommendations?.length > 0 && (
+          <div className="mt-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-3">
+            <p className="font-bold text-yellow-400 mb-2 flex items-center gap-x-1.5"><WarningCircle size={16}/> High-Priority Improvements</p>
+            <div className="grid gap-2 text-xs text-yellow-300/80">
+              {highPriorityRecommendations.map((rec, i) => (
+                <div key={i} className="flex flex-col bg-black/10 p-2 rounded">
+                  <span className="font-semibold text-yellow-300">Missing: {rec.field}</span>
+                  <span className="opacity-80 mt-0.5">{rec.whyItMatters}</span>
+                  <span className="opacity-60 text-[10px] mt-1">Suggested column: {rec.suggestedColumnNames.join(", ")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Technical Details Toggle */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setDetailsOpen(!detailsOpen);
+          }}
+          className="mt-2 flex items-center gap-x-1 text-xs font-semibold opacity-70 hover:opacity-100 transition-opacity self-start focus:outline-none"
+        >
+          {detailsOpen ? <CaretUp size={14} /> : <CaretDown size={14} />}
+          {detailsOpen ? "Hide Technical Details" : "Show Technical Details"}
+        </button>
+
+        {/* Technical Details Collapsible */}
+        {detailsOpen && (
+          <div className="mt-2 grid gap-y-3 text-xs opacity-70 bg-black/10 rounded-lg p-3">
+            {/* Medium & Optional */}
+            {(mediumPriorityRecommendations?.length > 0 || optionalRecommendations?.length > 0) && (
+              <div>
+                <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Additional Recommendations</p>
+                <ul className="list-disc list-inside space-y-1 mt-1">
+                  {mediumPriorityRecommendations?.map((rec, i) => (
+                    <li key={i}>Add <strong>{rec.field}</strong>: {rec.whyItMatters}</li>
+                  ))}
+                  {optionalRecommendations?.map((rec, i) => (
+                    <li key={i}>{rec.whyItMatters}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {/* Mapped Columns */}
+            <div>
+               <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Detected Mapping</p>
+               <div className="grid grid-cols-2 gap-1 mt-1">
+                 {Object.entries(mappedColumns || {}).filter(([, val]) => val).map(([key, val], i) => (
+                   <span key={i} className="truncate" title={`${key} → ${val}`}>
+                     <span className="opacity-60">{key}:</span> {val}
+                   </span>
+                 ))}
+               </div>
+            </div>
+
+            {/* Raw Details */}
+            <div>
+               <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Scan Details</p>
+               <p>Sheets: {(technicalDetails?.sheetsScanned || []).join(", ")}</p>
+               <p>Header row: {technicalDetails?.headerRow}</p>
+               <p>Rows detected: {technicalDetails?.rowsDetected}</p>
+               <p>Columns detected: {(technicalDetails?.rawColumns || []).join(", ")}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -853,8 +928,10 @@ function Step4({
 }
 
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
-function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
+function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onReportUpdated }) {
   const [copied, setCopied] = useState(false);
+  const [qcResult, setQcResult] = useState(null);
+  const [rechecking, setRechecking] = useState(false);
   const reportRef = useRef(null);
 
   const content = report?.outputContent || "";
@@ -862,11 +939,35 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
     isCommercialBuildingEnergyAuditTemplate(selectedTemplate);
   const reportData = generatedReportData || sampleCommercialBuildingEnergyAuditData;
 
+  const isDev = import.meta.env.MODE === "development" || import.meta.env.VITE_ALLOW_DRAFT_EXPORT === "true";
+
   const handlePrint = useReactToPrint({
     content: () => reportRef.current,
-    documentTitle: "Energy_Audit_Report",
-    onPrintError: () => showToast("Failed to generate PDF.", "error"),
+    documentTitle: "SEE-Tech_Detailed_Energy_Audit_Report",
+    onPrintError: () => {
+      showToast("Failed to generate PDF, trying browser print...", "error");
+      window.print();
+    },
   });
+
+  const runFrontendQC = () => {
+    let failed = false;
+    let errors = [];
+    try {
+      const rd = JSON.parse(report.outputContent);
+      if (!rd.groupedProjects || rd.groupedProjects.length === 0) {
+        failed = true;
+        errors.push({ message: "Report has no grouped projects." });
+      }
+      (rd.projects || []).forEach(p => {
+        if (!p.projectTitle) { failed = true; errors.push({ message: "Missing project title." }); }
+        else if (String(p.projectTitle).toLowerCase() === "data required") { failed = true; errors.push({ message: "Project title is 'Data required'." }); }
+        else if (String(p.projectTitle) === "[object Object]") { failed = true; errors.push({ message: "Project title is [object Object]." }); }
+        else if (String(p.projectTitle).toLowerCase().includes("project project")) { failed = true; errors.push({ message: "Project title contains 'Project Project'." }); }
+      });
+    } catch(e) {}
+    return { failed, errors };
+  };
 
   const handleDownload = (ext = "md") => {
     const mime = ext === "md" ? "text/markdown" : "text/plain";
@@ -880,6 +981,42 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast("Report downloaded!", "success");
+  };
+
+  const handleDownloadWord = async (allowDraft = false) => {
+    if (!report?.id) {
+      showToast("Please generate the report before downloading Word.", "info");
+      return;
+    }
+    const toastId = showToast(allowDraft ? "Generating Draft Word document..." : "Generating Word document...", "info", { autoClose: false });
+    const res = await Reports.downloadDocx(report.id, allowDraft);
+    if (res.success) {
+      showToast("Word document downloaded!", "success");
+      setQcResult(null);
+    } else {
+      if (res.qcFailed) {
+        setQcResult(res);
+        showToast("Report requires review before final export. Please check QC details.", "error");
+      } else {
+        showToast(res.error || "Failed to generate Word document.", "error");
+      }
+    }
+  };
+
+  const handleRecheck = async () => {
+    if (!report?.id) return;
+    setRechecking(true);
+    const res = await Reports.recheckQC(report.id);
+    setRechecking(false);
+    if (res.success) {
+      showToast(res.qcPassed ? "QC Passed! Data cleaned." : "QC still failing. Please review.", res.qcPassed ? "success" : "warning");
+      setQcResult(res.qcPassed ? null : res);
+      if (onReportUpdated && res.reportData) {
+        onReportUpdated({ ...report, outputContent: JSON.stringify(res.reportData) });
+      }
+    } else {
+      showToast(res.error || "Failed to run QC.", "error");
+    }
   };
 
   const handleCopy = async () => {
@@ -909,53 +1046,132 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
 
         {/* Action buttons */}
         <div className="flex items-center gap-x-2 shrink-0">
-          <button
-            onClick={handleCopy}
-            title="Copy to clipboard"
-            className={`flex items-center gap-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
-              copied
-                ? "bg-green-600/20 border-green-500/30 text-green-400"
-                : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            {copied ? <CheckCircle size={13} weight="fill" /> : <Copy size={13} />}
-            {copied ? "Copied!" : "Copy"}
-          </button>
-          <button
-            onClick={() => handleDownload("md")}
-            title="Download as Markdown"
-            className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-primary-button hover:opacity-90 text-white text-xs font-semibold transition-all"
-          >
-            <DownloadSimple size={13} />
-            Download .md
-          </button>
-          <button
-            onClick={() => {
-              if (shouldRenderEnergyAuditTemplate && reportRef.current) {
-                handlePrint();
-              } else {
-                showToast("PDF download coming soon for this template!", "info");
-              }
-            }}
-            title="Download as PDF"
-            className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-semibold transition-all"
-          >
-            <DownloadSimple size={13} />
-            Download PDF
-          </button>
-          <button
-            onClick={() => handleDownload("txt")}
-            title="Download as plain text"
-            className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-white/8 hover:bg-white/14 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-all"
-          >
-            <DownloadSimple size={13} />
-            .txt
-          </button>
+          {!shouldRenderEnergyAuditTemplate && (
+            <>
+              <button
+                onClick={handleCopy}
+                title="Copy to clipboard"
+                className={`flex items-center gap-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                  copied
+                    ? "bg-green-600/20 border-green-500/30 text-green-400"
+                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {copied ? <CheckCircle size={13} weight="fill" /> : <Copy size={13} />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                onClick={() => handleDownload("md")}
+                title="Download as Markdown"
+                className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-primary-button hover:opacity-90 text-white text-xs font-semibold transition-all"
+              >
+                <DownloadSimple size={13} />
+                Download .md
+              </button>
+              <button
+                onClick={() => handleDownload("txt")}
+                title="Download as plain text"
+                className="flex items-center gap-x-1.5 px-3 py-2 rounded-lg bg-white/8 hover:bg-white/14 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-all"
+              >
+                <DownloadSimple size={13} />
+                .txt
+              </button>
+            </>
+          )}
+
+          {shouldRenderEnergyAuditTemplate && (
+            <>
+                {isDev && (
+                  <button
+                    onClick={() => handleDownloadWord(true)}
+                    title="Download Draft Word"
+                    className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
+                  >
+                    <FileDoc size={18} weight="fill" />
+                    Download Draft Word
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDownloadWord(false)}
+                  title="Download as Word"
+                  className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all"
+                >
+                  <FileDoc size={18} weight="fill" />
+                  Download Word
+                </button>
+                <button
+                  onClick={() => {
+                    if (reportRef.current) {
+                      const qc = runFrontendQC();
+                      if (qc.failed) {
+                        setQcResult({ qcFailed: true, qcErrors: qc.errors });
+                        showToast("Report requires review before final export. Please check QC details.", "error");
+                      } else {
+                        handlePrint();
+                      }
+                    } else {
+                      showToast("Please generate the report before downloading PDF.", "info");
+                    }
+                  }}
+                  title="Download as PDF"
+                  className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
+                >
+                  <FilePdf size={18} weight="fill" />
+                  Download PDF
+                </button>
+            </>
+          )}
         </div>
       </div>
 
+        {/* QC Failure Panel */}
+        {qcResult && qcResult.qcFailed && (
+          <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-5 mb-2 shadow-lg">
+            <h3 className="text-red-400 font-bold text-lg mb-2 flex items-center gap-2">
+              <WarningCircle size={20} weight="bold" />
+              Report Quality Check Required
+            </h3>
+            <p className="text-white/80 text-sm mb-4">
+              The report was generated, but export is blocked because some quality checks failed.
+            </p>
+            
+            {qcResult.qcErrors && qcResult.qcErrors.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-red-300 font-semibold text-sm mb-1">Critical Issues:</h4>
+                <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
+                  {qcResult.qcErrors.map((err, i) => (
+                    <li key={i}>
+                      <span className="font-medium text-white/90">{err.message}</span> 
+                      {err.path && <span className="opacity-50 ml-1">({err.path})</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {qcResult.summary && (
+              <div className="mb-4 bg-black/20 rounded p-3 text-xs text-white/60">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Valid Projects: {qcResult.summary.projectCount}</div>
+                  <div>Groups: {qcResult.summary.groupCount}</div>
+                  <div>Duplicates: {qcResult.summary.duplicateTitleCount}</div>
+                  <div>Invalid Titles: {qcResult.summary.invalidTitleCount}</div>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleRecheck}
+              disabled={rechecking}
+              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all"
+            >
+              {rechecking ? "Rechecking..." : "Re-run Cleanup & QC"}
+            </button>
+          </div>
+        )}
+
       {/* Missing fields warning */}
-      {missing.length > 0 && (
+      {!shouldRenderEnergyAuditTemplate && missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-yellow-900/15 border border-yellow-500/20 rounded-xl">
           <span className="text-xs font-semibold text-yellow-400 shrink-0">⚠ Missing fields:</span>
           {missing.map((field) => (
@@ -971,22 +1187,22 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData }) {
 
       {/* Preview panel */}
       <div
-        className={`rounded-2xl border border-white/8 overflow-hidden ${
-          shouldRenderEnergyAuditTemplate ? "bg-white" : "bg-[#0b0c10]"
+        className={`rounded-2xl border overflow-hidden ${
+          shouldRenderEnergyAuditTemplate ? "bg-white border-white shadow-xl" : "bg-[#0b0c10] border-white/8"
         }`}
       >
-        {/* Fake terminal bar */}
-        <div className="flex items-center gap-x-2 px-4 py-2.5 bg-white/3 border-b border-white/6">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
-          <Eye size={12} className="ml-2 text-white/25" />
-          <span className="text-[11px] text-white/25 font-mono">
-            {shouldRenderEnergyAuditTemplate
-              ? "commercial-building-energy-audit-preview"
-              : "report-output.md"}
-          </span>
-        </div>
+        {/* Fake terminal bar - hide for public structured report */}
+        {!shouldRenderEnergyAuditTemplate && (
+          <div className="flex items-center gap-x-2 px-4 py-2.5 bg-white/3 border-b border-white/6">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+            <Eye size={12} className="ml-2 text-white/25" />
+            <span className="text-[11px] text-white/25 font-mono">
+              report-output.md
+            </span>
+          </div>
+        )}
 
         {/* Report content */}
         {shouldRenderEnergyAuditTemplate ? (
@@ -1266,6 +1482,14 @@ export default function PublicReports() {
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
                 generatedReportData={generatedReportData}
+                onReportUpdated={(updated) => {
+                  setGeneratedReport(updated);
+                  try {
+                    if (updated.outputContent) {
+                      setGeneratedReportData(JSON.parse(updated.outputContent));
+                    }
+                  } catch(e) {}
+                }}
               />
             )}
           </div>

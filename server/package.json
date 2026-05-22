@@ -59,7 +59,7 @@
     "cors": "^2.8.5",
     "cron-validate": "1.4.5",
     "diff": "7.0.0",
-    "docx": "9.6.1",
+    "docx": "^9.6.1",
     "dompurify": "3.3.3",
     "dotenv": "^16.0.3",
     "elevenlabs": "^0.5.0",

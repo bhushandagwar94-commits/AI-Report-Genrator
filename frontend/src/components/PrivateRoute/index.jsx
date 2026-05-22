@@ -16,70 +16,101 @@ function useIsAuthenticated() {
   const [shouldRedirectToOnboarding, setShouldRedirectToOnboarding] =
     useState(false);
   const [multiUserMode, setMultiUserMode] = useState(false);
+  const [backendOffline, setBackendOffline] = useState(false);
 
   useEffect(() => {
     const validateSession = async () => {
-      const onboardingComplete = await System.isOnboardingComplete();
-      const { MultiUserMode, RequiresAuth } = await System.keys();
-      setMultiUserMode(MultiUserMode);
+      try {
+        const onboardingComplete = await System.isOnboardingComplete();
+        const keys = await System.keys();
+        
+        if (!keys) {
+          setBackendOffline(true);
+          return;
+        }
 
-      // Check for the onboarding redirect condition
-      const isDevBypass = import.meta.env.DEV && import.meta.env.VITE_SKIP_ONBOARDING === "true";
-      if (onboardingComplete === false && !isDevBypass) {
-        setShouldRedirectToOnboarding(true);
-        setIsAuthed(true);
-        return;
-      }
+        const { MultiUserMode, RequiresAuth } = keys;
+        setMultiUserMode(MultiUserMode);
 
-      // Single User mode without password - no auth required
-      if (!MultiUserMode && !RequiresAuth) {
-        setIsAuthed(true);
-        return;
-      }
+        // Check for the onboarding redirect condition
+        const isDevBypass = import.meta.env.DEV && import.meta.env.VITE_SKIP_ONBOARDING === "true";
+        if (onboardingComplete === false && !isDevBypass) {
+          setShouldRedirectToOnboarding(true);
+          setIsAuthed(true);
+          return;
+        }
 
-      // Single User password mode check
-      if (!MultiUserMode && RequiresAuth) {
+        // Single User mode without password - no auth required
+        if (!MultiUserMode && !RequiresAuth) {
+          setIsAuthed(true);
+          return;
+        }
+
+        // Single User password mode check
+        if (!MultiUserMode && RequiresAuth) {
+          const localAuthToken = localStorage.getItem(AUTH_TOKEN);
+          if (!localAuthToken) {
+            setIsAuthed(false);
+            return;
+          }
+
+          const isValid = await validateSessionTokenForUser();
+          setIsAuthed(isValid);
+          return;
+        }
+
+        // Multi-user mode checks
+        const localUser = localStorage.getItem(AUTH_USER);
         const localAuthToken = localStorage.getItem(AUTH_TOKEN);
-        if (!localAuthToken) {
+        if (!localUser || !localAuthToken) {
           setIsAuthed(false);
           return;
         }
 
         const isValid = await validateSessionTokenForUser();
-        setIsAuthed(isValid);
-        return;
-      }
+        if (!isValid) {
+          localStorage.removeItem(AUTH_USER);
+          localStorage.removeItem(AUTH_TOKEN);
+          localStorage.removeItem(AUTH_TIMESTAMP);
+          setIsAuthed(false);
+          return;
+        }
 
-      // Multi-user mode checks
-      const localUser = localStorage.getItem(AUTH_USER);
-      const localAuthToken = localStorage.getItem(AUTH_TOKEN);
-      if (!localUser || !localAuthToken) {
-        setIsAuthed(false);
-        return;
+        setIsAuthed(true);
+      } catch (error) {
+        console.error(error);
+        setBackendOffline(true);
       }
-
-      const isValid = await validateSessionTokenForUser();
-      if (!isValid) {
-        localStorage.removeItem(AUTH_USER);
-        localStorage.removeItem(AUTH_TOKEN);
-        localStorage.removeItem(AUTH_TIMESTAMP);
-        setIsAuthed(false);
-        return;
-      }
-
-      setIsAuthed(true);
     };
     validateSession();
   }, []);
 
-  return { isAuthd, shouldRedirectToOnboarding, multiUserMode };
+  return { isAuthd, shouldRedirectToOnboarding, multiUserMode, backendOffline };
 }
 
 // Allows only admin to access the route and if in single user mode,
 // allows all users to access the route
 export function AdminRoute({ Component, hideUserMenu = false }) {
-  const { isAuthd, shouldRedirectToOnboarding, multiUserMode } =
+  const { isAuthd, shouldRedirectToOnboarding, multiUserMode, backendOffline } =
     useIsAuthenticated();
+
+  if (backendOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
+        <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <p className="text-white mb-6">Please start yarn dev:all</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isAuthd === null) return <FullScreenLoader />;
 
   if (shouldRedirectToOnboarding) {
@@ -107,8 +138,26 @@ export function AdminRoute({ Component, hideUserMenu = false }) {
 // Allows manager and admin to access the route and if in single user mode,
 // allows all users to access the route
 export function ManagerRoute({ Component }) {
-  const { isAuthd, shouldRedirectToOnboarding, multiUserMode } =
+  const { isAuthd, shouldRedirectToOnboarding, multiUserMode, backendOffline } =
     useIsAuthenticated();
+
+  if (backendOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
+        <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <p className="text-white mb-6">Please start yarn dev:all</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isAuthd === null) return <FullScreenLoader />;
 
   if (shouldRedirectToOnboarding) {
@@ -129,8 +178,26 @@ export function ManagerRoute({ Component }) {
 
 // Allows access only in single user mode — redirects to home in multi-user mode
 export function SingleUserRoute({ Component }) {
-  const { isAuthd, shouldRedirectToOnboarding, multiUserMode } =
+  const { isAuthd, shouldRedirectToOnboarding, multiUserMode, backendOffline } =
     useIsAuthenticated();
+
+  if (backendOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
+        <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <p className="text-white mb-6">Please start yarn dev:all</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isAuthd === null) return <FullScreenLoader />;
 
   if (shouldRedirectToOnboarding) {
@@ -147,7 +214,25 @@ export function SingleUserRoute({ Component }) {
 }
 
 export default function PrivateRoute({ Component }) {
-  const { isAuthd, shouldRedirectToOnboarding } = useIsAuthenticated();
+  const { isAuthd, shouldRedirectToOnboarding, backendOffline } = useIsAuthenticated();
+  
+  if (backendOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
+        <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <p className="text-white mb-6">Please start yarn dev:all</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isAuthd === null) return <FullScreenLoader />;
 
   if (shouldRedirectToOnboarding) {

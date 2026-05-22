@@ -120,6 +120,17 @@ export interface CommercialBuildingEnergyAuditData {
   buildingAutomationControls?: Record<string, ReportValue>[];
   auditObservations?: Record<string, ReportValue>[];
   projects?: CommercialBuildingProject[];
+  groupedProjects?: CommercialBuildingProjectGroup[];
+}
+
+export interface CommercialBuildingProjectGroup {
+  groupNo: string;
+  groupTitle: string;
+  projects: CommercialBuildingProject[];
+  totalInvestment: number | string;
+  totalAnnualSaving: number | string;
+  totalEnergySaving: number | string;
+  weightedPayback: string;
 }
 
 const colors = {
@@ -145,14 +156,24 @@ const pageStyle: React.CSSProperties = {
 };
 
 const printCss = `
+  .report-preview-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
   @media print {
+    @page { size: A4; margin: 15mm; }
     body { margin: 0; background: #ffffff; }
+    body * { visibility: hidden; }
+    .report-print-area, .report-print-area * { visibility: visible; }
+    .report-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; }
     .page-break { break-after: page; page-break-after: always; }
     .report-page {
       width: 210mm !important;
       min-height: 297mm !important;
       margin: 0 !important;
       box-shadow: none !important;
+      page-break-after: always;
+      break-after: page;
     }
   }
 `;
@@ -211,23 +232,36 @@ function SectionHeader({ number, title, level = 2 }: { number?: string; title: s
   );
 }
 
+function normalizeTableRows(rows: any) {
+  if (Array.isArray(rows)) {
+    return rows.length ? rows : [{}];
+  }
+  if (rows && typeof rows === "object") {
+    return [rows];
+  }
+  return [{}];
+}
+
 function ReportTable({
   columns,
   rows,
   compact = false,
 }: {
   columns: { key: string; label: string; width?: string | number; align?: "left" | "right" | "center" }[];
-  rows?: Record<string, any>[];
+  rows?: Record<string, any>[] | Record<string, any> | null;
   compact?: boolean;
 }) {
-  const safeRows = rows && rows.length ? rows : [{}];
+  const safeRows = normalizeTableRows(rows);
+  const safeColumns = Array.isArray(columns) && columns.length
+    ? columns
+    : [{ key: "value", label: "Value" }];
 
   return (
     <div style={{ margin: "12px 0 20px", borderRadius: 10, overflow: "hidden", border: `1px solid ${colors.border}`, boxShadow: "0 2px 12px rgba(24,52,74,0.08)" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: compact ? 12 : 13 }}>
         <thead>
           <tr style={{ background: colors.primaryBlue }}>
-            {columns.map((col) => (
+            {safeColumns.map((col) => (
               <th key={col.key} style={{ color: colors.white, padding: compact ? "8px 9px" : "10px 12px", textAlign: col.align || "left", fontWeight: 700, width: col.width, borderRight: `1px solid rgba(255,255,255,0.18)` }}>
                 {col.label}
               </th>
@@ -237,9 +271,9 @@ function ReportTable({
         <tbody>
           {safeRows.map((row, rowIndex) => (
             <tr key={rowIndex} style={{ background: rowIndex % 2 === 0 ? colors.blueLight : colors.white }}>
-              {columns.map((col) => (
+              {safeColumns.map((col) => (
                 <td key={col.key} style={{ padding: compact ? "8px 9px" : "10px 12px", textAlign: col.align || "left", borderBottom: `1px solid ${colors.border}`, borderRight: `1px solid ${colors.border}`, verticalAlign: "top", color: colors.text }}>
-                  {safeValue(row[col.key])}
+                  {safeValue(row?.[col.key])}
                 </td>
               ))}
             </tr>
@@ -253,8 +287,13 @@ function ReportTable({
 function CoverPage({ data }: { data: ReportInfo }) {
   return (
     <section className="report-page" style={{ ...pageStyle, display: "flex", flexDirection: "column" }}>
-      <div style={{ color: colors.primaryBlue, fontSize: 18, fontWeight: 800 }}>SEE-Tech Solutions</div>
-      <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Commercial Building Energy Audit Report Format</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <img src="/assets/seetech-logo.png" alt="SEE-Tech Logo" style={{ height: 40, objectFit: "contain" }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <div>
+          <div style={{ color: colors.primaryBlue, fontSize: 18, fontWeight: 800 }}>SEE-Tech Solutions</div>
+          <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Commercial Building Energy Audit Report Format</div>
+        </div>
+      </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <h1 style={{ color: colors.primaryBlue, fontSize: 36, lineHeight: 1.15, margin: "0 0 14px", fontWeight: 900 }}>
@@ -291,16 +330,25 @@ function CoverPage({ data }: { data: ReportInfo }) {
   );
 }
 
-function TableOfContents({ projects = [] }: { projects?: CommercialBuildingProject[] }) {
+function TableOfContents({ groupedProjects = [] }: { groupedProjects?: CommercialBuildingProjectGroup[] }) {
+  let chapterIndex = 3;
   return (
     <section className="report-page" style={pageStyle}>
       <SectionHeader level={1} title="Table of Contents" />
       <ol style={{ color: colors.text, fontSize: 14, lineHeight: 1.9, marginTop: 28 }}>
         <li><b>Executive Summary</b></li>
         <li><b>Plant / Building Details and Energy Profile</b></li>
-        {(projects.length ? projects : [{ projectNo: "1", projectTitle: "[Name of Energy Saving Project]" }]).map((p, i) => (
-          <li key={i}><b>Project {safeValue(p.projectNo || i + 1)} - {safeValue(p.projectTitle)}</b></li>
-        ))}
+        {groupedProjects.length > 0 ? groupedProjects.map((g, i) => (
+          <li key={i}>
+            <b>{chapterIndex + i}. {g.groupNo} {safeValue(g.groupTitle)}</b>
+            <ol style={{ paddingLeft: 20, listStyleType: "none" }}>
+              {g.projects.map((p, j) => (
+                <li key={j}>{safeValue(p.projectNo || j + 1)} – {safeValue(p.projectTitle)}</li>
+              ))}
+            </ol>
+          </li>
+        )) : <li><b>3. Energy Saving Projects</b></li>}
+        <li><b>Annexures</b></li>
       </ol>
     </section>
   );
@@ -601,12 +649,16 @@ function ImageBlock({ src, caption }: { src?: ReportValue; caption?: ReportValue
 }
 
 function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBuildingProject; chapterNumber: number }) {
-  const n = (section: number) => `${chapterNumber}.${section}`;
+  const n = (sectionNumber: number) => {
+    const base = chapterNumber || project?.chapterNumber || String(project?.projectNo).replace(/\D/g, "") || "3";
+    return `${base}.${sectionNumber}`;
+  };
+
   return (
     <section className="report-page" style={pageStyle}>
-      <SectionHeader level={1} title={`Chapter ${chapterNumber}: Project ${safeValue(project.projectNo)} - ${safeValue(project.projectTitle)}`} />
+      <SectionHeader level={2} title={`${safeValue(project.projectNo)} – ${safeValue(project.projectTitle)}`} />
 
-      <SectionHeader number={n(1)} title="Project Summary" />
+      <SectionHeader level={3} title="Project Summary" />
       <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "details", label: "Details" }]} rows={[
         { particular: "Project title", details: project.projectTitle },
         { particular: "Project number", details: project.projectNo },
@@ -818,7 +870,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         },
       ]} />
 
-      <SectionHeader number={n(18)} title="Conclusion" />
+      <SectionHeader level={3} title="Case Studies" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
         {safeValue(project.finalConclusion || project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year. With an estimated investment of ${formatINR(project.estimatedInvestment)}, the simple payback period is expected to be ${safeValue(project.simplePaybackPeriod)}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeValue(project.implementationPriority)}.`)}
       </p>
@@ -886,16 +938,17 @@ export default function CommercialBuildingEnergyAuditTemplate({
 }: {
   data: CommercialBuildingEnergyAuditData;
 }) {
-  const projects = data.projects || [];
+  const groupedProjects = data.groupedProjects || [];
+  let currentChapter = 3;
 
   return (
-    <div className="commercial-building-energy-audit-report">
+    <div className="commercial-building-energy-audit-report report-print-area">
       <style>{printCss}</style>
 
       <CoverPage data={data.reportInfo} />
       <div className="page-break" />
 
-      <TableOfContents projects={projects} />
+      <TableOfContents groupedProjects={groupedProjects} />
       <div className="page-break" />
 
       <ExecutiveSummaryPage data={data} />
@@ -904,13 +957,46 @@ export default function CommercialBuildingEnergyAuditTemplate({
       <BuildingEnergyProfilePage data={data} />
       <div className="page-break" />
 
-      {projects.length ? (
-        projects.map((project, index) => (
-          <React.Fragment key={`${project.projectNo || index}`}>
-            <ProjectChapterPage project={project} chapterNumber={index + 3} />
-            <div className="page-break" />
-          </React.Fragment>
-        ))
+      {groupedProjects.length ? (
+        groupedProjects.map((group, index) => {
+          const chapterNumber = currentChapter + index;
+          return (
+            <React.Fragment key={group.groupNo}>
+              <section className="report-page" style={pageStyle}>
+                <SectionHeader level={1} title={`Chapter ${chapterNumber}: ${group.groupNo} ${safeValue(group.groupTitle)}`} />
+                <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+                  This chapter covers {group.projects.length} energy conservation measures (ECMs) under the {safeValue(group.groupTitle)} category. 
+                  The summary of these projects is provided below, followed by detailed descriptions of each individual project.
+                </p>
+                
+                <SectionHeader level={2} title="Group Summary" />
+                <ReportTable compact columns={[
+                  { key: "projectNo", label: "ECM No." },
+                  { key: "projectTitle", label: "ECM Name" },
+                  { key: "investment", label: "Investment ₹" },
+                  { key: "saving", label: "Annual Saving ₹/year" },
+                  { key: "energy", label: "Energy Saving kWh/year" },
+                  { key: "payback", label: "Payback" },
+                ]} rows={group.projects.map((p) => ({
+                  projectNo: p.projectNo,
+                  projectTitle: p.projectTitle,
+                  investment: formatINR(p.estimatedInvestment),
+                  saving: formatINR(p.expectedAnnualCostSaving),
+                  energy: safeValue(p.expectedEnergySaving),
+                  payback: safeValue(p.simplePaybackPeriod),
+                }))} />
+              </section>
+              <div className="page-break" />
+
+              {group.projects.map((project, pIndex) => (
+                <React.Fragment key={`${project.projectNo || pIndex}`}>
+                  <ProjectChapterPage project={project} chapterNumber={chapterNumber} />
+                  <div className="page-break" />
+                </React.Fragment>
+              ))}
+            </React.Fragment>
+          );
+        })
       ) : (
         <ProjectChapterPage chapterNumber={3} project={{ projectNo: "Project 1", projectTitle: "[Name of Energy Saving Project]" }} />
       )}
