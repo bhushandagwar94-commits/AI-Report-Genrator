@@ -24,9 +24,13 @@ async function main() {
   const prisma = new PrismaClient();
 
   try {
+    const dbPath = resolve(root, "server", "storage", "anythingllm.db");
+    console.log(`\n🔍 Database Path: ${dbPath}`);
+
     const onboarding = await prisma.system_settings.findUnique({
       where: { label: "onboarding_complete" },
     });
+    console.log(`🔍 onboarding_complete: ${onboarding?.value || "null"}`);
     if (onboarding?.value !== "true") {
       console.error("❌ onboarding_complete is not true.");
       process.exit(1);
@@ -51,9 +55,10 @@ async function main() {
     }
     console.log("✅ Default workspace exists.");
 
-    const template = await prisma.report_templates.findFirst({
-      where: { slug: "commercial-building-energy-audit" },
-    });
+    const templates = await prisma.report_templates.findMany();
+    console.log(`🔍 Total Templates in DB: ${templates.length}`);
+
+    const template = templates.find((t) => t.slug === "commercial-building-energy-audit");
     if (!template) {
       console.error("❌ Template 'commercial-building-energy-audit' does not exist.");
       process.exit(1);
@@ -75,7 +80,24 @@ async function main() {
       console.error("❌ Active template version does not exist.");
       process.exit(1);
     }
-    console.log("✅ Active template version exists.");
+    console.log(`✅ Active template version exists (ID: ${version.id}).`);
+
+    // Hitting the public endpoint
+    let publicTemplateResult = "Could not fetch";
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 2000);
+      const res = await fetch("http://localhost:3001/api/public/report-templates", { signal: controller.signal });
+      if (res.ok) {
+        const json = await res.json();
+        publicTemplateResult = `Success (${json?.templates?.length || 0} templates found)`;
+      } else {
+        publicTemplateResult = `Failed (${res.status})`;
+      }
+    } catch(e) {
+      publicTemplateResult = `Failed (Is the server running?)`;
+    }
+    console.log(`🔍 Public template endpoint: ${publicTemplateResult}`);
 
     console.log("\n🎉 Verification passed: The AI Report Generator is fully set up.");
     console.log("The onboarding flow will be skipped and the report generator is ready!");

@@ -24,7 +24,8 @@ function useIsAuthenticated() {
       setMultiUserMode(MultiUserMode);
 
       // Check for the onboarding redirect condition
-      if (onboardingComplete === false) {
+      const isDevBypass = import.meta.env.DEV && import.meta.env.VITE_SKIP_ONBOARDING === "true";
+      if (onboardingComplete === false && !isDevBypass) {
         setShouldRedirectToOnboarding(true);
         setIsAuthed(true);
         return;
