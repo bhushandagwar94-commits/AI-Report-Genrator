@@ -37,6 +37,7 @@ const projectSections = [
   "Key Activities for Implementation",
   "Rationale for Energy Saving",
   "Energy Saving Calculation",
+  "Carbon Footprint",
   "Key Metrics",
   "Technical Specifications",
   "Schematic / Conceptual Framework",
@@ -44,7 +45,8 @@ const projectSections = [
   "Precautions / Aspects to be Taken Care Of",
   "Measurement and Verification Plan",
   "Benefits Other Than Energy Saving",
-  "Project Conclusion",
+  "Case Studies",
+  "Conclusion",
 ];
 
 export default function TableOfContents({ projects = [] }: { projects: CommercialBuildingProject[] }) {

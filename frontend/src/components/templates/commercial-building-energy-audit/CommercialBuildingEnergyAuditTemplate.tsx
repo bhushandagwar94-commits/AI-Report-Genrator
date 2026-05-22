@@ -85,6 +85,22 @@ export interface CommercialBuildingProject {
   measurementVerificationPlan?: Record<string, ReportValue>[];
   benefitsOtherThanEnergySaving?: Record<string, ReportValue>[];
   projectConclusion?: ReportValue;
+  carbonFootprint?: {
+    annualEnergySaving?: ReportValue;
+    emissionFactor?: ReportValue;
+    estimatedCO2Reduction?: ReportValue;
+    calculationBasis?: ReportValue;
+    remarks?: ReportValue;
+  };
+  caseStudies?: {
+    title?: ReportValue;
+    clientType?: ReportValue;
+    system?: ReportValue;
+    implementedMeasure?: ReportValue;
+    result?: ReportValue;
+    relevance?: ReportValue;
+  }[];
+  finalConclusion?: ReportValue;
   images?: { src?: ReportValue; caption?: ReportValue }[];
 }
 
@@ -696,7 +712,19 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
       ]} />
       <p style={{ fontSize: 12.5, lineHeight: 1.6 }}>Annual Energy Saving = Load Reduction x Annual Operating Hours | Annual Cost Saving = Annual Energy Saving x Average Electricity Tariff | Simple Payback = Estimated Investment / Annual Cost Saving</p>
 
-      <SectionHeader number={n(9)} title="Key Metrics" />
+      <SectionHeader number={n(9)} title="Carbon Footprint" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        The proposed project will contribute to carbon footprint reduction by lowering annual electricity consumption. The CO2 reduction shall be calculated based on the annual energy saving and applicable grid emission factor.
+      </p>
+      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={[
+        { parameter: "Annual energy saving", value: project.carbonFootprint?.annualEnergySaving || project.expectedEnergySaving },
+        { parameter: "Grid emission factor", value: project.carbonFootprint?.emissionFactor || "Data required" },
+        { parameter: "Estimated CO2 reduction", value: project.carbonFootprint?.estimatedCO2Reduction || "Data required" },
+        { parameter: "Calculation basis", value: project.carbonFootprint?.calculationBasis || "Annual Energy Saving x Grid Emission Factor" },
+        { parameter: "Remarks", value: project.carbonFootprint?.remarks || "Data required" },
+      ]} />
+
+      <SectionHeader number={n(10)} title="Key Metrics" />
       <ReportTable columns={[{ key: "srNo", label: "Sr. No." }, { key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={project.keyMetrics || [
         { srNo: 1, parameter: "Baseline consumption", value: "Data required" },
         { srNo: 2, parameter: "Energy saving", value: project.expectedEnergySaving },
@@ -707,7 +735,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { srNo: 7, parameter: "CO2 reduction", value: "Data required" },
       ]} />
 
-      <SectionHeader number={n(10)} title="Technical Specifications" />
+      <SectionHeader number={n(11)} title="Technical Specifications" />
       <ReportTable columns={[{ key: "item", label: "Item" }, { key: "specification", label: "Specification" }]} rows={project.technicalSpecifications || [
         { item: "Equipment / technology" }, { item: "Capacity" }, { item: "Quantity" },
         { item: "Motor efficiency class, if applicable", specification: "IE4 / IE5" },
@@ -716,7 +744,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { item: "Panel requirement" }, { item: "Civil / mechanical modification" }, { item: "Safety requirement" },
       ]} />
 
-      <SectionHeader number={n(11)} title="Schematic / Conceptual Framework" />
+      <SectionHeader number={n(12)} title="Schematic / Conceptual Framework" />
       <ReportTable columns={[{ key: "stage", label: "Stage" }, { key: "description", label: "Description" }]} rows={project.schematicFramework || [
         { stage: "Stage 1: Current State", description: "Existing inefficient or non-optimized operation" },
         { stage: "Stage 2: Intervention", description: "What SEE-Tech will install or modify" },
@@ -727,7 +755,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         <ImageBlock key={index} src={img.src} caption={img.caption} />
       ))}
 
-      <SectionHeader number={n(12)} title="Implementation Duration" />
+      <SectionHeader number={n(13)} title="Implementation Duration" />
       <ReportTable columns={[{ key: "activity", label: "Activity" }, { key: "duration", label: "Duration" }]} rows={project.implementationDurationTable || [
         { activity: "Engineering and approval", duration: "1 week" },
         { activity: "Procurement", duration: "2-4 weeks" },
@@ -737,7 +765,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { activity: "Total expected duration", duration: project.implementationDuration || "Data required" },
       ]} />
 
-      <SectionHeader number={n(13)} title="Precautions / Aspects to be Taken Care Of" />
+      <SectionHeader number={n(14)} title="Precautions / Aspects to be Taken Care Of" />
       <ReportTable columns={[{ key: "area", label: "Area" }, { key: "precaution", label: "Precaution" }]} rows={project.precautions || [
         { area: "Technical suitability", precaution: "Confirm equipment rating, sizing and compatibility" },
         { area: "Operation", precaution: "Ensure project does not affect comfort, safety or process requirement" },
@@ -748,7 +776,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { area: "Shutdown planning", precaution: "Plan installation during low-load or non-operating hours" },
       ]} />
 
-      <SectionHeader number={n(14)} title="Measurement and Verification Plan" />
+      <SectionHeader number={n(15)} title="Measurement and Verification Plan" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "baselineMeasurement", label: "Baseline Measurement" }, { key: "postImplementationMeasurement", label: "Post-Implementation Measurement" }]} rows={project.measurementVerificationPlan || [
         { parameter: "Power consumption", baselineMeasurement: "kW before project", postImplementationMeasurement: "kW after project" },
         { parameter: "Operating hours", baselineMeasurement: "Existing operating schedule", postImplementationMeasurement: "Revised operating schedule" },
@@ -757,7 +785,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { parameter: "Saving validation", baselineMeasurement: "Calculated from baseline", postImplementationMeasurement: "Verified from measured data" },
       ]} />
 
-      <SectionHeader number={n(15)} title="Benefits Other Than Energy Saving" />
+      <SectionHeader number={n(16)} title="Benefits Other Than Energy Saving" />
       <ReportTable columns={[{ key: "benefit", label: "Benefit" }, { key: "description", label: "Description" }]} rows={project.benefitsOtherThanEnergySaving || [
         { benefit: "Reduced operating cost", description: "Lower electricity / fuel bill" },
         { benefit: "Improved reliability", description: "Better control and reduced stress on equipment" },
@@ -768,9 +796,31 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { benefit: "Modernization", description: "Upgrade of old system with efficient technology" },
       ]} />
 
-      <SectionHeader number={n(16)} title="Project Conclusion" />
+      <SectionHeader number={n(17)} title="Case Studies" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        {safeValue(project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year. With an estimated investment of ${formatINR(project.estimatedInvestment)}, the simple payback period is expected to be ${safeValue(project.simplePaybackPeriod)}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeValue(project.implementationPriority)}.`)}
+        The following reference case studies or similar implementation examples may be considered for understanding the practical relevance of this project.
+      </p>
+      <ReportTable compact columns={[
+        { key: "title", label: "Case Study" },
+        { key: "clientType", label: "Client Type" },
+        { key: "system", label: "System" },
+        { key: "implementedMeasure", label: "Implemented Measure" },
+        { key: "result", label: "Result" },
+        { key: "relevance", label: "Relevance" },
+      ]} rows={project.caseStudies && project.caseStudies.length ? project.caseStudies : [
+        {
+          title: "Data required",
+          clientType: "Data required",
+          system: project.system || "Data required",
+          implementedMeasure: project.proposedIntervention || "Data required",
+          result: "Data required",
+          relevance: "Data required",
+        },
+      ]} />
+
+      <SectionHeader number={n(18)} title="Conclusion" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.finalConclusion || project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year. With an estimated investment of ${formatINR(project.estimatedInvestment)}, the simple payback period is expected to be ${safeValue(project.simplePaybackPeriod)}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeValue(project.implementationPriority)}.`)}
       </p>
     </section>
   );
@@ -809,6 +859,24 @@ export const sampleCommercialBuildingEnergyAuditData: CommercialBuildingEnergyAu
       estimatedInvestment: "₹[value]",
       simplePaybackPeriod: "[months / years]",
       implementationDuration: "[weeks]",
+      carbonFootprint: {
+        annualEnergySaving: "[kWh/year]",
+        emissionFactor: "Data required",
+        estimatedCO2Reduction: "Data required",
+        calculationBasis: "Annual Energy Saving x Grid Emission Factor",
+        remarks: "Data required",
+      },
+      caseStudies: [
+        {
+          title: "Data required",
+          clientType: "Data required",
+          system: "HVAC",
+          implementedMeasure: "Data required",
+          result: "Data required",
+          relevance: "Data required",
+        },
+      ],
+      finalConclusion: "Data required",
     },
   ],
 };

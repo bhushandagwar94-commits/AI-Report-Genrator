@@ -451,11 +451,22 @@ function reportEndpoints(app) {
                       if (val) extractedExcelData.averageTariff = val;
                     }
 
-                    if (rowStr.includes('project') || rowStr.includes('ecm') || rowStr.includes('investment')) {
+                    if (
+                      rowStr.includes('project') ||
+                      rowStr.includes('ecm') ||
+                      rowStr.includes('investment') ||
+                      rowStr.includes('co2') ||
+                      rowStr.includes('carbon') ||
+                      rowStr.includes('emission') ||
+                      rowStr.includes('tco2')
+                    ) {
                       values.forEach((v, idx) => {
                         const s = String(v || '').toLowerCase();
                         if (s.includes('project') || s.includes('ecm') || s.includes('title')) headerMap[idx] = 'projectTitle';
                         else if (s.includes('system')) headerMap[idx] = 'system';
+                        else if (s.includes('emission factor')) headerMap[idx] = 'carbonFootprint.emissionFactor';
+                        else if (s.includes('grid emission')) headerMap[idx] = 'carbonFootprint.emissionFactor';
+                        else if (s.includes('co2') || s.includes('carbon') || s.includes('emission') || s.includes('tco2')) headerMap[idx] = 'carbonFootprint.estimatedCO2Reduction';
                         else if (s.includes('investment') || s.includes('cost')) headerMap[idx] = 'investment';
                         else if (s.includes('saving')) headerMap[idx] = 'saving';
                         else if (s.includes('payback')) headerMap[idx] = 'payback';
@@ -467,7 +478,13 @@ function reportEndpoints(app) {
                       Object.keys(headerMap).forEach(idx => {
                         const val = values[idx];
                         if (val) {
-                          project[headerMap[idx]] = String(val);
+                          const field = headerMap[idx];
+                          if (field.startsWith('carbonFootprint.')) {
+                            project.carbonFootprint = project.carbonFootprint || {};
+                            project.carbonFootprint[field.split('.')[1]] = String(val);
+                          } else {
+                            project[field] = String(val);
+                          }
                           hasData = true;
                         }
                       });

@@ -96,14 +96,16 @@ REPORT STRUCTURE:
 ## 3.6 Key Activities for Implementation
 ## 3.7 Rationale for Energy Saving
 ## 3.8 Energy Saving Calculation
-## 3.9 Key Metrics
-## 3.10 Technical Specifications
-## 3.11 Schematic / Conceptual Framework
-## 3.12 Implementation Duration
-## 3.13 Precautions / Aspects to be Taken Care Of
-## 3.14 Measurement and Verification Plan
-## 3.15 Benefits Other Than Energy Saving
-## 3.16 ECM Conclusion
+## 3.9 Carbon Footprint
+## 3.10 Key Metrics
+## 3.11 Technical Specifications
+## 3.12 Schematic / Conceptual Framework
+## 3.13 Implementation Duration
+## 3.14 Precautions / Aspects to be Taken Care Of
+## 3.15 Measurement and Verification Plan
+## 3.16 Benefits Other Than Energy Saving
+## 3.17 Case Studies
+## 3.18 Conclusion
 
 # Chapter 4 onwards
 Repeat the same ECM chapter structure for every ECM in the JSON payload.
@@ -345,14 +347,16 @@ const REPORT_FORMAT = `# Detailed Energy Audit Report
 ## [N].6 Key Activities for Implementation
 ## [N].7 Rationale for Energy Saving
 ## [N].8 Energy Saving Calculation
-## [N].9 Key Metrics
-## [N].10 Technical Specifications
-## [N].11 Schematic / Conceptual Framework
-## [N].12 Implementation Duration
-## [N].13 Precautions / Aspects to be Taken Care Of
-## [N].14 Measurement and Verification Plan
-## [N].15 Benefits Other Than Energy Saving
-## [N].16 ECM Conclusion
+## [N].9 Carbon Footprint
+## [N].10 Key Metrics
+## [N].11 Technical Specifications
+## [N].12 Schematic / Conceptual Framework
+## [N].13 Implementation Duration
+## [N].14 Precautions / Aspects to be Taken Care Of
+## [N].15 Measurement and Verification Plan
+## [N].16 Benefits Other Than Energy Saving
+## [N].17 Case Studies
+## [N].18 Conclusion
 
 ---
 
@@ -414,14 +418,16 @@ Every project chapter must include exactly:
 6. Key Activities for Implementation
 7. Rationale for Energy Saving
 8. Energy Saving Calculation
-9. Key Metrics
-10. Technical Specifications
-11. Schematic / Conceptual Framework
-12. Implementation Duration
-13. Precautions / Aspects to be Taken Care Of
-14. Measurement and Verification Plan
-15. Benefits Other Than Energy Saving
-16. Project Conclusion
+9. Carbon Footprint
+10. Key Metrics
+11. Technical Specifications
+12. Schematic / Conceptual Framework
+13. Implementation Duration
+14. Precautions / Aspects to be Taken Care Of
+15. Measurement and Verification Plan
+16. Benefits Other Than Energy Saving
+17. Case Studies
+18. Conclusion
 
 Rules:
 - Do not change chapter order.
@@ -486,7 +492,17 @@ Rules:
       pumpsAndMotors: { type: "array" },
       buildingAutomationControls: { type: "array" },
       auditObservations: { type: "array" },
-      projects: { type: "array" },
+      projects: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            carbonFootprint: { type: "object" },
+            caseStudies: { type: "array" },
+            finalConclusion: { type: ["string", "number", "boolean", "null"] },
+          },
+        },
+      },
     },
   }),
   reportFormat: `React component path: components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx
@@ -538,6 +554,24 @@ Fixed report structure:
         expectedEnergySaving: "Data required kWh/year",
         expectedAnnualCostSaving: "Data required ₹/year",
         estimatedInvestment: "Data required ₹",
+        carbonFootprint: {
+          annualEnergySaving: "Data required kWh/year",
+          emissionFactor: "Data required kgCO2/kWh",
+          estimatedCO2Reduction: "Data required kgCO2/year",
+          calculationBasis: "Annual Energy Saving x Grid Emission Factor",
+          remarks: "Data required",
+        },
+        caseStudies: [
+          {
+            title: "Data required",
+            clientType: "Data required",
+            system: "HVAC",
+            implementedMeasure: "Data required",
+            result: "Data required",
+            relevance: "Data required",
+          },
+        ],
+        finalConclusion: "Data required",
         images: [],
       },
     ],

@@ -170,6 +170,24 @@ export const commercialBuildingEnergyAuditSampleData: CommercialBuildingEnergyAu
       measurementVerificationPlan: ["Record pre-implementation runtime and kWh.", "Record post-implementation runtime and kWh.", "Normalize for occupancy and weather where required."],
       benefitsOtherThanEnergySaving: ["Improved comfort control", "Reduced equipment wear", "Better operating visibility"],
       projectConclusion: "The project should be implemented after baseline validation and facility approval.",
+      carbonFootprint: {
+        annualEnergySaving: "Data required kWh/year",
+        emissionFactor: "Data required kgCO2/kWh",
+        estimatedCO2Reduction: "Data required kgCO2/year",
+        calculationBasis: "Annual Energy Saving x Grid Emission Factor",
+        remarks: "Data required",
+      },
+      caseStudies: [
+        {
+          title: "Data required",
+          clientType: "Data required",
+          system: "HVAC",
+          implementedMeasure: "Optimize HVAC schedules, setpoints, and control logic.",
+          result: "Data required",
+          relevance: "Data required",
+        },
+      ],
+      finalConclusion: "The project should be implemented after baseline validation and facility approval.",
       images: [{ filename: "", caption: "" }],
     },
     {

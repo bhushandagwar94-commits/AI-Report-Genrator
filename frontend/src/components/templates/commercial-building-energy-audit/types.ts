@@ -183,6 +183,22 @@ export interface CommercialBuildingProject {
   measurementVerificationPlan: PrimitiveValue[] | PrimitiveValue;
   benefitsOtherThanEnergySaving: PrimitiveValue[] | PrimitiveValue;
   projectConclusion: PrimitiveValue;
+  carbonFootprint?: {
+    annualEnergySaving?: PrimitiveValue;
+    emissionFactor?: PrimitiveValue;
+    estimatedCO2Reduction?: PrimitiveValue;
+    calculationBasis?: PrimitiveValue;
+    remarks?: PrimitiveValue;
+  };
+  caseStudies?: {
+    title?: PrimitiveValue;
+    clientType?: PrimitiveValue;
+    system?: PrimitiveValue;
+    implementedMeasure?: PrimitiveValue;
+    result?: PrimitiveValue;
+    relevance?: PrimitiveValue;
+  }[];
+  finalConclusion?: PrimitiveValue;
   images: ReportImage[];
 }
 
