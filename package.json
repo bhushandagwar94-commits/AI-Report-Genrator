@@ -20,6 +20,8 @@
   },
   "scripts": {
     "test": "jest",
+    "bootstrap:dev": "node scripts/bootstrap-dev.js",
+    "verify:setup": "node scripts/verify-setup.js",
     "lint": "cd server && yarn lint && cd ../frontend && yarn lint && cd ../collector && yarn lint",
     "lint:ci": "cd server && yarn lint:check && cd ../frontend && yarn lint:check && cd ../collector && yarn lint:check",
     "install:packages": "yarn --cwd server install && yarn --cwd collector install && yarn --cwd frontend install",

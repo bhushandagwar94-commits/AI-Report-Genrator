@@ -13,7 +13,8 @@ copy server\.env.example server\.env.development
 copy frontend\.env.example frontend\.env
 copy collector\.env.example collector\.env
 yarn install
-yarn setup:dev
+yarn bootstrap:dev
+yarn verify:setup
 yarn dev:all
 ```
 
@@ -30,13 +31,14 @@ The public report generator should show `Detailed Energy Audit Report` as `Avail
 ```powershell
 git pull origin main
 yarn install
-yarn setup:dev
+yarn bootstrap:dev
+yarn verify:setup
 yarn dev:all
 ```
 
 ## What Gets Seeded
 
-`yarn setup:dev` runs Prisma migrations and `prisma db seed`. The seed creates or updates:
+`yarn bootstrap:dev` runs Prisma migrations and `prisma db seed`. The seed creates or updates:
 
 - `system_settings.onboarding_complete=true`, so the default AnythingLLM first setup page is skipped in development.
 - `system_settings.multi_user_mode=false`.
@@ -83,9 +85,16 @@ Never commit real API keys, JWT secrets, uploaded files, vector caches, or SQLit
 
 ## Troubleshooting
 
+If the first setup page appears:
+- Stop the server (`Ctrl+C`).
+- Run `yarn verify:setup` to diagnose the issue.
+- Run `yarn bootstrap:dev` to re-run the seed process.
+- Check the database path to ensure `server/storage/anythingllm.db` exists.
+- Check the onboarding flag (`onboarding_complete=true`).
+- Check backend logs for Prisma or SQLite errors.
+
 - If port `3001` is busy, stop the old Node/server process and run `yarn dev:all` again.
-- If the database is fresh, `yarn setup:dev` runs migrations and seeds the templates automatically.
-- If the public page says no templates are configured, run `yarn setup:dev` again and check the server output for Prisma errors.
+- If the public page says no templates are configured, run `yarn bootstrap:dev` again and check the server output for Prisma errors.
 
 ## Reset Local Seeded State
 
@@ -93,7 +102,7 @@ To test a clean database without deleting your working database, rename it first
 
 ```powershell
 ren server\storage\anythingllm.db anythingllm.db.backup
-yarn setup:dev
+yarn bootstrap:dev
 yarn dev:all
 ```
 
