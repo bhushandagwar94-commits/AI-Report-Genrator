@@ -12,20 +12,22 @@ const {
   WidthType,
   PageBreak
 } = require("docx");
+const { asArray, normalizeReportForExport } = require("./llmProviderService");
 
-/**
- * Ensures text is a string and not [object Object], undefined, or null.
- */
 function safeText(value) {
-  if (value === null || value === undefined) return "Data required";
-  if (typeof value === "number" && Number.isNaN(value)) return "Data required";
-  if (typeof value === "object") {
-    const valStr = String(value.result || value.text || value);
-    if (valStr === "[object Object]") return "Data required";
-    return valStr.trim() || "Data required";
+  if (value === null || value === undefined || value === "") return "Data required";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
   }
-  const str = String(value).trim();
-  return str.length ? str : "Data required";
+  if (typeof value === "object") {
+    if (value.value !== undefined) return safeText(value.value);
+    if (value.text !== undefined) return safeText(value.text);
+    if (value.label !== undefined) return safeText(value.label);
+    if (value.result !== undefined) return safeText(value.result);
+    if (value.amount !== undefined && value.unit !== undefined) return `${value.amount} ${value.unit}`;
+    return "Data required";
+  }
+  return "Data required";
 }
 
 function formatINR(value) {
@@ -75,7 +77,8 @@ function pageBreak() {
 }
 
 function createTable(columns, rowsData) {
-  const headerCells = columns.map(col => 
+  const safeColumns = asArray(columns).length ? asArray(columns) : [{ key: "value", label: "Value" }];
+  const headerCells = safeColumns.map(col => 
     new TableCell({
       children: [new Paragraph({ children: [new TextRun({ text: col.label, bold: true, color: "FFFFFF" })] })],
       shading: { fill: "09425D" },
@@ -83,11 +86,13 @@ function createTable(columns, rowsData) {
     })
   );
 
-  const dataRows = (rowsData && rowsData.length ? rowsData : [{}]).map((row, idx) => {
+  const safeRows = asArray(rowsData).length ? asArray(rowsData) : [{}];
+  const dataRows = safeRows.map((row, idx) => {
     const isEven = idx % 2 === 0;
-    const cells = columns.map(col => 
+    const normalizedRow = row && typeof row === "object" ? row : { value: safeText(row) };
+    const cells = safeColumns.map(col => 
       new TableCell({
-        children: [new Paragraph({ text: safeText(row[col.key]) })],
+        children: [new Paragraph({ text: safeText(normalizedRow[col.key]) })],
         shading: { fill: isEven ? "EAF3F7" : "FFFFFF" },
         margins: { top: 100, bottom: 100, left: 100, right: 100 },
       })
@@ -102,22 +107,24 @@ function createTable(columns, rowsData) {
 }
 
 function keyValueTable(rowsData) {
-  const dataRows = (rowsData && rowsData.length ? rowsData : [{}]).map((row, idx) => {
-    const keys = Object.keys(row);
+  const safeRows = asArray(rowsData).length ? asArray(rowsData) : [{}];
+  const dataRows = safeRows.map((row, idx) => {
+    const normalizedRow = row && typeof row === "object" ? row : { label: "Value", value: safeText(row) };
+    const keys = Object.keys(normalizedRow);
     const labelKey = keys[0];
-    const valueKey = keys[1];
+    const valueKey = keys[1] || keys[0];
     const isEven = idx % 2 === 0;
 
     return new TableRow({
       children: [
         new TableCell({
-          children: [new Paragraph({ children: [new TextRun({ text: safeText(row[labelKey]), bold: true, color: "09425D" })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: safeText(normalizedRow[labelKey]), bold: true, color: "09425D" })] })],
           shading: { fill: isEven ? "EAF3F7" : "FFFFFF" },
           margins: { top: 100, bottom: 100, left: 100, right: 100 },
           width: { size: 30, type: WidthType.PERCENTAGE },
         }),
         new TableCell({
-          children: [new Paragraph({ text: safeText(row[valueKey]) })],
+          children: [new Paragraph({ text: safeText(normalizedRow[valueKey]) })],
           shading: { fill: isEven ? "EAF3F7" : "FFFFFF" },
           margins: { top: 100, bottom: 100, left: 100, right: 100 },
           width: { size: 70, type: WidthType.PERCENTAGE },
@@ -174,6 +181,8 @@ function generateCoverPage(info) {
 }
 
 function generateExecutiveSummary(es, projects, clientName) {
+  const safeProjects = asArray(projects);
+  const conclusionAndWayForward = asArray(es?.conclusionAndWayForward);
   return [
     heading1("Chapter 1: Executive Summary"),
     
@@ -188,7 +197,7 @@ function generateExecutiveSummary(es, projects, clientName) {
         { particular: "Total annual electricity consumption", value: es.totalAnnualElectricityConsumption },
         { particular: "Annual electricity cost", value: formatINR(es.annualElectricityCost) },
         { particular: "Average electricity tariff considered", value: es.averageTariff },
-        { particular: "Number of projects identified", value: es.numberOfProjects || projects.length },
+        { particular: "Number of projects identified", value: es.numberOfProjects || safeProjects.length },
         { particular: "Total energy saving potential", value: es.totalEnergySavingPotential },
         { particular: "Total annual cost saving potential", value: formatINR(es.totalAnnualCostSavingPotential) },
         { particular: "Total estimated investment", value: formatINR(es.totalEstimatedInvestment) },
@@ -210,7 +219,7 @@ function generateExecutiveSummary(es, projects, clientName) {
         { key: "payback", label: "Payback" },
         { key: "priority", label: "Priority" },
       ],
-      projects.map((p, i) => ({
+      safeProjects.map((p, i) => ({
         projectNo: p.projectNo || `Project ${i + 1}`,
         project: p.projectTitle,
         system: p.system,
@@ -226,7 +235,7 @@ function generateExecutiveSummary(es, projects, clientName) {
     paragraph(`Based on the audit findings, SEE-Tech recommends that ${safeText(clientName)} should proceed with detailed implementation planning for the identified energy-saving projects.`),
     createTable(
       [{ key: "step", label: "Step" }, { key: "action", label: "Action" }],
-      es.conclusionAndWayForward?.length ? es.conclusionAndWayForward : [
+      conclusionAndWayForward.length ? conclusionAndWayForward : [
         { step: 1, action: "Client review of identified projects" },
         { step: 2, action: "Joint selection of projects for implementation" },
         { step: 3, action: "Detailed engineering and vendor finalization" },
@@ -430,12 +439,17 @@ function generateProjectChapter(project, chapterNumber) {
 }
 
 async function buildCommercialBuildingEnergyAuditDocx(reportData) {
-  const info = reportData.reportInfo || {};
-  const es = reportData.executiveSummary || {};
-  const projects = reportData.projects || [];
-  const groupedProjects = reportData.groupedProjects || [];
-  const bp = reportData.buildingProfile || {};
+  const normalizedReport = normalizeReportForExport(reportData);
+  const info = normalizedReport.reportInfo || {};
+  const es = normalizedReport.executiveSummary || {};
+  const projects = asArray(normalizedReport.projects);
+  const groupedProjects = asArray(normalizedReport.groupedProjects);
+  const bp = normalizedReport.buildingProfile || {};
   const clientName = info.clientName || "Data required";
+
+  if (projects.length === 0) {
+    throw new Error("No valid ECM projects available for export.");
+  }
 
   const sectionsChildren = [
     ...generateCoverPage(info),
@@ -453,11 +467,12 @@ async function buildCommercialBuildingEnergyAuditDocx(reportData) {
 
   let currentChapter = 3;
   
-  if (groupedProjects && groupedProjects.length > 0) {
+  if (groupedProjects.length > 0) {
     groupedProjects.forEach((group, index) => {
+      const groupProjects = asArray(group.projects);
       const chapterNumber = currentChapter + index;
       sectionsChildren.push(heading1(`Chapter ${chapterNumber}: ${group.groupNo} ${safeText(group.groupTitle)}`));
-      sectionsChildren.push(paragraph(`This chapter covers ${group.projects.length} energy conservation measures (ECMs) under the ${safeText(group.groupTitle)} category. The summary of these projects is provided below, followed by detailed descriptions of each individual project.`));
+      sectionsChildren.push(paragraph(`This chapter covers ${groupProjects.length} energy conservation measures (ECMs) under the ${safeText(group.groupTitle)} category. The summary of these projects is provided below, followed by detailed descriptions of each individual project.`));
       
       sectionsChildren.push(heading2(`Group Summary`));
       sectionsChildren.push(createTable(
@@ -469,7 +484,7 @@ async function buildCommercialBuildingEnergyAuditDocx(reportData) {
           { key: "energy", label: "Energy Saving kWh/year" },
           { key: "payback", label: "Payback" },
         ],
-        group.projects.map((p) => ({
+        groupProjects.map((p) => ({
           projectNo: p.projectNo,
           projectTitle: p.projectTitle,
           investment: formatINR(p.estimatedInvestment),
@@ -480,7 +495,7 @@ async function buildCommercialBuildingEnergyAuditDocx(reportData) {
       ));
       sectionsChildren.push(pageBreak());
 
-      group.projects.forEach((proj) => {
+      groupProjects.forEach((proj) => {
         sectionsChildren.push(...generateProjectChapter(proj, chapterNumber));
       });
     });

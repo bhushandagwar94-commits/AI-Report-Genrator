@@ -151,6 +151,42 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function getProjectsForQC(reportData) {
+  if (Array.isArray(reportData?.groupedProjects) && reportData.groupedProjects.length) {
+    return reportData.groupedProjects.flatMap((group, groupIndex) =>
+      Array.isArray(group?.projects)
+        ? group.projects.map((project, projectIndex) => ({
+            ...project,
+            __groupIndex: groupIndex,
+            __projectIndex: projectIndex,
+          }))
+        : []
+    );
+  }
+
+  if (Array.isArray(reportData?.projects)) {
+    const hasGroupObjects = reportData.projects.some(
+      (item) => item && Array.isArray(item.projects)
+    );
+
+    if (hasGroupObjects) {
+      return reportData.projects.flatMap((group, groupIndex) =>
+        Array.isArray(group?.projects)
+          ? group.projects.map((project, projectIndex) => ({
+              ...project,
+              __groupIndex: groupIndex,
+              __projectIndex: projectIndex,
+            }))
+          : []
+      );
+    }
+
+    return reportData.projects;
+  }
+
+  return [];
+}
+
 // ─── Step Indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ currentStep }) {
   return (
@@ -959,12 +995,50 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
         failed = true;
         errors.push({ message: "Report has no grouped projects." });
       }
-      (rd.projects || []).forEach(p => {
-        if (!p.projectTitle) { failed = true; errors.push({ message: "Missing project title." }); }
-        else if (String(p.projectTitle).toLowerCase() === "data required") { failed = true; errors.push({ message: "Project title is 'Data required'." }); }
-        else if (String(p.projectTitle) === "[object Object]") { failed = true; errors.push({ message: "Project title is [object Object]." }); }
-        else if (String(p.projectTitle).toLowerCase().includes("project project")) { failed = true; errors.push({ message: "Project title contains 'Project Project'." }); }
+      (rd.groupedProjects || []).forEach((group, groupIndex) => {
+        if (!group?.groupTitle) {
+          failed = true;
+          errors.push({ message: "Group title is missing.", path: `groupedProjects[${groupIndex}].groupTitle` });
+        }
+        if (!Array.isArray(group?.projects) || group.projects.length === 0) {
+          failed = true;
+          errors.push({ message: "Group has no ECMs.", path: `groupedProjects[${groupIndex}].projects` });
+        }
       });
+
+      const projectsForQC = getProjectsForQC(rd);
+      const seenTitles = new Set();
+      projectsForQC.forEach((p, idx) => {
+        const title = p?.projectTitle || p?.ecmName || p?.title;
+        const normalized = String(title || "").toLowerCase().trim();
+        const path = Number.isInteger(p.__groupIndex)
+          ? `groupedProjects[${p.__groupIndex}].projects[${p.__projectIndex}].projectTitle`
+          : `projects[${idx}].projectTitle`;
+
+        if (!title) {
+          failed = true;
+          errors.push({ message: "Project title is missing or invalid.", path });
+        } else if (normalized === "data required") {
+          failed = true;
+          errors.push({ message: "Project title is missing or invalid.", path });
+        } else if (normalized === "[object object]") {
+          failed = true;
+          errors.push({ message: "Project title is missing or invalid.", path });
+        } else if (normalized.includes("project project")) {
+          failed = true;
+          errors.push({ message: "Project title is missing or invalid.", path });
+        } else if (seenTitles.has(normalized)) {
+          failed = true;
+          errors.push({ message: "Duplicate project title found.", path });
+        } else {
+          seenTitles.add(normalized);
+        }
+      });
+
+      if (projectsForQC.length === 0) {
+        failed = true;
+        errors.push({ message: "No valid ECMs found.", path: "projects" });
+      }
     } catch(e) {}
     return { failed, errors };
   };
@@ -988,17 +1062,25 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
       showToast("Please generate the report before downloading Word.", "info");
       return;
     }
-    const toastId = showToast(allowDraft ? "Generating Draft Word document..." : "Generating Word document...", "info", { autoClose: false });
+    showToast(allowDraft ? "Generating Draft Word document..." : "Generating Word document...", "info", { autoClose: false });
     const res = await Reports.downloadDocx(report.id, allowDraft);
     if (res.success) {
       showToast("Word document downloaded!", "success");
       setQcResult(null);
     } else {
+      if (isDev) {
+        console.error("[DOCX EXPORT ERROR]", res);
+      }
       if (res.qcFailed) {
         setQcResult(res);
         showToast("Report requires review before final export. Please check QC details.", "error");
+      } else if (String(res.error || "").includes(".map is not a function")) {
+        showToast("Export failed because report data is not normalized. Please click Re-run Cleanup & QC.", "error");
       } else {
-        showToast(res.error || "Failed to generate Word document.", "error");
+        showToast(
+          "Failed to generate Word document. Please check QC details or backend logs.",
+          "error"
+        );
       }
     }
   };
@@ -1152,11 +1234,27 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
             {qcResult.summary && (
               <div className="mb-4 bg-black/20 rounded p-3 text-xs text-white/60">
                 <div className="grid grid-cols-2 gap-2">
-                  <div>Valid Projects: {qcResult.summary.projectCount}</div>
+                  <div>Valid ECMs: {qcResult.summary.validEcmCount ?? qcResult.summary.projectCount}</div>
                   <div>Groups: {qcResult.summary.groupCount}</div>
-                  <div>Duplicates: {qcResult.summary.duplicateTitleCount}</div>
+                  <div>Duplicate Titles: {qcResult.summary.duplicateTitleCount}</div>
                   <div>Invalid Titles: {qcResult.summary.invalidTitleCount}</div>
+                  <div>Hard Errors: {qcResult.summary.hardErrorCount ?? qcResult.qcErrors?.length ?? 0}</div>
+                  <div>Warnings: {qcResult.summary.warningCount ?? qcResult.qcWarnings?.length ?? 0}</div>
                 </div>
+              </div>
+            )}
+
+            {qcResult.qcWarnings && qcResult.qcWarnings.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-yellow-300 font-semibold text-sm mb-1">Warnings:</h4>
+                <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
+                  {qcResult.qcWarnings.map((warn, i) => (
+                    <li key={i}>
+                      <span className="font-medium text-white/90">{warn.message}</span>
+                      {warn.path && <span className="opacity-50 ml-1">({warn.path})</span>}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

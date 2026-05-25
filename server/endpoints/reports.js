@@ -14,7 +14,7 @@ const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
 const multer = require("multer");
 const { ensureAiReportGeneratorSeeded } = require("../utils/aiReportGeneratorSeed");
-const { generateWithProvider, groupAndSortProjects, cleanAndDeduplicateProjects, buildProjectGroups, runReportQC } = require("../services/llmProviderService");
+const { generateWithProvider, groupAndSortProjects, cleanAndDeduplicateProjects, buildProjectGroups, getProjectsForQC, normalizeReportForExport, runReportQC } = require("../services/llmProviderService");
 
 function isValidProjectTitle(titleStr) {
   if (!titleStr || titleStr === "Data required") return false;
@@ -1222,7 +1222,8 @@ Please generate the final technical report now:`;
               }
               
               const cleaned = cleanAndDeduplicateProjects(mergedProjects);
-              providerResult.reportData.projects = buildProjectGroups(cleaned);
+              providerResult.reportData.projects = cleaned;
+              providerResult.reportData.groupedProjects = buildProjectGroups(cleaned);
             }
             finalReportContent = JSON.stringify(providerResult.reportData);
           } else {
@@ -1358,6 +1359,7 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
       } catch (e) {
         console.error(e.message, e);
         response.sendStatus(500).end();
+      }
     }
   );
 
@@ -1387,8 +1389,8 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
           return response.status(400).json({ error: "Report content is not valid JSON." });
         }
 
-        // Re-run cleanup and deduplication
-        const rawProjects = reportData.projects || [];
+        reportData = normalizeReportForExport(reportData);
+        const rawProjects = getProjectsForQC(reportData);
         const cleanedProjects = cleanAndDeduplicateProjects(rawProjects);
         reportData.projects = cleanedProjects;
         reportData.groupedProjects = buildProjectGroups(cleanedProjects);
@@ -1443,13 +1445,7 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
           return response.status(400).json({ error: "Report content is not valid JSON." });
         }
 
-        // Just-in-time migration for old reports without groupedProjects
-        if (!reportData.groupedProjects || reportData.groupedProjects.length === 0) {
-          const rawProjects = reportData.projects || [];
-          const cleanedProjects = cleanAndDeduplicateProjects(rawProjects);
-          reportData.projects = cleanedProjects;
-          reportData.groupedProjects = buildProjectGroups(cleanedProjects);
-        }
+        reportData = normalizeReportForExport(reportData);
 
         // Quality Check (QC) Gate
         const qcResult = runReportQC(reportData);
@@ -1471,7 +1467,13 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
           reportData.reportInfo.clientName = "[DRAFT - QC REVIEW REQUIRED] " + (reportData.reportInfo.clientName || "");
         }
 
-        const buffer = await buildCommercialBuildingEnergyAuditDocx(reportData);
+        let buffer;
+        try {
+          buffer = await buildCommercialBuildingEnergyAuditDocx(reportData);
+        } catch (docxError) {
+          console.error(`[DOCX EXPORT FAILED] Report ID: ${id}`, docxError.stack || docxError);
+          throw docxError;
+        }
         
         const clientName = reportData.reportInfo?.clientName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || "client";
         const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
@@ -1480,7 +1482,7 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
         response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         response.send(buffer);
       } catch (e) {
-        console.error(e.message, e);
+        console.error(e.stack || e.message, e);
         response.status(500).json({ error: e.message });
       }
     }

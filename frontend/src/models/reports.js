@@ -180,12 +180,23 @@ const Reports = {
     })
       .then(async (res) => {
         if (!res.ok) {
-          const text = await res.text();
-          let errJson;
+          const contentType = res.headers.get("content-type") || "";
+          let text = "";
+          let errJson = null;
           try {
-            errJson = JSON.parse(text);
+            if (contentType.includes("application/json")) {
+              errJson = await res.json();
+            } else {
+              text = await res.text();
+              errJson = JSON.parse(text);
+            }
           } catch (e) {
-            return { success: false, error: text };
+            if (!text) {
+              try {
+                text = await res.text();
+              } catch (_) {}
+            }
+            return { success: false, error: text || "Export failed." };
           }
           return {
             success: false,
@@ -193,7 +204,8 @@ const Reports = {
             qcFailed: errJson.qcFailed,
             qcErrors: errJson.qcErrors,
             qcWarnings: errJson.qcWarnings,
-            summary: errJson.summary
+            summary: errJson.summary,
+            raw: errJson
           };
         }
         const blob = await res.blob();
@@ -214,7 +226,7 @@ const Reports = {
       })
       .catch((e) => {
         console.error(e);
-        return { success: false, error: e.message };
+        return { success: false, error: e.message, raw: e };
       });
   },
 

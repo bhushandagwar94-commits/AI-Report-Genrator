@@ -178,11 +178,29 @@ const printCss = `
   }
 `;
 
-function safeValue(value: ReportValue): string {
-  if (value === null || value === undefined) return "Data required";
-  if (typeof value === "number" && Number.isNaN(value)) return "Data required";
-  const str = String(value).trim();
-  return str.length ? str : "Data required";
+function asArray<T = any>(value: T | T[] | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  if (typeof value === "object") return [value as T];
+  if (typeof value === "string" && value.trim()) return [value as T];
+  return [];
+}
+
+function safeText(value: any): string {
+  if (value === null || value === undefined || value === "") return "Data required";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    if (value.value !== undefined) return safeText(value.value);
+    if (value.text !== undefined) return safeText(value.text);
+    if (value.label !== undefined) return safeText(value.label);
+    if (value.amount !== undefined && value.unit !== undefined) return `${value.amount} ${value.unit}`;
+    return "Data required";
+  }
+  return "Data required";
+}
+
+function safeValue(value: any): string {
+  return safeText(value);
 }
 
 function formatINR(value: ReportValue): string {
@@ -201,15 +219,15 @@ function numberFrom(value: ReportValue): number {
 }
 
 function totalInvestment(projects: CommercialBuildingProject[] = []) {
-  return projects.reduce((sum, p) => sum + numberFrom(p.estimatedInvestment), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.estimatedInvestment), 0);
 }
 
 function totalSavings(projects: CommercialBuildingProject[] = []) {
-  return projects.reduce((sum, p) => sum + numberFrom(p.expectedAnnualCostSaving), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedAnnualCostSaving), 0);
 }
 
 function totalEnergy(projects: CommercialBuildingProject[] = []) {
-  return projects.reduce((sum, p) => sum + numberFrom(p.expectedEnergySaving), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedEnergySaving), 0);
 }
 
 function weightedPayback(projects: CommercialBuildingProject[] = []) {
@@ -233,13 +251,9 @@ function SectionHeader({ number, title, level = 2 }: { number?: string; title: s
 }
 
 function normalizeTableRows(rows: any) {
-  if (Array.isArray(rows)) {
-    return rows.length ? rows : [{}];
-  }
-  if (rows && typeof rows === "object") {
-    return [rows];
-  }
-  return [{}];
+  const safeRows = asArray(rows);
+  if (!safeRows.length) return [{}];
+  return safeRows.map((row) => (row && typeof row === "object" ? row : { value: safeText(row) }));
 }
 
 function ReportTable({
@@ -331,6 +345,7 @@ function CoverPage({ data }: { data: ReportInfo }) {
 }
 
 function TableOfContents({ groupedProjects = [] }: { groupedProjects?: CommercialBuildingProjectGroup[] }) {
+  const safeGroupedProjects = asArray(groupedProjects);
   let chapterIndex = 3;
   return (
     <section className="report-page" style={pageStyle}>
@@ -338,11 +353,11 @@ function TableOfContents({ groupedProjects = [] }: { groupedProjects?: Commercia
       <ol style={{ color: colors.text, fontSize: 14, lineHeight: 1.9, marginTop: 28 }}>
         <li><b>Executive Summary</b></li>
         <li><b>Plant / Building Details and Energy Profile</b></li>
-        {groupedProjects.length > 0 ? groupedProjects.map((g, i) => (
+        {safeGroupedProjects.length > 0 ? safeGroupedProjects.map((g, i) => (
           <li key={i}>
             <b>{chapterIndex + i}. {g.groupNo} {safeValue(g.groupTitle)}</b>
             <ol style={{ paddingLeft: 20, listStyleType: "none" }}>
-              {g.projects.map((p, j) => (
+              {asArray(g.projects).map((p, j) => (
                 <li key={j}>{safeValue(p.projectNo || j + 1)} – {safeValue(p.projectTitle)}</li>
               ))}
             </ol>
@@ -355,7 +370,7 @@ function TableOfContents({ groupedProjects = [] }: { groupedProjects?: Commercia
 }
 
 function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditData }) {
-  const projects = data.projects || [];
+  const projects = asArray(data.projects);
   const es = data.executiveSummary || {};
   const inv = es.totalEstimatedInvestment || totalInvestment(projects);
   const sav = es.totalAnnualCostSavingPotential || totalSavings(projects);
@@ -395,7 +410,7 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
         { key: "energy", label: "Energy Saving kWh/year" },
         { key: "payback", label: "Payback" },
         { key: "priority", label: "Priority" },
-      ]} rows={projects.map((p, i) => ({
+      ]} rows={asArray(projects).map((p, i) => ({
         projectNo: p.projectNo || `Project ${i + 1}`,
         project: p.projectTitle,
         system: p.system,
@@ -452,7 +467,7 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
 
       <SectionHeader number="1.7" title="Key Observations" />
       <ul style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        {(es.keyObservations?.length ? es.keyObservations : [
+        {(asArray(es.keyObservations).length ? asArray(es.keyObservations) : [
           "HVAC operation and control generally provide the highest saving potential in commercial buildings.",
           "Fixed-speed pumps and fans should be reviewed for VFD-based operation wherever load varies.",
           "Lighting systems should be reviewed for LED retrofit, lux optimization and occupancy-based control.",
@@ -465,7 +480,7 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
         Based on the audit findings, SEE-Tech recommends that {safeValue(data.reportInfo.clientName)} should proceed with detailed implementation planning for the identified energy-saving projects.
       </p>
-      <ReportTable columns={[{ key: "step", label: "Step" }, { key: "action", label: "Action" }]} rows={es.conclusionAndWayForward?.length ? es.conclusionAndWayForward : [
+      <ReportTable columns={[{ key: "step", label: "Step" }, { key: "action", label: "Action" }]} rows={asArray(es.conclusionAndWayForward).length ? asArray(es.conclusionAndWayForward) : [
         { step: 1, action: "Client review of identified projects" },
         { step: 2, action: "Joint selection of projects for implementation" },
         { step: 3, action: "Detailed engineering and vendor finalization" },
@@ -803,7 +818,7 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { stage: "Stage 3: Physics of Saving", description: "Why energy will reduce after the intervention" },
         { stage: "Stage 4: Outcome", description: "kWh saving, ₹ saving, payback and reliability benefit" },
       ]} />
-      {(project.images && project.images.length ? project.images : [{ src: "", caption: "" }]).map((img, index) => (
+      {(asArray(project.images).length ? asArray(project.images) : [{ src: "", caption: "" }]).map((img, index) => (
         <ImageBlock key={index} src={img.src} caption={img.caption} />
       ))}
 
@@ -938,7 +953,7 @@ export default function CommercialBuildingEnergyAuditTemplate({
 }: {
   data: CommercialBuildingEnergyAuditData;
 }) {
-  const groupedProjects = data.groupedProjects || [];
+  const groupedProjects = asArray(data.groupedProjects);
   let currentChapter = 3;
 
   return (
@@ -965,7 +980,7 @@ export default function CommercialBuildingEnergyAuditTemplate({
               <section className="report-page" style={pageStyle}>
                 <SectionHeader level={1} title={`Chapter ${chapterNumber}: ${group.groupNo} ${safeValue(group.groupTitle)}`} />
                 <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-                  This chapter covers {group.projects.length} energy conservation measures (ECMs) under the {safeValue(group.groupTitle)} category. 
+                  This chapter covers {asArray(group.projects).length} energy conservation measures (ECMs) under the {safeValue(group.groupTitle)} category. 
                   The summary of these projects is provided below, followed by detailed descriptions of each individual project.
                 </p>
                 
@@ -977,7 +992,7 @@ export default function CommercialBuildingEnergyAuditTemplate({
                   { key: "saving", label: "Annual Saving ₹/year" },
                   { key: "energy", label: "Energy Saving kWh/year" },
                   { key: "payback", label: "Payback" },
-                ]} rows={group.projects.map((p) => ({
+                ]} rows={asArray(group.projects).map((p) => ({
                   projectNo: p.projectNo,
                   projectTitle: p.projectTitle,
                   investment: formatINR(p.estimatedInvestment),
@@ -988,7 +1003,7 @@ export default function CommercialBuildingEnergyAuditTemplate({
               </section>
               <div className="page-break" />
 
-              {group.projects.map((project, pIndex) => (
+              {asArray(group.projects).map((project, pIndex) => (
                 <React.Fragment key={`${project.projectNo || pIndex}`}>
                   <ProjectChapterPage project={project} chapterNumber={chapterNumber} />
                   <div className="page-break" />

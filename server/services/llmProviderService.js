@@ -34,65 +34,275 @@ function safeReportValue(value) {
   return str;
 }
 
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  if (typeof value === "object") return [value];
+  if (typeof value === "string" && value.trim()) return [value];
+  return [];
+}
+
+const PROJECT_ARRAY_FIELDS = [
+  "baselineData",
+  "measurementData",
+  "typicalGapTable",
+  "scopeOfWork",
+  "keyActivities",
+  "savingRationaleTable",
+  "energySavingCalculation",
+  "keyMetrics",
+  "technicalSpecifications",
+  "schematicFramework",
+  "implementationDurationTable",
+  "precautions",
+  "measurementVerificationPlan",
+  "benefitsOtherThanEnergySaving",
+  "caseStudies",
+  "images"
+];
+
+function normalizeProjectForExport(project, projectIndex = 0) {
+  const normalizedProject = {
+    ...(project && typeof project === "object" ? project : {}),
+  };
+
+  normalizedProject.projectNo = safeReportValue(
+    normalizedProject.projectNo || `Project ${projectIndex + 1}`
+  );
+  normalizedProject.projectTitle = safeReportValue(
+    normalizedProject.projectTitle || normalizedProject.ecmName || normalizedProject.title
+  );
+
+  PROJECT_ARRAY_FIELDS.forEach((field) => {
+    normalizedProject[field] = asArray(normalizedProject[field]);
+  });
+
+  if (normalizedProject.carbonFootprint && typeof normalizedProject.carbonFootprint !== "object") {
+    normalizedProject.carbonFootprint = {};
+  }
+
+  return normalizedProject;
+}
+
+function getProjectsForQC(reportData) {
+  if (asArray(reportData?.groupedProjects).length) {
+    return asArray(reportData.groupedProjects).flatMap((group, groupIndex) =>
+      asArray(group?.projects).map((project, projectIndex) => ({
+            ...normalizeProjectForExport(project, projectIndex),
+            __groupIndex: groupIndex,
+            __projectIndex: projectIndex,
+            __groupNo: group.groupNo,
+            __groupTitle: group.groupTitle,
+          }))
+    );
+  }
+
+  if (Array.isArray(reportData?.projects)) {
+    const hasGroupObjects = reportData.projects.some(
+      (item) => item && Array.isArray(item.projects)
+    );
+
+    if (hasGroupObjects) {
+      return reportData.projects.flatMap((group, groupIndex) =>
+        asArray(group?.projects).map((project, projectIndex) => ({
+              ...normalizeProjectForExport(project, projectIndex),
+              __groupIndex: groupIndex,
+              __projectIndex: projectIndex,
+              __groupNo: group.groupNo,
+              __groupTitle: group.groupTitle,
+            }))
+      );
+    }
+
+    return reportData.projects.map((project, projectIndex) => ({
+      ...normalizeProjectForExport(project, projectIndex),
+      __projectIndex: projectIndex,
+    }));
+  }
+
+  return [];
+}
+
+function normalizeReportForExport(reportData) {
+  const source = reportData && typeof reportData === "object" ? reportData : {};
+  const groupedProjects = asArray(source.groupedProjects);
+  const rawProjects = asArray(source.projects);
+  const flattenedProjects = groupedProjects.flatMap((group) => asArray(group?.projects));
+  const projectCandidates = rawProjects.some((project) => project && Array.isArray(project.projects))
+    ? flattenedProjects
+    : (rawProjects.length ? rawProjects : flattenedProjects);
+  const cleanedProjects = projectCandidates
+    .filter((project) => project && typeof project === "object" && !Array.isArray(project.projects))
+    .map((project, index) => normalizeProjectForExport(project, index));
+
+  const normalizedGroups = groupedProjects.length
+    ? groupedProjects.map((group) => ({
+        ...(group && typeof group === "object" ? group : {}),
+        groupTitle: safeReportValue(group?.groupTitle || group?.title),
+        groupNo: safeReportValue(group?.groupNo || group?.no),
+        projects: asArray(group?.projects).map((project, index) => normalizeProjectForExport(project, index)),
+      }))
+    : buildProjectGroups(cleanedProjects);
+
+  return {
+    ...source,
+    projects: cleanedProjects,
+    groupedProjects: normalizedGroups,
+    executiveSummary: source.executiveSummary && typeof source.executiveSummary === "object"
+      ? {
+          ...source.executiveSummary,
+          keyObservations: asArray(source.executiveSummary.keyObservations),
+          conclusionAndWayForward: asArray(source.executiveSummary.conclusionAndWayForward),
+        }
+      : {},
+  };
+}
+
+function scanForRenderedObjectStrings(value, path, qcErrors) {
+  if (typeof value === "string") {
+    if (value.toLowerCase().includes("[object object]")) {
+      qcErrors.push({
+        code: "OBJECT_FOUND",
+        message: "Found [object Object] in report content.",
+        path,
+        value
+      });
+      return 1;
+    }
+    return 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce(
+      (count, item, index) => count + scanForRenderedObjectStrings(item, `${path}[${index}]`, qcErrors),
+      0
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value).reduce(
+      (count, [key, nested]) => count + scanForRenderedObjectStrings(nested, `${path}.${key}`, qcErrors),
+      0
+    );
+  }
+
+  return 0;
+}
+
 function runReportQC(reportData) {
+  reportData = normalizeReportForExport(reportData);
   const qcErrors = [];
   const qcWarnings = [];
   let invalidTitleCount = 0;
   let dataRequiredTitleCount = 0;
   let objectObjectCount = 0;
+  let malformedGroupCount = 0;
 
   if (!reportData) {
     qcErrors.push({ code: "NO_DATA", message: "Report data is missing.", path: "reportData", value: null });
-    return { qcPassed: false, qcErrors, qcWarnings, summary: { projectCount: 0, groupCount: 0 } };
+    return { qcPassed: false, qcErrors, qcWarnings, summary: { projectCount: 0, validEcmCount: 0, groupCount: 0 } };
   }
 
+  const groupedProjects = Array.isArray(reportData.groupedProjects) ? reportData.groupedProjects : [];
+  const flatProjects = Array.isArray(reportData.projects) ? reportData.projects : [];
+  const projectsForQC = getProjectsForQC(reportData);
+  const hasGroupObjectsInProjects = flatProjects.some((item) => item && Array.isArray(item.projects));
+
   // 1. Check groupedProjects
-  if (!reportData.groupedProjects || reportData.groupedProjects.length === 0) {
+  if (groupedProjects.length === 0) {
     qcErrors.push({ code: "MISSING_GROUPS", message: "Report has no grouped projects.", path: "groupedProjects", value: null });
   }
 
+  groupedProjects.forEach((group, groupIndex) => {
+    const groupTitle = safeReportValue(group?.groupTitle);
+    if (!group?.groupTitle || groupTitle === "Data required") {
+      qcErrors.push({
+        code: "INVALID_GROUP",
+        message: "Group title is missing or invalid.",
+        path: `groupedProjects[${groupIndex}].groupTitle`,
+        value: group?.groupTitle
+      });
+      malformedGroupCount++;
+    }
+
+    if (!Array.isArray(group?.projects)) {
+      qcErrors.push({
+        code: "INVALID_GROUP",
+        message: "Group projects must be an array.",
+        path: `groupedProjects[${groupIndex}].projects`,
+        value: group?.projects
+      });
+      malformedGroupCount++;
+      return;
+    }
+
+    if (group.projects.length === 0) {
+      qcErrors.push({
+        code: "INVALID_GROUP",
+        message: "Group must contain at least one ECM.",
+        path: `groupedProjects[${groupIndex}].projects`,
+        value: group.projects
+      });
+      malformedGroupCount++;
+    }
+  });
+
   // 2. Check individual projects
-  const projects = reportData.projects || [];
   const seenTitles = new Set();
   let duplicateTitleCount = 0;
+  let validTitleCount = 0;
 
-  projects.forEach((p, idx) => {
-    const title = p.projectTitle;
-    const path = `projects[${idx}].projectTitle`;
+  projectsForQC.forEach((p, idx) => {
+    const title = p?.projectTitle || p?.ecmName || p?.title;
+    const groupIndex = Number.isInteger(p.__groupIndex) ? p.__groupIndex : null;
+    const projectIndex = Number.isInteger(p.__projectIndex) ? p.__projectIndex : idx;
+    const path = groupIndex !== null
+      ? `groupedProjects[${groupIndex}].projects[${projectIndex}].projectTitle`
+      : `projects[${projectIndex}].projectTitle`;
 
     if (!title) {
-      qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is missing.", path, value: title });
+      qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is missing or invalid.", path, value: title });
       invalidTitleCount++;
     } else {
       const lower = String(title).toLowerCase().trim();
       if (lower === "data required") {
-        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is 'Data required'.", path, value: title });
+        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is missing or invalid.", path, value: title });
         dataRequiredTitleCount++;
       } else if (lower === "[object object]") {
-        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is [object Object].", path, value: title });
-        objectObjectCount++;
+        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is missing or invalid.", path, value: title });
       } else if (lower.includes("project project")) {
-        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title contains 'Project Project'.", path, value: title });
+        qcErrors.push({ code: "INVALID_PROJECT_TITLE", message: "Project title is missing or invalid.", path, value: title });
         invalidTitleCount++;
       } else if (seenTitles.has(lower)) {
         qcErrors.push({ code: "DUPLICATE_TITLE", message: "Duplicate project title found.", path, value: title });
         duplicateTitleCount++;
       } else {
         seenTitles.add(lower);
+        validTitleCount++;
       }
     }
-
-    // Checking for [object Object] in any field
-    Object.entries(p).forEach(([key, val]) => {
-      if (String(val).toLowerCase() === "[object object]") {
-        qcErrors.push({ code: "OBJECT_FOUND", message: "Found [object Object] in project field.", path: `projects[${idx}].${key}`, value: val });
-        objectObjectCount++;
-      }
-    });
   });
 
-  if (projects.length === 0) {
-    qcErrors.push({ code: "NO_PROJECTS", message: "No valid projects found.", path: "projects", value: null });
+  objectObjectCount += scanForRenderedObjectStrings(reportData, "reportData", qcErrors);
+
+  if (projectsForQC.length === 0) {
+    qcErrors.push({ code: "NO_PROJECTS", message: "No valid ECMs found.", path: "projects", value: null });
+  }
+
+  if (groupedProjects.length > 0 && flatProjects.length > 0 && !hasGroupObjectsInProjects && flatProjects.length !== projectsForQC.length) {
+    qcWarnings.push({
+      code: "PROJECT_COUNT_MISMATCH",
+      message: `Flat projects count (${flatProjects.length}) does not match grouped ECM count (${projectsForQC.length}).`,
+      path: "projects"
+    });
+  }
+
+  if (hasGroupObjectsInProjects) {
+    qcWarnings.push({
+      code: "PROJECTS_CONTAIN_GROUPS",
+      message: "reportData.projects contains group objects and should be normalized to a flat ECM list.",
+      path: "projects"
+    });
   }
 
   const qcPassed = qcErrors.length === 0;
@@ -102,12 +312,16 @@ function runReportQC(reportData) {
     qcErrors,
     qcWarnings,
     summary: {
-      projectCount: projects.length,
-      groupCount: reportData.groupedProjects?.length || 0,
+      projectCount: projectsForQC.length,
+      validEcmCount: validTitleCount,
+      groupCount: groupedProjects.length,
       invalidTitleCount,
       duplicateTitleCount,
       dataRequiredTitleCount,
-      objectObjectCount
+      objectObjectCount,
+      malformedGroupCount,
+      hardErrorCount: qcErrors.length,
+      warningCount: qcWarnings.length
     }
   };
 }
@@ -648,9 +862,12 @@ module.exports = {
   buildCommercialBuildingEnergyAuditFallback,
   cleanJsonResponse,
   generateWithOpenRouter,
+  asArray,
   safeReportValue,
   groupAndSortProjects,
   cleanAndDeduplicateProjects,
   buildProjectGroups,
+  getProjectsForQC,
+  normalizeReportForExport,
   runReportQC
 };
