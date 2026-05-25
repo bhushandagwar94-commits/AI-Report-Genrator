@@ -197,6 +197,9 @@ function runReportQC(reportData) {
   let dataRequiredTitleCount = 0;
   let objectObjectCount = 0;
   let malformedGroupCount = 0;
+  let numericSystemCount = 0;
+  let wrongEnergySavingCount = 0;
+  let missingEquipmentCount = 0;
 
   if (!reportData) {
     qcErrors.push({ code: "NO_DATA", message: "Report data is missing.", path: "reportData", value: null });
@@ -281,6 +284,50 @@ function runReportQC(reportData) {
         validTitleCount++;
       }
     }
+
+    const systemValue = safeReportValue(p?.system);
+    if (systemValue !== "Data required" && /^[\d.,]+$/.test(systemValue)) {
+      qcErrors.push({
+        code: "NUMERIC_SYSTEM",
+        message: "System/category contains a numeric value and appears to be mapped from the wrong Excel column.",
+        path: groupIndex !== null
+          ? `groupedProjects[${groupIndex}].projects[${projectIndex}].system`
+          : `projects[${projectIndex}].system`,
+        value: p?.system,
+      });
+      numericSystemCount++;
+    }
+
+    const equipmentValue = safeReportValue(p?.equipmentCovered);
+    if (equipmentValue === "Data required") {
+      qcErrors.push({
+        code: "MISSING_EQUIPMENT",
+        message: "Equipment covered is missing or invalid.",
+        path: groupIndex !== null
+          ? `groupedProjects[${groupIndex}].projects[${projectIndex}].equipmentCovered`
+          : `projects[${projectIndex}].equipmentCovered`,
+        value: p?.equipmentCovered,
+      });
+      missingEquipmentCount++;
+    }
+
+    const energySavingValue = numberOrZero(p?.expectedEnergySaving);
+    const projectNoDigits = Number(String(p?.projectNo || "").replace(/[^\d.-]/g, ""));
+    if (
+      energySavingValue > 0 &&
+      projectNoDigits > 0 &&
+      Math.abs(energySavingValue - projectNoDigits) < 0.0001
+    ) {
+      qcErrors.push({
+        code: "SUSPICIOUS_ENERGY_SAVING",
+        message: "Energy saving appears to be mapped from ECM number or serial number instead of the Excel saving column.",
+        path: groupIndex !== null
+          ? `groupedProjects[${groupIndex}].projects[${projectIndex}].expectedEnergySaving`
+          : `projects[${projectIndex}].expectedEnergySaving`,
+        value: p?.expectedEnergySaving,
+      });
+      wrongEnergySavingCount++;
+    }
   });
 
   objectObjectCount += scanForRenderedObjectStrings(reportData, "reportData", qcErrors);
@@ -305,6 +352,33 @@ function runReportQC(reportData) {
     });
   }
 
+  const expectedProjectCount = Number(reportData?.qcSummary?.expectedProjectCount || 0);
+  if (expectedProjectCount > 0 && expectedProjectCount !== projectsForQC.length) {
+    qcErrors.push({
+      code: "PROJECT_COUNT_MISMATCH",
+      message: `Final ECM count (${projectsForQC.length}) does not match expected count (${expectedProjectCount}).`,
+      path: "qcSummary.expectedProjectCount",
+      value: expectedProjectCount,
+    });
+  }
+
+  const datasetProfile = reportData?.qcSummary?.datasetProfile || null;
+  if (datasetProfile?.expectedGroups) {
+    const actualGroupCounts = Object.fromEntries(
+      groupedProjects.map((group) => [group.groupTitle, asArray(group.projects).length])
+    );
+    Object.entries(datasetProfile.expectedGroups).forEach(([groupTitle, expectedCount]) => {
+      if ((actualGroupCounts[groupTitle] || 0) !== expectedCount) {
+        qcErrors.push({
+          code: "GROUP_COUNT_MISMATCH",
+          message: `Group "${groupTitle}" has ${(actualGroupCounts[groupTitle] || 0)} ECMs but expected ${expectedCount}.`,
+          path: `groupedProjects.${groupTitle}`,
+          value: actualGroupCounts[groupTitle] || 0,
+        });
+      }
+    });
+  }
+
   const qcPassed = qcErrors.length === 0;
 
   return {
@@ -320,6 +394,9 @@ function runReportQC(reportData) {
       dataRequiredTitleCount,
       objectObjectCount,
       malformedGroupCount,
+      numericSystemCount,
+      wrongEnergySavingCount,
+      missingEquipmentCount,
       hardErrorCount: qcErrors.length,
       warningCount: qcWarnings.length
     }
@@ -475,9 +552,11 @@ function cleanAndDeduplicateProjects(projects) {
   const finalProjects = Object.values(merged);
   console.log(`[QC] Raw rows: ${projects.length} | Valid: ${validProjects.length} | Final Merged ECMs: ${finalProjects.length}`);
   
-  // Reassign Project No
+  // Preserve authoritative ECM numbers from Excel when available.
   finalProjects.forEach((p, index) => {
-    p.projectNo = `Project ${index + 1}`;
+    if (!p.projectNo || String(p.projectNo).trim() === "" || String(p.projectNo).toLowerCase() === "data required") {
+      p.projectNo = `Project ${index + 1}`;
+    }
   });
   
   return finalProjects;
@@ -486,15 +565,27 @@ function cleanAndDeduplicateProjects(projects) {
 function buildProjectGroups(projects) {
   const groups = [
     { no: "GR-1", title: "Cooling System Performance Improvement", keywords: ["chiller", "cooling tower", "\\bct\\b", "\\bchw\\b", "chilled water", "condenser", "pump flow", "free cooling", "primary pump", "secondary pump"] },
-    { no: "GR-2", title: "Production Machines", keywords: ["\\basb\\b", "\\bebm\\b", "servo", "moulding", "molding", "dryer", "heater", "barrel", "insulation", "duct", "ir heater", "band heater", "production machine"] },
+    { no: "GR-2", title: "Production Machines", keywords: ["\\basb\\b", "\\bebm\\b", "servo", "moulding", "molding", "dryer", "heater", "barrel", "insulation", "duct", "ir heater", "band heater", "production machine", "heat recovery"] },
     { no: "GR-3", title: "Air Compressors", keywords: ["air compressor", "compressed air", "booster compressor", "\\bcfm\\b", "leakage", "\\bfad\\b"] },
-    { no: "GR-4", title: "Auxiliary Systems & Machine Improvement", keywords: ["\\bahu\\b", "plug fan", "grinder", "blower", "auxiliary", "fan retrofit", "motor retrofit"] },
-    { no: "GR-5", title: "Electrical / Power Quality", keywords: ["transformer", "\\bapfc\\b", "power factor", "\\bkva\\b", "\\bkvar\\b", "electrical"] },
-    { no: "GR-6", title: "Renewable / Solar", keywords: ["solar", "\\bpv\\b", "renewable"] },
-    { no: "GR-7", title: "Monitoring / BMS", keywords: ["\\bbms\\b", "monitoring", "sensor", "dashboard", "cloud monitoring"] }
+    { no: "GR-4", title: "Auxiliary Systems & Machine Improvement", keywords: ["\\bahu\\b", "plug fan", "grinder", "blower", "auxiliary", "fan retrofit", "motor retrofit", "\\bapfc\\b", "power factor", "relay"] }
   ];
 
-  const otherGroup = { no: "GR-8", title: "Other Energy Saving Opportunities", keywords: [] };
+  const groupAliasMap = {
+    "cooling system performance improvement": "Cooling System Performance Improvement",
+    "energy saving projects for cooling system": "Cooling System Performance Improvement",
+    "cooling system": "Cooling System Performance Improvement",
+    "production machines": "Production Machines",
+    "energy saving projects for production machines": "Production Machines",
+    "production machine": "Production Machines",
+    "air compressors": "Air Compressors",
+    "energy saving projects for air compressors": "Air Compressors",
+    "air compressor": "Air Compressors",
+    "auxiliary systems & machine improvement": "Auxiliary Systems & Machine Improvement",
+    "auxiliary systems / machine improvement": "Auxiliary Systems & Machine Improvement",
+    "energy saving projects for auxiliary systems & machine improvement": "Auxiliary Systems & Machine Improvement"
+  };
+
+  const otherGroup = { no: "GR-5", title: "Other Energy Saving Opportunities", keywords: [] };
   
   const mappedGroups = groups.map(g => ({ groupNo: g.no, groupTitle: g.title, projects: [], totalInvestment: 0, totalAnnualSaving: 0, totalEnergySaving: 0, weightedPayback: "Data required" }));
   const mappedOther = { groupNo: otherGroup.no, groupTitle: otherGroup.title, projects: [], totalInvestment: 0, totalAnnualSaving: 0, totalEnergySaving: 0, weightedPayback: "Data required" };
@@ -503,7 +594,12 @@ function buildProjectGroups(projects) {
     const text = ((p.projectTitle || "") + " " + (p.equipmentCovered || "") + " " + (p.system || "")).toLowerCase();
     
     let matchedGroup = null;
+    const explicitGroup = String(p.groupTitle || p.categoryGroup || "").toLowerCase().trim();
+    if (explicitGroup && groupAliasMap[explicitGroup]) {
+      matchedGroup = mappedGroups.find((m) => m.groupTitle === groupAliasMap[explicitGroup]);
+    }
     for (const g of groups) {
+      if (matchedGroup) break;
       if (g.keywords.some(k => new RegExp(k, 'i').test(text))) {
         matchedGroup = mappedGroups.find(m => m.groupNo === g.no);
         break;
@@ -541,106 +637,282 @@ function buildProjectGroups(projects) {
   return allGroups;
 }
 
-/**
- * Deterministic local fallback mapper for the Commercial Building Energy Audit Template
- */
-function buildCommercialBuildingEnergyAuditFallback({
+function numberOrZero(value) {
+  if (value === null || value === undefined || value === "" || value === "Data required") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function splitNarrativeItems(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => splitNarrativeItems(item))
+      .filter(Boolean);
+  }
+
+  const text = safeReportValue(value);
+  if (text === "Data required") return [];
+
+  return text
+    .split(/\r?\n|;|•|·/)
+    .map((item) => item.replace(/^\s*[-*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function mapNarrativeList(value, key = "value") {
+  const items = splitNarrativeItems(value);
+  if (!items.length) return [];
+  return items.map((item) => ({ [key]: item }));
+}
+
+function inferProjectNarrativeContext(project) {
+  const title = `${project.projectTitle || ""} ${project.equipmentCovered || ""} ${project.system || ""}`.toLowerCase();
+
+  if (title.includes("ct segregation")) {
+    return {
+      existing: "The existing cooling system shares common cooling tower and condenser water infrastructure, which prevents optimized condenser water temperature control and leads to avoidable chiller kW/TR and pumping energy consumption.",
+      problem: "Without segregation and control refinement, the cooling system continues operating at higher condenser water temperatures and suboptimal flow conditions, increasing compressor and pump energy use.",
+      proposed: "Segregate the cooling tower circuit and optimize condenser water control so the chiller and associated pumping system operate at improved approach temperatures and lower specific energy consumption.",
+      rationale: "Improved cooling tower segregation and condenser water control reduce heat rejection losses, improve chiller operating efficiency, and lower auxiliary pumping demand.",
+      mv: "Measure pre- and post-implementation chiller kW/TR, condenser water temperature, pump kW, and operating hours under similar production and ambient conditions.",
+    };
+  }
+
+  if (title.includes("free cooling")) {
+    return {
+      existing: "The present system relies on mechanical cooling even during favorable winter ambient conditions, limiting the opportunity to bypass the chiller during low-temperature operation.",
+      problem: "Available ambient cooling potential is not fully utilized, so the chiller continues consuming power when free cooling could satisfy part of the thermal load.",
+      proposed: "Introduce chiller bypass and free-cooling logic using condenser or tower water during winter conditions, supported by temperature-based control and suitable heat-exchange arrangements.",
+      rationale: "Using ambient-assisted cooling during winter reduces compressor runtime while maintaining process cooling requirements.",
+      mv: "Track chiller runtime hours, bypass operating hours, condenser or sump temperatures, and total cooling energy before and after commissioning.",
+    };
+  }
+
+  if (title.includes("servo motor")) {
+    return {
+      existing: "The existing machine drive arrangement relies on conventional motor-hydraulic operation with avoidable idle losses and reduced controllability during part-load conditions.",
+      problem: "Conventional drive operation causes excess energy consumption during idle and low-load periods while limiting process-response precision.",
+      proposed: "Retrofit the machine with a servo-driven system integrated into machine controls to reduce idle-load demand and improve motion efficiency.",
+      rationale: "Servo drive control better matches output to process demand, reducing motor losses, hydraulic throttling, and idle energy draw.",
+      mv: "Compare machine cycle energy, idle kW, and production-normalized energy use before and after retrofit across representative operating shifts.",
+    };
+  }
+
+  if (title.includes("insulation")) {
+    return {
+      existing: "The existing heated ducting arrangement experiences surface heat loss to surrounding air, increasing heater duty and causing unnecessary thermal energy waste.",
+      problem: "Uninsulated or poorly insulated hot ducts lose useful heat before it reaches the process, increasing electrical heating consumption.",
+      proposed: "Install suitable thermal insulation across the identified hot flexible ducts to reduce surface heat loss and maintain process air temperature more efficiently.",
+      rationale: "Lower thermal losses reduce heater energy input while improving temperature retention and process stability.",
+      mv: "Record heater load, outlet temperature stability, and operating hours before and after insulation under similar production conditions.",
+    };
+  }
+
+  if (title.includes("apfc")) {
+    return {
+      existing: "The present power-factor correction arrangement does not maintain the desired reactive power compensation performance consistently across changing electrical loading conditions.",
+      problem: "Suboptimal APFC operation can increase reactive power draw, reduce power factor, and expose the facility to avoidable demand-related penalties or inefficiencies.",
+      proposed: "Replace or upgrade the APFC relay and restore correct staged capacitor control to maintain healthier power factor performance across the plant load profile.",
+      rationale: "Improved reactive power management reduces avoidable electrical losses and supports stronger utilization of the connected electrical infrastructure.",
+      mv: "Track pre- and post-implementation power factor, kvar demand, capacitor stage health, and utility billing indicators over the next billing cycle.",
+    };
+  }
+
+  if (title.includes("compressed air") || title.includes("air compressor") || title.includes("booster compressor")) {
+    return {
+      existing: "The compressed air system operates without full measurement visibility and optimization, which can mask leakage, part-load inefficiency, and pressure-management losses.",
+      problem: "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
+      proposed: "Improve compressed air measurement, control, and equipment efficiency through monitoring, pressure optimization, and targeted retrofit of the identified compressor assets.",
+      rationale: "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
+      mv: "Measure compressor kW, FAD or flow, header pressure, leak load, and specific power before and after implementation.",
+    };
+  }
+
+  if (title.includes("ie5") || title.includes("motor retrofit") || title.includes("pmsm")) {
+    return {
+      existing: "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
+      problem: "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+      proposed: "Retrofit the identified drive with an IE5 or equivalent high-efficiency motor configuration compatible with the duty and control arrangement.",
+      rationale: "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
+      mv: "Verify before and after motor input kW, operating current, and load conditions while confirming process throughput remains unchanged.",
+    };
+  }
+
+  return {
+    existing: "The existing system operates under current process conditions but exhibits opportunities for measurable energy-performance improvement.",
+    problem: "The present operating approach results in avoidable energy losses or control inefficiencies during normal plant operation.",
+    proposed: "Implement the identified energy conservation measure to improve equipment efficiency, operating control, and overall system performance.",
+    rationale: "The proposed intervention reduces avoidable losses and aligns energy consumption more closely with actual process demand.",
+    mv: "Establish before-and-after measurement of energy use, operating hours, and key process parameters to verify savings performance.",
+  };
+}
+
+function buildDeterministicProject(project, index = 0) {
+  const narrative = inferProjectNarrativeContext(project);
+  const baselineDetails = safeReportValue(
+    project.baselineDetails || project.existingOperatingCondition || project.existingSystemDescription
+  );
+  const proposedIntervention = safeReportValue(
+    project.proposedIntervention || project.proposedProjectDescription || project.projectTitle
+  );
+  const rationale = safeReportValue(project.rationale || project.rationaleForEnergySaving);
+  const activities = splitNarrativeItems(project.projectActivitiesText || project.keyActivities);
+  const system = safeReportValue(project.system || project.groupTitle);
+
+  const normalizedProject = normalizeProjectForExport(
+    {
+      ...project,
+      projectNo: safeReportValue(project.projectNo) !== "Data required"
+        ? safeReportValue(project.projectNo)
+        : `ECM-${index + 1}`,
+      projectTitle: safeReportValue(project.projectTitle || project.title),
+      system,
+      equipmentCovered: safeReportValue(project.equipmentCovered),
+      existingOperatingCondition: baselineDetails !== "Data required" ? baselineDetails : narrative.existing,
+      existingSystemDescription: baselineDetails !== "Data required" ? baselineDetails : narrative.existing,
+      problemGapIdentified: safeReportValue(project.problemGapIdentified) !== "Data required"
+        ? safeReportValue(project.problemGapIdentified)
+        : narrative.problem,
+      proposedIntervention,
+      proposedProjectDescription: safeReportValue(project.proposedProjectDescription) !== "Data required"
+        ? safeReportValue(project.proposedProjectDescription)
+        : proposedIntervention,
+      scopeOfWork: asArray(project.scopeOfWork).length
+        ? asArray(project.scopeOfWork)
+        : mapNarrativeList(project.projectActivitiesText || project.scopeOfWork, "scopeItem"),
+      keyActivities: asArray(project.keyActivities).length
+        ? asArray(project.keyActivities)
+        : mapNarrativeList(project.projectActivitiesText, "activity"),
+      rationaleForEnergySaving: rationale !== "Data required" ? rationale : narrative.rationale,
+      energySavingCalculation: asArray(project.energySavingCalculation).length
+        ? asArray(project.energySavingCalculation)
+        : [
+            {
+              parameter: "Annual energy saving",
+              unit: "kWh/year",
+              value: safeReportValue(project.expectedEnergySaving),
+            },
+            {
+              parameter: "Annual cost saving",
+              unit: "₹/year",
+              value: safeReportValue(project.expectedAnnualCostSaving),
+            },
+            {
+              parameter: "Estimated investment",
+              unit: "₹",
+              value: safeReportValue(project.estimatedInvestment),
+            },
+            {
+              parameter: "Simple payback",
+              unit: "years",
+              value: safeReportValue(project.simplePaybackPeriod),
+            },
+          ],
+      technicalSpecifications: asArray(project.technicalSpecifications).length
+        ? asArray(project.technicalSpecifications)
+        : [
+            {
+              parameter: "Equipment covered",
+              details: safeReportValue(project.equipmentCovered),
+            },
+            {
+              parameter: "Implementation duration",
+              details: safeReportValue(project.implementationDuration),
+            },
+          ],
+      precautions: asArray(project.precautions).length
+        ? asArray(project.precautions)
+        : [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning.",
+          ],
+      measurementVerificationPlan: asArray(project.measurementVerificationPlan).length
+        ? asArray(project.measurementVerificationPlan)
+        : [{ step: 1, action: narrative.mv }],
+      benefitsOtherThanEnergySaving: asArray(project.benefitsOtherThanEnergySaving).length
+        ? asArray(project.benefitsOtherThanEnergySaving)
+        : [
+            "Improved process reliability",
+            "Reduced maintenance burden",
+            "Better operational control",
+          ],
+      implementationDurationTable: asArray(project.implementationDurationTable).length
+        ? asArray(project.implementationDurationTable)
+        : [
+            { activity: "Engineering and procurement", duration: safeReportValue(project.implementationDuration) },
+            { activity: "Installation and commissioning", duration: safeReportValue(project.implementationDuration) },
+          ],
+      caseStudies: asArray(project.caseStudies).length
+        ? asArray(project.caseStudies)
+        : [
+            {
+              title: safeReportValue(project.projectTitle),
+              clientType: "Industrial facility",
+              system,
+              implementedMeasure: proposedIntervention,
+              result: `Expected energy saving of ${safeReportValue(project.expectedEnergySaving)}.`,
+              relevance: "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention.",
+            },
+          ],
+      finalConclusion: safeReportValue(project.finalConclusion) !== "Data required"
+        ? safeReportValue(project.finalConclusion)
+        : `This ECM is recommended for implementation based on the expected annual energy saving of ${safeReportValue(project.expectedEnergySaving)} and estimated payback of ${safeReportValue(project.simplePaybackPeriod)}.`,
+      carbonFootprint: {
+        ...(project.carbonFootprint && typeof project.carbonFootprint === "object" ? project.carbonFootprint : {}),
+        annualEnergySaving: safeReportValue(project.expectedEnergySaving),
+        emissionFactor: safeReportValue(project.carbonFootprint?.emissionFactor),
+        estimatedCO2Reduction: safeReportValue(project.carbonFootprint?.estimatedCO2Reduction || project.co2Reduction),
+        calculationBasis: safeReportValue(project.carbonFootprint?.calculationBasis) !== "Data required"
+          ? safeReportValue(project.carbonFootprint?.calculationBasis)
+          : "Annual energy saving from Excel x applicable grid emission factor",
+        remarks: safeReportValue(project.carbonFootprint?.remarks),
+      },
+    },
+    index
+  );
+
+  if (!activities.length && !asArray(normalizedProject.keyActivities).length) {
+    normalizedProject.keyActivities = [
+      { activity: "Detailed engineering and procurement" },
+      { activity: "Installation and commissioning" },
+      { activity: "Performance verification" },
+    ];
+  }
+
+  return normalizedProject;
+}
+
+function buildCommercialBuildingEnergyAuditBaseData({
   inputDetails = {},
   extractedExcelData = {},
   uploadedFiles = [],
 }) {
-  const mapExtractedProjectsToTemplateProjects = (projects = []) => {
-    return projects.map((p, i) => {
-      const category = p.categoryGroup || assignCategory(p);
-      const isHVAC = category === "Cooling System / HVAC";
-      const isMotor = category === "Pumps and Motors";
-      const isLighting = category === "Lighting";
-      const isAirComp = category === "Air Compressors";
-      
-      const defaultExisting = isHVAC ? "The existing cooling system operates at a suboptimal efficiency and utilizes outdated control mechanisms." :
-                              isMotor ? "The existing motors are standard efficiency and operate without variable speed drives." :
-                              isLighting ? "The facility currently uses conventional lighting fixtures which consume higher power." :
-                              isAirComp ? "The compressed air system operates with standard load/unload controls leading to part-load inefficiencies." :
-                              "The existing system operates at standard efficiency levels.";
-                              
-      const defaultProposed = isHVAC ? "Install high-efficiency chillers or VRF systems with optimized chilled water pumping and BMS integration." :
-                              isMotor ? "Replace standard motors with IE3/IE4 premium efficiency motors and install VFDs where applicable." :
-                              isLighting ? "Retrofit all conventional lighting with high-lumen-per-watt LED fixtures." :
-                              isAirComp ? "Install VFD air compressors or permanent magnet synchronous motor (PMSM) compressors with advanced master controllers." :
-                              "Implement the proposed energy conservation measure to optimize system efficiency.";
+  const cleanedProjects = cleanAndDeduplicateProjects(extractedExcelData?.projects || [])
+    .map((project, index) => buildDeterministicProject(project, index));
+  const groupedProjects = buildProjectGroups(cleanedProjects);
 
-      return {
-        projectNo: safeReportValue(p.projectNo) !== "Data required" ? safeReportValue(p.projectNo) : `Project ${i + 1}`,
-        projectTitle: safeReportValue(p.projectTitle || p.title),
-        system: safeReportValue(p.system),
-        location: safeReportValue(p.location),
-        equipmentCovered: safeReportValue(p.equipmentCovered),
-        
-        // Narrative Fields
-        existingOperatingCondition: safeReportValue(p.baselineDetails || p.existingCondition) !== "Data required" ? safeReportValue(p.baselineDetails || p.existingCondition) : defaultExisting,
-        problemGapIdentified: "Significant energy losses are occurring due to outdated equipment and lack of dynamic operational controls.",
-        proposedIntervention: safeReportValue(p.proposedIntervention) !== "Data required" ? safeReportValue(p.proposedIntervention) : defaultProposed,
-        scopeOfWork: "1. Dismantling of existing equipment. 2. Installation of new energy-efficient equipment. 3. Integration with control panels. 4. Testing and commissioning.",
-        keyActivities: ["Procurement", "Installation", "Testing", "Commissioning"],
-        rationaleForEnergySaving: safeReportValue(p.rationale) !== "Data required" ? safeReportValue(p.rationale) : "The new equipment operates at a higher efficiency, directly reducing kW drawn for the same output.",
-        energySavingCalculation: "Calculated based on operating hours, baseline load, and expected efficiency improvement percentage.",
-        technicalSpecifications: "Refer to vendor datasheets for exact dimensions and electrical specifications.",
-        schematicFramework: "Standard operational integration with existing electrical panels.",
-        precautions: ["Ensure proper lockout/tagout during installation", "Verify voltage compatibility prior to commissioning"],
-        measurementVerificationPlan: "Compare pre- and post-installation energy consumption using sub-meters for a period of one week.",
-        benefitsOtherThanEnergySaving: ["Reduced maintenance costs", "Improved equipment reliability", "Lower thermal emissions"],
-        caseStudies: "Similar implementations in the sector have shown performance improvements aligning with the calculated payback periods.",
-        finalConclusion: "The project is technically feasible and financially viable. Immediate implementation is recommended.",
-        
-        // Financials & Excel Source of Truth
-        expectedEnergySaving: safeReportValue(p.energySaving || p.saving),
-        expectedAnnualCostSaving: safeReportValue(p.annualSaving || p.costSaving),
-        estimatedInvestment: safeReportValue(p.investment),
-        simplePaybackPeriod: safeReportValue(p.payback),
-        implementationDuration: safeReportValue(p.implementationDuration),
-        implementationPriority: safeReportValue(p.priority),
-        
-        carbonFootprint: {
-          estimatedCO2Reduction: safeReportValue(p.carbonFootprint?.estimatedCO2Reduction || p.co2Reduction),
-          annualEnergySaving: safeReportValue(p.energySaving),
-          emissionFactor: safeReportValue(p.carbonFootprint?.emissionFactor)
-        }
-      };
-    });
-  };
+  const totalEnergySaving = cleanedProjects.reduce((sum, project) => sum + numberOrZero(project.expectedEnergySaving), 0);
+  const totalAnnualSaving = cleanedProjects.reduce((sum, project) => sum + numberOrZero(project.expectedAnnualCostSaving), 0);
+  const totalInvestment = cleanedProjects.reduce((sum, project) => sum + numberOrZero(project.estimatedInvestment), 0);
+  const simplePayback = totalAnnualSaving > 0 ? Number((totalInvestment / totalAnnualSaving).toFixed(2)) : "Data required";
 
-  let projects = mapExtractedProjectsToTemplateProjects(extractedExcelData?.projects || []);
-  projects = groupAndSortProjects(projects);
-
-  if (projects.length === 0) {
-    projects.push({
-      projectNo: "Project 1",
-      projectTitle: "Data required",
-      system: "Data required",
-      location: "Data required",
-      equipmentCovered: "Data required",
-      existingOperatingCondition: "Data required",
-      proposedIntervention: "Data required",
-      expectedEnergySaving: "Data required",
-      expectedAnnualCostSaving: "Data required",
-      estimatedInvestment: "Data required",
-      simplePaybackPeriod: "Data required",
-      implementationDuration: "Data required",
-      implementationPriority: "Data required",
-      rationaleForEnergySaving: "Data required",
-      carbonFootprint: {
-        estimatedCO2Reduction: "Data required",
-        annualEnergySaving: "Data required",
-        emissionFactor: "Data required"
-      }
-    });
-  }
+  const categorySummary = groupedProjects.map((group) => ({
+    groupNo: group.groupNo,
+    groupTitle: group.groupTitle,
+    projectCount: group.projects.length,
+    totalEnergySaving: group.totalEnergySaving || 0,
+    totalAnnualCostSaving: group.totalAnnualSaving || 0,
+    totalEstimatedInvestment: group.totalInvestment || 0,
+    weightedPayback: group.weightedPayback || "Data required",
+  }));
+  const datasetProfile = extractedExcelData?.datasetProfile || null;
 
   return {
     reportInfo: {
       reportTitle: "Detailed Energy Audit Report",
       clientName: inputDetails.clientName || inputDetails.facilityName || "Data required",
-      buildingType: inputDetails.buildingType || "Commercial Building",
+      buildingType: inputDetails.buildingType || "Industrial Facility",
       location: inputDetails.location || "Data required",
       auditPeriod: inputDetails.auditPeriod || "Data required",
       reportDate: inputDetails.reportDate || "Data required",
@@ -649,43 +921,271 @@ function buildCommercialBuildingEnergyAuditFallback({
     },
     executiveSummary: {
       purposeText:
-        "The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects for the facility.",
+        "The detailed energy audit identifies energy conservation measures directly from the uploaded Excel workbook and evaluates them for technical feasibility, implementation practicality, and financial attractiveness.",
       totalAnnualElectricityConsumption: extractedExcelData?.annualElectricityConsumption || "Data required",
       annualElectricityCost: extractedExcelData?.annualElectricityCost || "Data required",
       averageTariff: extractedExcelData?.averageTariff || "Data required",
-      numberOfProjects: extractedExcelData?.projects?.length || "Data required",
-      totalEnergySavingPotential: extractedExcelData?.totalEnergySaving || "Data required",
-      totalAnnualCostSavingPotential: extractedExcelData?.totalAnnualSaving || "Data required",
-      totalEstimatedInvestment: extractedExcelData?.totalInvestment || "Data required",
-      simplePaybackPeriod: extractedExcelData?.simplePayback || "Data required",
+      numberOfProjects: cleanedProjects.length,
+      totalEnergySavingPotential: totalEnergySaving,
+      totalAnnualCostSavingPotential: totalAnnualSaving,
+      totalEstimatedInvestment: totalInvestment,
+      simplePaybackPeriod: simplePayback,
       co2ReductionPotential: extractedExcelData?.co2Reduction || "Data required",
-      keyObservations: ["Data required"],
+      keyObservations: groupedProjects.map((group) =>
+        `${group.groupTitle} includes ${group.projects.length} ECMs with combined annual saving of ${group.totalAnnualSaving || 0}.`
+      ),
       conclusionAndWayForward: [
-        { step: 1, action: "Client review of identified projects" },
-        { step: 2, action: "Joint selection of projects for implementation" },
-        { step: 3, action: "Detailed engineering and vendor finalization" },
-        { step: 4, action: "Implementation, commissioning and performance monitoring" },
+        { step: 1, action: "Validate the extracted ECM list against the uploaded workbook." },
+        { step: 2, action: "Prioritize ECMs based on savings, implementation complexity, and project phasing." },
+        { step: 3, action: "Proceed with detailed engineering, procurement, and implementation planning." },
+        { step: 4, action: "Monitor post-implementation performance and document verified savings." },
       ],
+      categorySummary,
     },
     buildingProfile: {
       facilityName: inputDetails.facilityName || inputDetails.clientName || "Data required",
       address: inputDetails.address || inputDetails.location || "Data required",
-      typeOfBuilding: inputDetails.buildingType || "Commercial Building",
+      typeOfBuilding: inputDetails.buildingType || "Industrial Facility",
       facilityContactPerson: inputDetails.contactPerson || "Data required",
+      fileInputs: uploadedFiles.map((file) => file.filename),
     },
-    electricalSupplyDetails: {},
-    specificEnergyBenchmark: {},
-    buildingOperationDetails: [],
-    utilityAndEnergySources: [],
-    electricityBillingSummary: [],
-    majorEnergyConsumingSystems: [],
-    hvacSystemDetails: [],
-    lightingSystemDetails: [],
-    pumpsAndMotors: [],
-    buildingAutomationControls: [],
-    auditObservations: [],
-    projects: projects,
+    annexures: [],
+    qcSummary: {
+      expectedProjectCount: cleanedProjects.length,
+      extractedProjectCount: extractedExcelData?.projects?.length || 0,
+      finalProjectCount: cleanedProjects.length,
+      groupCount: groupedProjects.length,
+      groupWiseCount: Object.fromEntries(groupedProjects.map((group) => [group.groupTitle, group.projects.length])),
+      datasetProfile,
+      mappingConfidence: extractedExcelData?.mappingConfidence || [],
+      excelTruthLocked: true,
+    },
+    projects: cleanedProjects,
+    groupedProjects,
   };
+}
+
+const PROJECT_NARRATIVE_FIELDS = [
+  "existingOperatingCondition",
+  "existingSystemDescription",
+  "problemGapIdentified",
+  "proposedIntervention",
+  "proposedProjectDescription",
+  "scopeOfWork",
+  "keyActivities",
+  "rationaleForEnergySaving",
+  "energySavingCalculation",
+  "technicalSpecifications",
+  "schematicFramework",
+  "precautions",
+  "measurementVerificationPlan",
+  "benefitsOtherThanEnergySaving",
+  "caseStudies",
+  "finalConclusion",
+];
+
+function mergeNarrativeProject(baseProject, aiProject, index = 0) {
+  const merged = { ...baseProject };
+  const candidate = aiProject && typeof aiProject === "object" ? aiProject : {};
+
+  for (const field of PROJECT_NARRATIVE_FIELDS) {
+    const value = candidate[field];
+    if (value === undefined || value === null || value === "") continue;
+
+    if (Array.isArray(baseProject[field])) {
+      merged[field] = asArray(value).length ? asArray(value) : baseProject[field];
+      continue;
+    }
+
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      const safeValue = safeReportValue(value);
+      if (safeValue !== "Data required") {
+        merged[field] = safeValue;
+      }
+    } else if (typeof value === "object") {
+      merged[field] = value;
+    }
+  }
+
+  return buildDeterministicProject(merged, index);
+}
+
+function mergeNarrativesIntoBaseReport(baseReportData, aiReportData) {
+  const base = normalizeReportForExport(baseReportData);
+  const ai = aiReportData && typeof aiReportData === "object" ? aiReportData : {};
+  const aiProjects = getProjectsForQC(ai);
+
+  const aiByProjectNo = new Map();
+  const aiByTitle = new Map();
+  aiProjects.forEach((project) => {
+    const projectNo = safeReportValue(project.projectNo);
+    const title = safeReportValue(project.projectTitle || project.title).toLowerCase();
+    if (projectNo !== "Data required") aiByProjectNo.set(projectNo, project);
+    if (title && title !== "data required") aiByTitle.set(title, project);
+  });
+
+  const mergedProjects = base.projects.map((project, index) => {
+    const byNo = aiByProjectNo.get(safeReportValue(project.projectNo));
+    const byTitle = aiByTitle.get(safeReportValue(project.projectTitle).toLowerCase());
+    return mergeNarrativeProject(project, byNo || byTitle, index);
+  });
+
+  const groupedProjects = buildProjectGroups(mergedProjects);
+  const aiExecutiveSummary = ai.executiveSummary && typeof ai.executiveSummary === "object" ? ai.executiveSummary : {};
+
+  return {
+    ...base,
+    reportInfo: {
+      ...base.reportInfo,
+      ...(ai.reportInfo && typeof ai.reportInfo === "object" ? {
+        preparedBy: safeReportValue(ai.reportInfo.preparedBy) !== "Data required" ? safeReportValue(ai.reportInfo.preparedBy) : base.reportInfo.preparedBy,
+        documentVersion: safeReportValue(ai.reportInfo.documentVersion) !== "Data required" ? safeReportValue(ai.reportInfo.documentVersion) : base.reportInfo.documentVersion,
+      } : {}),
+    },
+    executiveSummary: {
+      ...base.executiveSummary,
+      purposeText: safeReportValue(aiExecutiveSummary.purposeText) !== "Data required"
+        ? safeReportValue(aiExecutiveSummary.purposeText)
+        : base.executiveSummary.purposeText,
+      keyObservations: asArray(aiExecutiveSummary.keyObservations).length
+        ? asArray(aiExecutiveSummary.keyObservations)
+        : base.executiveSummary.keyObservations,
+      conclusionAndWayForward: asArray(aiExecutiveSummary.conclusionAndWayForward).length
+        ? asArray(aiExecutiveSummary.conclusionAndWayForward)
+        : base.executiveSummary.conclusionAndWayForward,
+      overallObservations: asArray(aiExecutiveSummary.overallObservations).length
+        ? asArray(aiExecutiveSummary.overallObservations)
+        : asArray(base.executiveSummary.overallObservations),
+    },
+    projects: mergedProjects,
+    groupedProjects,
+    qcSummary: {
+      ...(base.qcSummary || {}),
+      finalProjectCount: mergedProjects.length,
+      groupCount: groupedProjects.length,
+      groupWiseCount: Object.fromEntries(groupedProjects.map((group) => [group.groupTitle, group.projects.length])),
+      excelTruthLocked: true,
+      aiNarrativeStatus: aiProjects.length ? "merged" : "deterministic_fallback",
+    },
+  };
+}
+
+function calculateReportAccuracyScore(reportData) {
+  const normalized = normalizeReportForExport(reportData);
+  const qc = runReportQC(normalized);
+  const mappingConfidence = asArray(normalized?.qcSummary?.mappingConfidence);
+  const datasetProfile = normalized?.qcSummary?.datasetProfile || null;
+  const groupWiseCount = normalized?.qcSummary?.groupWiseCount || {};
+  let score = 0;
+  const breakdown = [];
+
+  const expectedCountMatched = datasetProfile
+    ? Number(normalized?.projects?.length || 0) === Number(datasetProfile.expectedEcmCount || 0)
+    : Number(normalized?.projects?.length || 0) > 0;
+  if (expectedCountMatched) score += 20;
+  breakdown.push({ label: "Expected ECM count achieved", points: expectedCountMatched ? 20 : 0, max: 20 });
+
+  const criticalFields = mappingConfidence.filter((item) =>
+    ["projectTitle", "system", "energySaving", "annualSaving", "investment", "payback"].includes(item.fieldName)
+  );
+  const highConfidenceMapped = criticalFields.length > 0 && criticalFields.every((item) => item.accepted && item.confidence >= 85);
+  if (highConfidenceMapped) score += 15;
+  breakdown.push({ label: "Critical columns mapped with high confidence", points: highConfidenceMapped ? 15 : 0, max: 15 });
+
+  const noCrossFieldErrors =
+    (qc.summary?.numericSystemCount || 0) === 0 &&
+    (qc.summary?.wrongEnergySavingCount || 0) === 0 &&
+    (qc.summary?.missingEquipmentCount || 0) === 0;
+  if (noCrossFieldErrors) score += 15;
+  breakdown.push({ label: "No cross-field sanity errors", points: noCrossFieldErrors ? 15 : 0, max: 15 });
+
+  const groupCountsMatch = datasetProfile
+    ? Object.entries(datasetProfile.expectedGroups || {}).every(([groupTitle, count]) => groupWiseCount[groupTitle] === count)
+    : Object.keys(groupWiseCount).length > 0;
+  if (groupCountsMatch) score += 15;
+  breakdown.push({ label: "Group-wise count correct", points: groupCountsMatch ? 15 : 0, max: 15 });
+
+  const equipmentMapped = asArray(normalized.projects).every((project) => safeReportValue(project.equipmentCovered) !== "Data required");
+  if (equipmentMapped) score += 10;
+  breakdown.push({ label: "Equipment names mapped", points: equipmentMapped ? 10 : 0, max: 10 });
+
+  const narrativesSpecific = asArray(normalized.projects).every((project) => {
+    const text = [
+      project.existingOperatingCondition,
+      project.proposedIntervention,
+      project.rationaleForEnergySaving,
+      project.finalConclusion,
+    ]
+      .map((value) => safeReportValue(value).toLowerCase())
+      .join(" ");
+    return !text.includes("the existing system operates at standard efficiency levels");
+  });
+  if (narrativesSpecific) score += 10;
+  breakdown.push({ label: "Project-specific narratives generated", points: narrativesSpecific ? 10 : 0, max: 10 });
+
+  const excelTruthPreserved = normalized?.qcSummary?.excelTruthLocked === true;
+  if (excelTruthPreserved) score += 10;
+  breakdown.push({ label: "Excel truth preserved after AI", points: excelTruthPreserved ? 10 : 0, max: 10 });
+
+  if (qc.qcPassed) score += 5;
+  breakdown.push({ label: "Export QC passed", points: qc.qcPassed ? 5 : 0, max: 5 });
+
+  return {
+    score,
+    passed: !datasetProfile ? score >= 75 : score >= 85,
+    breakdown,
+    qcSummary: qc.summary,
+  };
+}
+
+function validateCommercialBuildingEnergyAuditSchema(reportData) {
+  const normalized = normalizeReportForExport(reportData);
+  const errors = [];
+
+  if (!normalized.reportInfo || typeof normalized.reportInfo !== "object") {
+    errors.push("reportInfo is missing.");
+  }
+  if (!normalized.executiveSummary || typeof normalized.executiveSummary !== "object") {
+    errors.push("executiveSummary is missing.");
+  }
+  if (!Array.isArray(normalized.projects)) {
+    errors.push("projects must be an array.");
+  }
+  if (!Array.isArray(normalized.groupedProjects)) {
+    errors.push("groupedProjects must be an array.");
+  }
+  if (!Array.isArray(normalized.annexures || [])) {
+    errors.push("annexures must be an array when present.");
+  }
+
+  normalized.projects.forEach((project, index) => {
+    if (safeReportValue(project.projectTitle) === "Data required") {
+      errors.push(`projects[${index}].projectTitle is missing.`);
+    }
+    if (safeReportValue(project.equipmentCovered) === "Data required") {
+      errors.push(`projects[${index}].equipmentCovered is missing.`);
+    }
+  });
+
+  return {
+    success: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Deterministic local fallback mapper for the Commercial Building Energy Audit Template
+ */
+function buildCommercialBuildingEnergyAuditFallback({
+  inputDetails = {},
+  extractedExcelData = {},
+  uploadedFiles = [],
+}) {
+  return buildCommercialBuildingEnergyAuditBaseData({
+    inputDetails,
+    extractedExcelData,
+    uploadedFiles,
+  });
 }
 
 /**
@@ -758,6 +1258,7 @@ async function generateWithProvider({
   extractedExcelData,
   uploadedFiles,
   templateConfig,
+  baseReportData,
 }) {
   let providerUsed = "none";
   let fallbackReason = "";
@@ -825,7 +1326,7 @@ async function generateWithProvider({
   if (!finalReportData) {
     console.log("[generateWithProvider] LLM unavailable. Deterministic fallback used.");
     if (templateSlug === "commercial-building-energy-audit") {
-      finalReportData = buildCommercialBuildingEnergyAuditFallback({
+      finalReportData = baseReportData || buildCommercialBuildingEnergyAuditFallback({
         inputDetails,
         extractedExcelData,
         uploadedFiles,
@@ -841,11 +1342,14 @@ async function generateWithProvider({
   }
 
   if (finalReportData && templateSlug === "commercial-building-energy-audit") {
-    const rawProjects = finalReportData.projects || [];
-    const cleanedProjects = cleanAndDeduplicateProjects(rawProjects);
-    const groupedProjects = buildProjectGroups(cleanedProjects);
-    finalReportData.projects = cleanedProjects;
-    finalReportData.groupedProjects = groupedProjects;
+    finalReportData = mergeNarrativesIntoBaseReport(
+      baseReportData || buildCommercialBuildingEnergyAuditFallback({
+        inputDetails,
+        extractedExcelData,
+        uploadedFiles,
+      }),
+      finalReportData
+    );
   }
 
   return {
@@ -860,6 +1364,10 @@ async function generateWithProvider({
 module.exports = {
   generateWithProvider,
   buildCommercialBuildingEnergyAuditFallback,
+  buildCommercialBuildingEnergyAuditBaseData,
+  mergeNarrativesIntoBaseReport,
+  validateCommercialBuildingEnergyAuditSchema,
+  calculateReportAccuracyScore,
   cleanJsonResponse,
   generateWithOpenRouter,
   asArray,

@@ -4,6 +4,7 @@ import { isMobile } from "react-device-detect";
 import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
 import { useReactToPrint } from "react-to-print";
+import { toast } from "react-toastify";
 import CommercialBuildingEnergyAuditTemplate, {
   sampleCommercialBuildingEnergyAuditData,
 } from "@/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate";
@@ -968,7 +969,12 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
   const [copied, setCopied] = useState(false);
   const [qcResult, setQcResult] = useState(null);
   const [rechecking, setRechecking] = useState(false);
+  const [isWordExporting, setIsWordExporting] = useState(false);
+  const [wordExportMode, setWordExportMode] = useState(null);
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
   const reportRef = useRef(null);
+  const wordExportToastRef = useRef(null);
+  const pdfExportToastRef = useRef(null);
 
   const content = report?.outputContent || "";
   const shouldRenderEnergyAuditTemplate =
@@ -981,7 +987,6 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
     content: () => reportRef.current,
     documentTitle: "SEE-Tech_Detailed_Energy_Audit_Report",
     onPrintError: () => {
-      showToast("Failed to generate PDF, trying browser print...", "error");
       window.print();
     },
   });
@@ -1062,26 +1067,105 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
       showToast("Please generate the report before downloading Word.", "info");
       return;
     }
-    showToast(allowDraft ? "Generating Draft Word document..." : "Generating Word document...", "info", { autoClose: false });
-    const res = await Reports.downloadDocx(report.id, allowDraft);
-    if (res.success) {
-      showToast("Word document downloaded!", "success");
-      setQcResult(null);
-    } else {
-      if (isDev) {
-        console.error("[DOCX EXPORT ERROR]", res);
-      }
-      if (res.qcFailed) {
-        setQcResult(res);
-        showToast("Report requires review before final export. Please check QC details.", "error");
-      } else if (String(res.error || "").includes(".map is not a function")) {
-        showToast("Export failed because report data is not normalized. Please click Re-run Cleanup & QC.", "error");
+    if (isWordExporting) return;
+
+    setIsWordExporting(true);
+    setWordExportMode(allowDraft ? "draft" : "final");
+    wordExportToastRef.current = toast.loading(
+      allowDraft ? "Generating Draft Word document..." : "Generating Word document..."
+    );
+
+    try {
+      const res = await Reports.downloadDocx(report.id, allowDraft);
+      if (res.success) {
+        setQcResult(null);
+        toast.update(wordExportToastRef.current, {
+          render: "Word document downloaded.",
+          type: "success",
+          isLoading: false,
+          autoClose: 5000,
+          closeButton: true,
+        });
       } else {
-        showToast(
-          "Failed to generate Word document. Please check QC details or backend logs.",
-          "error"
-        );
+        if (isDev) {
+          console.error("[DOCX EXPORT ERROR]", res);
+        }
+        if (res.qcFailed) {
+          setQcResult(res);
+          toast.update(wordExportToastRef.current, {
+            render: "Report requires review before final export. Please check QC details.",
+            type: "error",
+            isLoading: false,
+            autoClose: 5000,
+            closeButton: true,
+          });
+        } else if (String(res.error || "").includes(".map is not a function")) {
+          toast.update(wordExportToastRef.current, {
+            render: "Export failed because report data is not normalized. Please click Re-run Cleanup & QC.",
+            type: "error",
+            isLoading: false,
+            autoClose: 5000,
+            closeButton: true,
+          });
+        } else {
+          toast.update(wordExportToastRef.current, {
+            render: "Failed to generate Word document. Please check QC details or backend logs.",
+            type: "error",
+            isLoading: false,
+            autoClose: 5000,
+            closeButton: true,
+          });
+        }
       }
+    } finally {
+      setIsWordExporting(false);
+      setWordExportMode(null);
+      wordExportToastRef.current = null;
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (isPdfExporting) return;
+
+    if (!reportRef.current) {
+      showToast("Please generate the report before downloading PDF.", "info");
+      return;
+    }
+
+    const qc = runFrontendQC();
+    if (qc.failed) {
+      setQcResult({ qcFailed: true, qcErrors: qc.errors });
+      showToast("Report requires review before final export. Please check QC details.", "error");
+      return;
+    }
+
+    setIsPdfExporting(true);
+    pdfExportToastRef.current = toast.loading("Preparing PDF...");
+
+    try {
+      await Promise.resolve(handlePrint?.());
+      toast.update(pdfExportToastRef.current, {
+        render: "PDF print dialog opened.",
+        type: "success",
+        isLoading: false,
+        autoClose: 3000,
+        closeButton: true,
+      });
+    } catch (error) {
+      if (isDev) {
+        console.error("[PDF EXPORT ERROR]", error);
+      }
+      window.print();
+      toast.update(pdfExportToastRef.current, {
+        render: "Failed to generate PDF, trying browser print...",
+        type: "warning",
+        isLoading: false,
+        autoClose: 5000,
+        closeButton: true,
+      });
+    } finally {
+      setIsPdfExporting(false);
+      pdfExportToastRef.current = null;
     }
   };
 
@@ -1165,41 +1249,35 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
             <>
                 {isDev && (
                   <button
+                    type="button"
                     onClick={() => handleDownloadWord(true)}
                     title="Download Draft Word"
+                    disabled={isWordExporting}
                     className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
                   >
                     <FileDoc size={18} weight="fill" />
-                    Download Draft Word
+                    {isWordExporting && wordExportMode === "draft" ? "Generating Draft..." : "Download Draft Word"}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => handleDownloadWord(false)}
                   title="Download as Word"
+                  disabled={isWordExporting}
                   className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all"
                 >
                   <FileDoc size={18} weight="fill" />
-                  Download Word
+                  {isWordExporting && wordExportMode === "final" ? "Generating Word..." : "Download Word"}
                 </button>
                 <button
-                  onClick={() => {
-                    if (reportRef.current) {
-                      const qc = runFrontendQC();
-                      if (qc.failed) {
-                        setQcResult({ qcFailed: true, qcErrors: qc.errors });
-                        showToast("Report requires review before final export. Please check QC details.", "error");
-                      } else {
-                        handlePrint();
-                      }
-                    } else {
-                      showToast("Please generate the report before downloading PDF.", "info");
-                    }
-                  }}
+                  type="button"
+                  onClick={handleDownloadPdf}
                   title="Download as PDF"
+                  disabled={isPdfExporting}
                   className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
                 >
                   <FilePdf size={18} weight="fill" />
-                  Download PDF
+                  {isPdfExporting ? "Preparing PDF..." : "Download PDF"}
                 </button>
             </>
           )}

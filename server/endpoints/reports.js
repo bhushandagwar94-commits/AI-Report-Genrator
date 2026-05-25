@@ -14,7 +14,34 @@ const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
 const multer = require("multer");
 const { ensureAiReportGeneratorSeeded } = require("../utils/aiReportGeneratorSeed");
-const { generateWithProvider, groupAndSortProjects, cleanAndDeduplicateProjects, buildProjectGroups, getProjectsForQC, normalizeReportForExport, runReportQC } = require("../services/llmProviderService");
+const {
+  generateWithProvider,
+  groupAndSortProjects,
+  cleanAndDeduplicateProjects,
+  buildProjectGroups,
+  getProjectsForQC,
+  normalizeReportForExport,
+  runReportQC,
+  buildCommercialBuildingEnergyAuditBaseData,
+  validateCommercialBuildingEnergyAuditSchema,
+  calculateReportAccuracyScore,
+} = require("../services/llmProviderService");
+
+const HIGH_RISK_FIELDS = new Set([
+  "projectTitle",
+  "system",
+  "energySaving",
+  "investment",
+  "annualSaving",
+  "payback",
+]);
+
+const MTL_BADDI_SIGNATURE_TITLES = [
+  "ee improvement in chiller using ct segregation",
+  "flow optimization for chw secondary pump",
+  "asb 70 dph servo motor project",
+  "compressed air measurement management",
+];
 
 function isValidProjectTitle(titleStr) {
   if (!titleStr || titleStr === "Data required") return false;
@@ -146,12 +173,14 @@ function normaliseGenerateBody(body) {
 const excelUpload = multer({ storage: multer.memoryStorage() }).array("files");
 
 const EXCEL_FIELD_SYNONYMS = {
+  rowNumber: ["sr", "srno", "sr no", "ecm no", "ecmno"],
   projectTitle: [
     "project name", "energy saving project", "ecm name", "project title", "recommendation", "saving opportunity", "project", "ecm"
   ],
   proposedIntervention: [
-    "project activities", "description"
+    "energy saving project", "project description", "description"
   ],
+  projectActivities: ["project activities", "activities", "scope of work"],
   system: ["section", "4 category", "category", "system", "area", "utility", "equipment type", "department", "project category"],
   investment: ["investment, rs.", "investment", "estimated investment", "project cost", "capex", "implementation cost", "investment rs", "cost", "inr"],
   annualSaving: [
@@ -159,8 +188,8 @@ const EXCEL_FIELD_SYNONYMS = {
     "saving rs", "rs/year", "annual benefit", "annual savings"
   ],
   energySaving: [
-    "saving kwh/year", "kwh/year", "energy saving kwh/year", "saving kwh", "electricity saving", "annual energy saving",
-    "units saving", "kwh"
+    "saving kwh/year", "energy saving kwh/year", "saving kwh", "electricity saving", "annual energy saving",
+    "energy savings (kwh/year)", "units saving"
   ],
   payback: ["payback period, years", "payback period", "simple payback", "roi", "payback", "years", "months"],
   priority: ["priority", "preority", "implementation priority", "ranking", "action priority", "priority phase i/ii/iii", "priority phase"],
@@ -170,7 +199,8 @@ const EXCEL_FIELD_SYNONYMS = {
   co2Reduction: ["co2", "carbon", "emission", "emission reduction", "tco2", "tco2/year"],
   emissionFactor: ["emission factor", "grid emission", "grid emission factor"],
   rationale: ["rational for energy saving project", "rationale", "rational", "saving principle"],
-  baselineDetails: ["notes (baseline details & others)", "baseline details", "baseline", "existing condition", "notes"]
+  baselineDetails: ["notes (baseline details & others)", "baseline details", "baseline", "existing condition", "notes"],
+  baselineConsumption: ["baseline consumption", "baseline kwhyear", "baselinekwhyear", "baseline kwh year", "baseline, kwh/year"]
 };
 
 const RECOMMENDED_EXCEL_COLUMNS = [
@@ -206,6 +236,7 @@ const EXCEL_COLUMN_LABELS = {
 };
 
 const EXCEL_FIELD_MATCH_ORDER = [
+  "rowNumber",
   "emissionFactor",
   "co2Reduction",
   "annualSaving",
@@ -219,7 +250,9 @@ const EXCEL_FIELD_MATCH_ORDER = [
   "location",
   "projectTitle",
   "proposedIntervention",
+  "projectActivities",
   "rationale",
+  "baselineConsumption",
   "baselineDetails"
 ];
 
@@ -260,10 +293,249 @@ function mapHeaderToField(header) {
   return null;
 }
 
-function mappedColumnsFromRow(values) {
+function levenshteinDistance(a = "", b = "") {
+  const left = String(a);
+  const right = String(b);
+  const rows = Array.from({ length: left.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= right.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= left.length; i++) {
+    for (let j = 1; j <= right.length; j++) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return rows[left.length][right.length];
+}
+
+function stringSimilarityScore(a = "", b = "") {
+  const left = normalizeExcelHeader(a);
+  const right = normalizeExcelHeader(b);
+  if (!left || !right) return 0;
+  if (left === right) return 100;
+  if (left.includes(right) || right.includes(left)) return 90;
+  const distance = levenshteinDistance(left, right);
+  const longest = Math.max(left.length, right.length) || 1;
+  return Math.max(0, Math.round((1 - distance / longest) * 100));
+}
+
+function getHeaderMatchForField(header, field) {
+  const normalizedHeader = normalizeExcelHeader(header);
+  const synonyms = EXCEL_FIELD_SYNONYMS[field] || [];
+  let best = {
+    fieldName: field,
+    matchedColumn: header,
+    confidence: 0,
+    matchType: "not_found",
+    approvedSynonym: "",
+  };
+
+  for (const synonym of synonyms) {
+    const normalizedSynonym = normalizeExcelHeader(synonym);
+    let confidence = 0;
+    let matchType = "not_found";
+    if (normalizedHeader === normalizedSynonym) {
+      confidence = 100;
+      matchType = "exact";
+    } else if (normalizedHeader.includes(normalizedSynonym) || normalizedSynonym.includes(normalizedHeader)) {
+      confidence = 90;
+      matchType = "synonym";
+    } else {
+      confidence = stringSimilarityScore(normalizedHeader, normalizedSynonym);
+      matchType = confidence >= 70 ? "fuzzy" : "not_found";
+    }
+
+    if (confidence > best.confidence) {
+      best = {
+        fieldName: field,
+        matchedColumn: header,
+        confidence,
+        matchType,
+        approvedSynonym: synonym,
+      };
+    }
+  }
+
+  return best;
+}
+
+function analyzeColumnSampleType(values = []) {
+  const normalizedValues = values
+    .map((value) => cellText(value).trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  let numericCount = 0;
+  let textCount = 0;
+  let durationCount = 0;
+  let projectStyleCount = 0;
+  let smallIntegerCount = 0;
+
+  normalizedValues.forEach((value) => {
+    const lower = value.toLowerCase();
+    if (/^-?[\d,]+(\.\d+)?$/.test(value.replace(/,/g, ""))) {
+      numericCount++;
+      const numericValue = Number(value.replace(/,/g, ""));
+      if (Number.isFinite(numericValue) && numericValue > 0 && numericValue < 100) {
+        smallIntegerCount++;
+      }
+    } else {
+      textCount++;
+    }
+
+    if (/^\d+\s*(to|-)?\s*\d*\s*(weeks|months|days|hrs|hours|yrs|years)$/i.test(lower)) {
+      durationCount++;
+    }
+
+    if (/(project|retrofit|improvement|optimization|saving|heater|compressor|pump|motor|chiller|fan|blower|dryer|insulation|servo|apfc)/i.test(lower)) {
+      projectStyleCount++;
+    }
+  });
+
+  return {
+    sampleValues: normalizedValues,
+    numericCount,
+    textCount,
+    durationCount,
+    projectStyleCount,
+    smallIntegerCount,
+    totalSamples: normalizedValues.length,
+  };
+}
+
+function validateColumnAgainstField(field, analysis) {
+  const samples = analysis.totalSamples || 0;
+  if (!samples) {
+    return { accepted: false, reason: "No usable sample values found for mapped column." };
+  }
+
+  const mostlyNumeric = analysis.numericCount >= Math.max(2, Math.ceil(samples * 0.6));
+  const mostlyText = analysis.textCount >= Math.max(2, Math.ceil(samples * 0.6));
+
+  switch (field) {
+    case "projectTitle":
+      if (!mostlyText || analysis.projectStyleCount === 0 || analysis.durationCount >= Math.ceil(samples / 2)) {
+        return { accepted: false, reason: "Project title column does not look like ECM/project titles." };
+      }
+      return { accepted: true, reason: "Column sample values look like ECM titles." };
+    case "system":
+      if (!mostlyText || analysis.numericCount > analysis.textCount) {
+        return { accepted: false, reason: "System/category column appears numeric or financially typed." };
+      }
+      return { accepted: true, reason: "Column sample values look like system/category text." };
+    case "energySaving":
+      if (!mostlyNumeric) {
+        return { accepted: false, reason: "Energy saving column is not predominantly numeric." };
+      }
+      if (analysis.smallIntegerCount >= Math.ceil(samples / 2)) {
+        return { accepted: false, reason: "Energy saving column resembles ECM numbers or serial numbers." };
+      }
+      return { accepted: true, reason: "Column sample values look like annual kWh savings." };
+    case "annualSaving":
+    case "investment":
+      if (!mostlyNumeric) {
+        return { accepted: false, reason: `${field} column is not predominantly numeric.` };
+      }
+      return { accepted: true, reason: "Column sample values look like financial figures." };
+    case "payback":
+      if (!mostlyNumeric) {
+        return { accepted: false, reason: "Payback column is not predominantly numeric." };
+      }
+      return { accepted: true, reason: "Column sample values look like payback values." };
+    case "equipmentCovered":
+      if (!mostlyText) {
+        return { accepted: false, reason: "Equipment column is not predominantly text." };
+      }
+      return { accepted: true, reason: "Column sample values look like equipment names." };
+    case "implementationDuration":
+      if (analysis.durationCount === 0 && !mostlyText) {
+        return { accepted: false, reason: "Implementation duration column does not resemble duration text." };
+      }
+      return { accepted: true, reason: "Column sample values look like duration text." };
+    default:
+      return { accepted: true, reason: "No additional type restrictions failed." };
+  }
+}
+
+function getColumnSampleValues(worksheet, headerRowNumber, columnIndex) {
+  const values = [];
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount && values.length < 8; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const cellValue = row.values?.[columnIndex];
+    if (isBlankExcelRow(row.values || []) || isTotalExcelRow(row.values || [])) continue;
+    if (cellText(cellValue).trim()) values.push(cellValue);
+  }
+  return values;
+}
+
+function buildHeaderConfidenceReport(worksheet, rowNumber, values) {
+  const fieldReports = {};
+  const fieldBestIndexes = {};
+  const detectedColumns = [];
+
+  values.forEach((value, index) => {
+    const header = cellText(value).trim();
+    if (!header) return;
+    detectedColumns.push(header);
+    let bestCandidate = null;
+
+    for (const field of EXCEL_FIELD_MATCH_ORDER) {
+      const candidate = getHeaderMatchForField(header, field);
+      if (!bestCandidate || candidate.confidence > bestCandidate.confidence) {
+        bestCandidate = candidate;
+      }
+    }
+
+    if (!bestCandidate) return;
+
+    const sampleValues = getColumnSampleValues(worksheet, rowNumber, index);
+    const analysis = analyzeColumnSampleType(sampleValues);
+    const fieldValidation = validateColumnAgainstField(bestCandidate.fieldName, analysis);
+    const threshold = HIGH_RISK_FIELDS.has(bestCandidate.fieldName) ? 85 : 70;
+    const accepted = bestCandidate.confidence >= threshold && fieldValidation.accepted;
+
+    const report = {
+      fieldName: bestCandidate.fieldName,
+      matchedColumn: header,
+      confidence: accepted ? bestCandidate.confidence : Math.min(bestCandidate.confidence, threshold - 1),
+      matchType: bestCandidate.matchType,
+      sampleValues: analysis.sampleValues,
+      accepted,
+      rejected: !accepted,
+      reason: fieldValidation.reason,
+      approvedSynonym: bestCandidate.approvedSynonym,
+    };
+
+    if (!fieldReports[bestCandidate.fieldName] || report.confidence > fieldReports[bestCandidate.fieldName].confidence) {
+      fieldReports[bestCandidate.fieldName] = report;
+      fieldBestIndexes[bestCandidate.fieldName] = index;
+    }
+  });
+
+  const mappedByIndex = {};
+  const mappedColumns = {};
+  Object.entries(fieldReports).forEach(([fieldName, report]) => {
+    if (!report.accepted) return;
+    const index = fieldBestIndexes[fieldName];
+    mappedByIndex[index] = fieldName;
+    mappedColumns[fieldName] = report.matchedColumn;
+  });
+
+  return { mappedByIndex, mappedColumns, detectedColumns, fieldReports };
+}
+
+function mappedColumnsFromRow(values, worksheet = null, rowNumber = 0) {
+  if (worksheet && rowNumber) {
+    return buildHeaderConfidenceReport(worksheet, rowNumber, values);
+  }
+
   const mappedByIndex = {};
   const mappedColumns = {};
   const detectedColumns = [];
+  const fieldReports = {};
 
   values.forEach((value, index) => {
     const header = cellText(value).trim();
@@ -273,9 +545,20 @@ function mappedColumnsFromRow(values) {
     if (!field || mappedColumns[field]) return;
     mappedByIndex[index] = field;
     mappedColumns[field] = header;
+    fieldReports[field] = {
+      fieldName: field,
+      matchedColumn: header,
+      confidence: 100,
+      matchType: "exact",
+      sampleValues: [],
+      accepted: true,
+      rejected: false,
+      reason: "Fallback header mapping without sheet context.",
+      approvedSynonym: header,
+    };
   });
 
-  return { mappedByIndex, mappedColumns, detectedColumns };
+  return { mappedByIndex, mappedColumns, detectedColumns, fieldReports };
 }
 
 function isBlankExcelRow(values) {
@@ -283,7 +566,326 @@ function isBlankExcelRow(values) {
 }
 
 function isTotalExcelRow(values) {
-  return values.some((value) => /\b(total|grand total|subtotal)\b/i.test(cellText(value)));
+  const meaningfulCells = values
+    .map((value) => cellText(value).trim())
+    .filter(Boolean);
+  if (!meaningfulCells.length) return false;
+  const leadingCells = meaningfulCells.slice(0, 3).join(" ").toLowerCase();
+  return /^(total|grand total|subtotal)\b/.test(leadingCells);
+}
+
+function normalizeProjectAuditTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\b(project|nos|no)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseNumberCell(value) {
+  const text = cellText(value).trim();
+  if (!text) return "";
+  const numeric = text.replace(/,/g, "");
+  return /^-?\d+(\.\d+)?$/.test(numeric) ? numeric : text;
+}
+
+function preferredFieldValue(rowMap, ...fields) {
+  for (const field of fields) {
+    const value = cellText(rowMap[field]).trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function buildStructuredList(text, primaryKey, secondaryKeys = []) {
+  const cleaned = String(text || "").replace(/\r/g, "\n").trim();
+  if (!cleaned) return [];
+
+  const segments = cleaned
+    .split(/\n+|(?<=\.)\s+(?=\d+\.)/g)
+    .map((segment) => segment.replace(/^\d+[\).\s-]*/, "").trim())
+    .filter(Boolean);
+
+  const rows = (segments.length ? segments : [cleaned]).map((segment, index) => {
+    const row = { [primaryKey]: segment };
+    secondaryKeys.forEach((key) => {
+      row[key] = segment;
+    });
+    if (!row.srNo) row.srNo = index + 1;
+    return row;
+  });
+
+  return rows;
+}
+
+function normalizeGroupTitle(rawValue) {
+  const text = String(rawValue || "").toLowerCase().trim();
+  if (!text) return "";
+  if (text.includes("cooling")) return "Cooling System Performance Improvement";
+  if (text.includes("production")) return "Production Machines";
+  if (text.includes("air compressor")) return "Air Compressors";
+  if (text.includes("auxiliary")) return "Auxiliary Systems & Machine Improvement";
+  return String(rawValue || "").trim();
+}
+
+function extractGroupTitleMap(workbook) {
+  const titleToGroup = {};
+
+  workbook.eachSheet((worksheet) => {
+    let currentGroupTitle = "";
+    let inGroupTable = false;
+
+    worksheet.eachRow((row) => {
+      const values = (row.values || []).slice(1).map((value) => cellText(value).trim());
+      const joined = values.join(" ").toLowerCase();
+
+      if (joined.includes("energy saving projects for")) {
+        currentGroupTitle = normalizeGroupTitle(values.find((value) => /energy saving projects for/i.test(value)));
+        inGroupTable = false;
+        return;
+      }
+
+      if (values.some((value) => /ecm name/i.test(value)) && values.some((value) => /investment/i.test(value))) {
+        inGroupTable = true;
+        return;
+      }
+
+      if (!currentGroupTitle || !inGroupTable) return;
+      if (values.some((value) => /^total$/i.test(value))) {
+        inGroupTable = false;
+        return;
+      }
+
+      const ecmName = values[1];
+      if (!ecmName || /^ecm name$/i.test(ecmName)) return;
+      titleToGroup[normalizeProjectAuditTitle(ecmName)] = currentGroupTitle;
+    });
+  });
+
+  return titleToGroup;
+}
+
+function scoreAuthoritativeHeader(mapping) {
+  const required = ["projectTitle", "equipmentCovered", "system", "energySaving", "annualSaving", "investment", "payback"];
+  const optional = ["baselineDetails", "rationale", "implementationDuration", "priority", "proposedIntervention"];
+  let score = required.reduce((sum, field) => {
+    const confidence = mapping.fieldReports?.[field]?.accepted ? mapping.fieldReports[field].confidence : 0;
+    return sum + Math.round(confidence / 10);
+  }, 0);
+  score += optional.reduce((sum, field) => {
+    const confidence = mapping.fieldReports?.[field]?.accepted ? mapping.fieldReports[field].confidence : 0;
+    return sum + Math.round(confidence / 25);
+  }, 0);
+  return score;
+}
+
+function detectDatasetProfile(projects = []) {
+  const normalizedTitles = projects.map((project) => normalizeProjectAuditTitle(project.projectTitle));
+  const matchedSignatureCount = MTL_BADDI_SIGNATURE_TITLES.filter((title) =>
+    normalizedTitles.some((projectTitle) => projectTitle.includes(title))
+  ).length;
+
+  if (matchedSignatureCount >= 3) {
+    return {
+      datasetName: "MTL Baddi ECM",
+      expectedEcmCount: 22,
+      expectedGroups: {
+        "Cooling System Performance Improvement": 7,
+        "Production Machines": 8,
+        "Air Compressors": 2,
+        "Auxiliary Systems & Machine Improvement": 5,
+      },
+    };
+  }
+
+  return null;
+}
+
+function extractAuthoritativeExcelProjects(workbook) {
+  const groupTitleMap = extractGroupTitleMap(workbook);
+  let bestSheet = null;
+  let bestHeader = null;
+
+  workbook.eachSheet((worksheet) => {
+    worksheet.eachRow((row, rowNumber) => {
+      const values = row.values || [];
+      const mapping = mappedColumnsFromRow(values, worksheet, rowNumber);
+      const score = scoreAuthoritativeHeader(mapping);
+      if (score > (bestHeader?.score || 0)) {
+        bestHeader = { worksheet, rowNumber, score, ...mapping };
+        bestSheet = worksheet;
+      }
+    });
+  });
+
+  if (!bestHeader || !bestSheet) {
+    return {
+      sheetName: "",
+      headerRow: 0,
+      rawRowCount: 0,
+      projects: [],
+      auditRows: [],
+      removedRows: [],
+      mergedCount: 0,
+      groupCounts: {},
+      mappingConfidence: [],
+      datasetProfile: null,
+    };
+  }
+
+  const auditRows = [];
+  const removedRows = [];
+  const projects = [];
+
+  bestSheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= bestHeader.rowNumber) return;
+    const values = row.values || [];
+    if (isBlankExcelRow(values) || isTotalExcelRow(values)) return;
+
+    const rowMap = {};
+    Object.entries(bestHeader.mappedByIndex).forEach(([idx, field]) => {
+      rowMap[field] = values[Number(idx)];
+    });
+
+    const projectTitle = preferredFieldValue(rowMap, "projectTitle", "proposedIntervention");
+    const equipmentCovered = preferredFieldValue(rowMap, "equipmentCovered");
+    const system = preferredFieldValue(rowMap, "system");
+    const proposedIntervention = preferredFieldValue(rowMap, "proposedIntervention", "projectTitle");
+    const rationale = preferredFieldValue(rowMap, "rationale");
+    const baselineDetails = preferredFieldValue(rowMap, "baselineDetails");
+    const baselineConsumption = preferredFieldValue(rowMap, "baselineConsumption");
+    const energySaving = preferredFieldValue(rowMap, "energySaving");
+    const annualSaving = preferredFieldValue(rowMap, "annualSaving");
+    const investment = preferredFieldValue(rowMap, "investment");
+    const payback = preferredFieldValue(rowMap, "payback");
+    const implementationDuration = preferredFieldValue(rowMap, "implementationDuration");
+    const priority = preferredFieldValue(rowMap, "priority");
+    const projectActivities = preferredFieldValue(rowMap, "projectActivities");
+    const rowNumberText = preferredFieldValue(rowMap, "rowNumber");
+
+    const audit = {
+      rowNumber,
+      projectTitleSourceColumn: bestHeader.mappedColumns.projectTitle || "",
+      projectTitle,
+      equipmentName: equipmentCovered,
+      systemCategory: system,
+      confidence: Object.values(bestHeader.fieldReports || {}).reduce((sum, item) => sum + (item.accepted ? item.confidence : 0), 0),
+      missingCriticalFields: [],
+      investment,
+      annualSaving,
+      energySaving,
+      payback,
+      duration: implementationDuration,
+      mappedValues: {
+        projectNo: rowNumberText,
+        projectTitle,
+        equipmentCovered,
+        system,
+        energySaving,
+        annualSaving,
+        investment,
+        payback,
+        implementationDuration,
+      },
+      action: "removed",
+      reason: "",
+    };
+
+    if (!projectTitle) audit.missingCriticalFields.push("projectTitle");
+    if (!energySaving && !annualSaving && !investment && !payback) {
+      audit.missingCriticalFields.push("financialOrSavingValue");
+    }
+
+    if (!projectTitle) {
+      audit.reason = "Missing project title.";
+      auditRows.push(audit);
+      removedRows.push(audit);
+      return;
+    }
+
+    if (!isValidProjectTitle(projectTitle)) {
+      audit.reason = "Invalid project title.";
+      auditRows.push(audit);
+      removedRows.push(audit);
+      return;
+    }
+
+    if (/^[\d.,]+$/.test(system) || /^[\d.,]+$/.test(projectTitle)) {
+      audit.reason = "Numeric-only value detected in title or system.";
+      auditRows.push(audit);
+      removedRows.push(audit);
+      return;
+    }
+
+    if (!energySaving && !annualSaving && !investment && !payback) {
+      audit.reason = "Row does not contain any usable saving or financial value.";
+      auditRows.push(audit);
+      removedRows.push(audit);
+      return;
+    }
+
+    const normalizedTitle = normalizeProjectAuditTitle(projectTitle);
+    const explicitGroupTitle = groupTitleMap[normalizedTitle] || "";
+
+    const project = {
+      sourceRowNumber: rowNumber,
+      projectNo: rowNumberText || String(projects.length + 1),
+      projectTitle,
+      equipmentCovered: equipmentCovered || "Data required",
+      system: system || explicitGroupTitle || "Data required",
+      groupTitle: explicitGroupTitle,
+      proposedIntervention,
+      proposedProjectDescription: proposedIntervention || projectTitle,
+      rationale: rationale || "Data required",
+      rationaleForEnergySaving: rationale || "Data required",
+      baselineDetails: baselineDetails || "Data required",
+      existingOperatingCondition: baselineDetails || "Data required",
+      existingSystemDescription: baselineDetails || "Data required",
+      baselineConsumption,
+      expectedEnergySaving: parseNumberCell(energySaving),
+      expectedAnnualCostSaving: parseNumberCell(annualSaving),
+      estimatedInvestment: parseNumberCell(investment),
+      simplePaybackPeriod: parseNumberCell(payback),
+      implementationDuration: implementationDuration || "Data required",
+      implementationPriority: priority || "Data required",
+      projectActivitiesText: projectActivities || "Data required",
+      scopeOfWork: buildStructuredList(projectActivities, "scopeItem"),
+      keyActivities: buildStructuredList(projectActivities, "activity", ["details"]),
+      baselineData: baselineConsumption
+        ? [{ parameter: "Baseline consumption", unit: "kWh/year", value: parseNumberCell(baselineConsumption) }]
+        : [],
+    };
+
+    audit.action = "kept";
+    audit.reason = "Mapped from authoritative Excel columns.";
+    auditRows.push(audit);
+    projects.push(project);
+  });
+
+  const groupCounts = {};
+  projects.forEach((project) => {
+    const key = project.groupTitle || project.system || "Ungrouped";
+    groupCounts[key] = (groupCounts[key] || 0) + 1;
+  });
+  const datasetProfile = detectDatasetProfile(projects);
+
+  const rawProjectRowCount = auditRows.filter(
+    (row) => row.projectTitle || row.reason === "Invalid project title."
+  ).length;
+
+  return {
+    sheetName: bestSheet.name,
+    headerRow: bestHeader.rowNumber,
+    rawRowCount: rawProjectRowCount,
+    projects,
+    auditRows,
+    removedRows,
+    mergedCount: 0,
+    groupCounts,
+    mappingConfidence: Object.values(bestHeader.fieldReports || {}),
+    datasetProfile,
+  };
 }
 
 function generateRecommendations(mappedColumns) {
@@ -990,9 +1592,17 @@ function reportEndpoints(app) {
               try {
                 const workbook = new ExcelJS.Workbook();
                 await workbook.xlsx.readFile(originalFilePath);
+                const extraction = extractAuthoritativeExcelProjects(workbook);
+                extractedExcelData.projects = extraction.projects;
+                extractedExcelData.extractionAudit = extraction.auditRows;
+                extractedExcelData.removedRows = extraction.removedRows;
+                extractedExcelData.groupCounts = extraction.groupCounts;
+                extractedExcelData.mappingConfidence = extraction.mappingConfidence;
+                extractedExcelData.datasetProfile = extraction.datasetProfile;
+                extractedExcelData.sourceSheet = extraction.sheetName;
+                extractedExcelData.sourceHeaderRow = extraction.headerRow;
 
                 workbook.eachSheet((worksheet) => {
-                  let headerMap = {};
                   worksheet.eachRow((row) => {
                     const values = row.values || [];
                     const rowStr = values.map(v => String(v || '').toLowerCase()).join(' ');
@@ -1008,80 +1618,6 @@ function reportEndpoints(app) {
                     if (rowStr.includes('average tariff')) {
                       const val = values.find(v => typeof v === 'number');
                       if (val) extractedExcelData.averageTariff = val;
-                    }
-
-                    if (
-                      rowStr.includes('project') ||
-                      rowStr.includes('ecm') ||
-                      rowStr.includes('investment') ||
-                      rowStr.includes('co2') ||
-                      rowStr.includes('carbon') ||
-                      rowStr.includes('emission') ||
-                      rowStr.includes('tco2')
-                    ) {
-                      values.forEach((v, idx) => {
-                        const s = String(v || '').toLowerCase();
-                        if (s === 'project lead time' || s.includes('duration') || s.includes('timeline') || s.includes('weeks') || s.includes('months')) headerMap[idx] = 'implementationDuration';
-                        else if (s.includes('project name') || s.includes('project title') || s.includes('ecm name') || s.includes('energy conservation measure') || s.includes('saving opportunity') || s.includes('recommendation') || s.includes('proposed energy saving project') || s === 'project' || s === 'ecm' || s === 'title') headerMap[idx] = 'projectTitle';
-                        else if (s.includes('system') || s.includes('category') || s.includes('group')) headerMap[idx] = 'system';
-                        else if (s.includes('emission factor') || s.includes('grid emission')) headerMap[idx] = 'carbonFootprint.emissionFactor';
-                        else if (s.includes('co2') || s.includes('carbon') || s.includes('emission') || s.includes('tco2')) headerMap[idx] = 'carbonFootprint.estimatedCO2Reduction';
-                        else if (s === 'investment' || s.includes('investment, rs') || s.includes('investment rs') || s.includes('estimated investment') || s.includes('project cost') || s.includes('capex') || s.includes('implementation cost')) headerMap[idx] = 'investment';
-                        else if (s.includes('annual saving') || s.includes('cost saving')) headerMap[idx] = 'annualSaving';
-                        else if (s.includes('energy saving') || s.includes('saving kwh/year') || s.includes('saving')) headerMap[idx] = 'saving';
-                        else if (s.includes('payback')) headerMap[idx] = 'payback';
-                        else if (s.includes('priority')) headerMap[idx] = 'priority';
-                        else if (s.includes('notes')) headerMap[idx] = 'baselineDetails';
-                      });
-                    } else if (Object.keys(headerMap).length >= 2) {
-                      const project = {};
-                      let hasData = false;
-                      Object.keys(headerMap).forEach(idx => {
-                        const val = values[idx];
-                        if (val) {
-                          const field = headerMap[idx];
-                          // Do not map Notes to investment
-                          if (field === 'investment' && headerMap[idx] === 'baselineDetails') return;
-
-                          // Only map numeric values to numeric fields if possible
-                          if (['saving', 'annualSaving', 'investment', 'payback'].includes(field)) {
-                             if (typeof val === 'object' && val.result !== undefined) {
-                               project[field] = project[field] ? project[field] : String(val.result);
-                               hasData = true;
-                             } else if (typeof val === 'number') {
-                               project[field] = String(val);
-                               hasData = true;
-                             } else if (typeof val === 'string' && val.trim() !== '') {
-                               // Only overwrite if it wasn't already set by a numeric column
-                               if (!project[field] || isNaN(Number(project[field]))) {
-                                 project[field] = val;
-                                 hasData = true;
-                               }
-                             }
-                          } else if (field.startsWith('carbonFootprint.')) {
-                            project.carbonFootprint = project.carbonFootprint || {};
-                            project.carbonFootprint[field.split('.')[1]] = typeof val === 'object' ? String(val.result || val.text || val) : String(val);
-                            hasData = true;
-                          } else {
-                            project[field] = typeof val === 'object' ? String(val.result || val.text || val) : String(val);
-                            hasData = true;
-                          }
-                        }
-                      });
-                      
-                      // Title Validation
-                      if (hasData && project.projectTitle) {
-                        if (!isValidProjectTitle(project.projectTitle)) {
-                          // Shift to duration if it looks like one, clear title
-                          project.implementationDuration = project.projectTitle;
-                          project.projectTitle = "Data required";
-                        }
-                        
-                        if (project.projectTitle.toLowerCase() !== 'total' && !project.projectTitle.toLowerCase().includes('project')) {
-                          project.projectNo = `Project ${extractedExcelData.projects.length + 1}`;
-                          extractedExcelData.projects.push(project);
-                        }
-                      }
                     }
                   });
                 });
@@ -1102,6 +1638,16 @@ function reportEndpoints(app) {
         let finalReportContent = "{}";
         let providerUsed = "none";
         let fallbackReason = "";
+        let schemaValidation = { success: true, errors: [] };
+        let qcResult = { qcPassed: true, qcErrors: [], qcWarnings: [], summary: {} };
+        let accuracyResult = { score: 0, passed: false, breakdown: [], qcSummary: {} };
+        const deterministicBaseReportData = template.slug === "commercial-building-energy-audit"
+          ? buildCommercialBuildingEnergyAuditBaseData({
+              inputDetails,
+              extractedExcelData,
+              uploadedFiles,
+            })
+          : null;
         
         let draftSystemPrompt;
         if (template.slug === "commercial-building-energy-audit") {
@@ -1138,6 +1684,26 @@ CRITICAL DIRECTIVE ON NARRATIVE GENERATION:
 CRITICAL DIRECTIVE ON EXCEL NUMBERS:
 1. You MUST NOT overwrite, change, or invent numeric values for 'expectedEnergySaving', 'expectedAnnualCostSaving', 'estimatedInvestment', 'simplePaybackPeriod'.
 2. The provided 'Extracted Excel Data' is the absolute mathematical truth. Use it verbatim.
+3. The LLM MUST NOT create, remove, merge, split, reorder, or rename ECMs.
+4. The authoritative Excel projects array is the only valid source for:
+   - ECM count
+   - project number
+   - project title
+   - equipment covered
+   - system/category/group
+   - energy saving
+   - annual cost saving
+   - investment
+   - payback
+   - implementation duration
+5. You may only improve narrative wording using these Excel-derived fields:
+   - proposedProjectDescription
+   - rationaleForEnergySaving
+   - keyActivities
+   - scopeOfWork
+   - existingSystemDescription
+   - existingOperatingCondition
+6. When Excel narrative text exists, do not replace it with generic wording.
 
 ### System Prompt & Prompt Instructions:
 ${template.prompt}
@@ -1177,6 +1743,12 @@ ${consolidatedText || "[No document files uploaded — use form details only.]"}
 ${template.slug === "commercial-building-energy-audit" ? `### Extracted Excel Data (Structured):
 ${JSON.stringify(extractedExcelData, null, 2)}
 
+### Deterministic Base Report JSON (Excel Truth):
+${JSON.stringify(deterministicBaseReportData, null, 2)}
+
+### Important Instruction:
+Return only narrative enrichment JSON for the deterministic base report. Do not return or modify project counts, equipment, system, savings, investment, payback, duration, or grouping.
+
 ### Uploaded Image Metadata:
 ${JSON.stringify(imageMetadata, null, 2)}` : ""}
 
@@ -1193,38 +1765,15 @@ Please generate the final technical report now:`;
             inputDetails,
             extractedExcelData,
             uploadedFiles,
-            templateConfig: template
+            templateConfig: template,
+            baseReportData: deterministicBaseReportData,
           });
           
           if (template.slug === "commercial-building-energy-audit") {
-            if (providerResult.reportData && Array.isArray(providerResult.reportData.projects) && extractedExcelData && Array.isArray(extractedExcelData.projects)) {
-              const llmProjects = providerResult.reportData.projects;
-              const deterministicProjects = extractedExcelData.projects;
-              
-              const llmByNo = {};
-              const llmByTitle = {};
-              for (const lp of llmProjects) {
-                 if (lp.projectNo) llmByNo[lp.projectNo] = lp;
-                 if (lp.projectTitle) llmByTitle[String(lp.projectTitle).toLowerCase().trim()] = lp;
-              }
-              
-              const mergedProjects = [];
-              for (const dp of deterministicProjects) {
-                 const normTitle = String(dp.projectTitle).toLowerCase().trim();
-                 const lp = llmByNo[dp.projectNo] || llmByTitle[normTitle] || {};
-                 
-                 const merged = {
-                    ...lp,
-                    ...dp,
-                    projectTitle: dp.projectTitle
-                 };
-                 mergedProjects.push(merged);
-              }
-              
-              const cleaned = cleanAndDeduplicateProjects(mergedProjects);
-              providerResult.reportData.projects = cleaned;
-              providerResult.reportData.groupedProjects = buildProjectGroups(cleaned);
-            }
+            providerResult.reportData = normalizeReportForExport(providerResult.reportData);
+            schemaValidation = validateCommercialBuildingEnergyAuditSchema(providerResult.reportData);
+            qcResult = runReportQC(providerResult.reportData);
+            accuracyResult = calculateReportAccuracyScore(providerResult.reportData);
             finalReportContent = JSON.stringify(providerResult.reportData);
           } else {
             // For markdown reports, it's just content
@@ -1249,10 +1798,50 @@ Provider Used: ${providerUsed}
 Fallback Reason: ${fallbackReason}
 Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
 
+        if (template.slug === "commercial-building-energy-audit" && extractedExcelData.extractionAudit) {
+          const firstFiveAudit = extractedExcelData.extractionAudit.slice(0, 5);
+          console.log(`[EXCEL EXTRACTION AUDIT]
+Source Sheet: ${extractedExcelData.sourceSheet}
+Header Row: ${extractedExcelData.sourceHeaderRow}
+Raw Row Count: ${extractedExcelData.extractionAudit.length}
+Extracted ECM Count: ${extractedExcelData.projects.length}
+Removed Row Count: ${extractedExcelData.removedRows?.length || 0}
+Group Counts: ${JSON.stringify(extractedExcelData.groupCounts || {}, null, 2)}
+Column Mapping Confidence: ${JSON.stringify(extractedExcelData.mappingConfidence || [], null, 2)}
+Dataset Profile: ${JSON.stringify(extractedExcelData.datasetProfile || null, null, 2)}
+First Five Rows: ${JSON.stringify(firstFiveAudit, null, 2)}
+Removed Rows: ${JSON.stringify(extractedExcelData.removedRows || [], null, 2)}`);
+        }
+        if (template.slug === "commercial-building-energy-audit") {
+          console.log(`[REPORT SCHEMA VALIDATION]
+Schema Passed: ${schemaValidation.success}
+Schema Errors: ${JSON.stringify(schemaValidation.errors || [], null, 2)}
+QC Passed: ${qcResult.qcPassed}
+QC Summary: ${JSON.stringify(qcResult.summary || {}, null, 2)}
+QC Errors: ${JSON.stringify(qcResult.qcErrors || [], null, 2)}
+QC Warnings: ${JSON.stringify(qcResult.qcWarnings || [], null, 2)}
+Accuracy Score: ${accuracyResult.score}
+Accuracy Passed: ${accuracyResult.passed}
+Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`);
+        }
+
         await prisma.generated_reports.update({
           where: { id: reportRecord.id },
           data: {
-            extractedData: JSON.stringify({ providerUsed, fallbackReason }),
+            extractedData: JSON.stringify({
+              providerUsed,
+              fallbackReason,
+              extractionAudit: extractedExcelData.extractionAudit || [],
+              removedRows: extractedExcelData.removedRows || [],
+              groupCounts: extractedExcelData.groupCounts || {},
+              mappingConfidence: extractedExcelData.mappingConfidence || [],
+              datasetProfile: extractedExcelData.datasetProfile || null,
+              sourceSheet: extractedExcelData.sourceSheet || "",
+              sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
+              schemaValidation,
+              qcResult,
+              accuracyResult,
+            }),
             missingData:   JSON.stringify([]),
           },
         });
@@ -1402,10 +1991,12 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
         });
 
         const qcResult = runReportQC(reportData);
+        const accuracyResult = calculateReportAccuracyScore(reportData);
         
         response.status(200).json({
           success: true,
           ...qcResult,
+          accuracyResult,
           reportData
         });
       } catch (e) {
@@ -1449,16 +2040,20 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
 
         // Quality Check (QC) Gate
         const qcResult = runReportQC(reportData);
+        const accuracyResult = calculateReportAccuracyScore(reportData);
         const allowDraft = request.query.allowDraft === "true";
         const isDev = process.env.NODE_ENV === "development" || process.env.VITE_ALLOW_DRAFT_EXPORT === "true";
 
-        if (!qcResult.qcPassed) {
-          console.error(`[QC FAILED] Report ID: ${id}`, JSON.stringify(qcResult, null, 2));
+        if (!qcResult.qcPassed || !accuracyResult.passed) {
+          console.error(`[QC FAILED] Report ID: ${id}`, JSON.stringify({ qcResult, accuracyResult }, null, 2));
           if (!(allowDraft && isDev)) {
             return response.status(400).json({ 
               qcFailed: true, 
-              error: "Report requires review before final export.",
-              ...qcResult
+              error: !qcResult.qcPassed
+                ? "Report requires review before final export."
+                : "Report accuracy score is below the required threshold for final export.",
+              ...qcResult,
+              accuracyResult,
             });
           }
         }
@@ -1489,4 +2084,4 @@ Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
   );
 }
 
-module.exports = { reportEndpoints };
+module.exports = { reportEndpoints, extractAuthoritativeExcelProjects };

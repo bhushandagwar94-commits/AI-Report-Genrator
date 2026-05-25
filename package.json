@@ -20,6 +20,7 @@
   },
   "scripts": {
     "test": "jest",
+    "test:mtl-baddi": "node scripts/test-mtl-baddi.cjs",
     "bootstrap:dev": "node scripts/bootstrap-dev.js",
     "verify:setup": "node scripts/verify-setup.js",
     "lint": "cd server && yarn lint && cd ../frontend && yarn lint && cd ../collector && yarn lint",
