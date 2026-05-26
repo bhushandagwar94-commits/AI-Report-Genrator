@@ -110,6 +110,36 @@ const TEMPLATE_CATALOG = [
 ];
 
 const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG = "commercial-building-energy-audit";
+const USE_AI_DURING_GENERATION =
+  import.meta.env.VITE_USE_AI_DURING_GENERATION !== "false";
+const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 120000);
+const OPENROUTER_MODELS = (
+  import.meta.env.VITE_OPENROUTER_MODELS ||
+  "openai/gpt-oss-120b:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free"
+)
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function createAiProgressState() {
+  return {
+    active: false,
+    modelIndex: 0,
+    modelName: OPENROUTER_MODELS[0] || "",
+    totalModels: OPENROUTER_MODELS.length,
+    remainingMs: OPENROUTER_TIMEOUT_MS,
+    elapsedMs: 0,
+    timeoutMs: OPENROUTER_TIMEOUT_MS,
+    message: OPENROUTER_MODELS.length ? `Trying AI model 1/${OPENROUTER_MODELS.length}` : "",
+  };
+}
 
 function isCommercialBuildingEnergyAuditTemplate(template) {
   return [
@@ -793,7 +823,10 @@ function Step4({
   onGenerate,
   onPreviewSample,
   generating,
+  showSlowWarning,
   hasInvalidExcel,
+  aiProgress,
+  showAiProgress,
 }) {
   const filledDetails = Object.entries(details).filter(([k, v]) => k !== "outputFormat" && v?.trim?.());
   const labelMap = {
@@ -944,6 +977,49 @@ function Step4({
       {/* Progress bar */}
       {generating && (
         <div className="flex flex-col items-center gap-y-2 -mt-2">
+          {showAiProgress && aiProgress.active && (
+            <div className="ai-generation-progress-card w-full animate-fade-in">
+              <div className="ai-progress-title">AI is enhancing your report...</div>
+              <div className="ai-progress-row">
+                <span>Status</span>
+                <strong>{aiProgress.message}</strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Current model</span>
+                <strong>
+                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}: {aiProgress.modelName || "Waiting..."}
+                </strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Time remaining for this model</span>
+                <strong>{formatDuration(aiProgress.remainingMs)}</strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Total elapsed time</span>
+                <strong>{formatDuration(aiProgress.elapsedMs)}</strong>
+              </div>
+              <div className="ai-progress-bar">
+                <div
+                  className="ai-progress-bar-fill"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      ((aiProgress.timeoutMs - aiProgress.remainingMs) / aiProgress.timeoutMs) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <p className="ai-progress-note">
+                AI generation may take a few minutes because free models can be queued.
+              </p>
+            </div>
+          )}
+          {showSlowWarning && !showAiProgress && (
+            <div className="flex items-center gap-x-2 text-amber-400 text-sm mb-1 px-3 py-1.5 bg-amber-400/10 border border-amber-400/20 rounded-lg animate-fade-in">
+              <Info size={16} />
+              <span>AI generation may take a few minutes because free models can be queued.</span>
+            </div>
+          )}
           <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full"
@@ -979,7 +1055,19 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
   const content = report?.outputContent || "";
   const shouldRenderEnergyAuditTemplate =
     isCommercialBuildingEnergyAuditTemplate(selectedTemplate);
+  const providerUsed =
+    report?.providerUsed ||
+    generatedReportData?.providerUsed ||
+    generatedReportData?.metadata?.providerUsed ||
+    generatedReportData?.qcSummary?.providerUsed ||
+    "";
+  const isFallbackMode = providerUsed === "deterministic-fallback" || providerUsed === "deterministic";
   const reportData = generatedReportData || sampleCommercialBuildingEnergyAuditData;
+  const showFieldFlags =
+    import.meta.env.DEV &&
+    import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
+  const fieldFlags = reportData?.fieldFlags || {};
+  const missingFieldSummary = reportData?.missingFieldSummary || [];
 
   const isDev = import.meta.env.MODE === "development" || import.meta.env.VITE_ALLOW_DRAFT_EXPORT === "true";
 
@@ -1197,21 +1285,31 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
   return (
     <div className="animate-fade-in flex flex-col gap-y-5">
       {/* Header row */}
-      <div className="flex items-start justify-between gap-x-4">
-        <div>
-          <div className="flex items-center gap-x-2 mb-0.5">
-            <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
+      <div className="report-ready-header">
+        <div className="report-ready-status">
+          <div className="report-ready-title-row">
+            <div className="status-dot w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
               <CheckCircle size={12} weight="fill" className="text-green-400" />
             </div>
             <h2 className="text-xl font-bold text-white">Report Ready</h2>
+            {isFallbackMode && (
+              <span className="ml-3 px-2.5 py-1 rounded-full bg-red-900/40 text-red-400 text-xs border border-red-500/30 flex items-center gap-x-1.5 font-semibold shadow-[0_0_15px_rgba(239,68,68,0.15)]">
+                Deterministic report
+              </span>
+            )}
           </div>
-          <p className="text-sm text-white/45">
+          <p className="report-ready-meta text-sm text-white/45">
             {content.split("\n").length} lines generated • {(content.length / 1024).toFixed(1)} KB
           </p>
+          {isDev && report?.modelUsed && (
+            <p className="text-xs text-white/30 mt-1">
+              Model used: {report.modelUsed}
+            </p>
+          )}
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-x-2 shrink-0">
+        <div className="report-export-actions">
           {!shouldRenderEnergyAuditTemplate && (
             <>
               <button
@@ -1253,7 +1351,7 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
                     onClick={() => handleDownloadWord(true)}
                     title="Download Draft Word"
                     disabled={isWordExporting}
-                    className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
+                    className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
                   >
                     <FileDoc size={18} weight="fill" />
                     {isWordExporting && wordExportMode === "draft" ? "Generating Draft..." : "Download Draft Word"}
@@ -1264,7 +1362,7 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
                   onClick={() => handleDownloadWord(false)}
                   title="Download as Word"
                   disabled={isWordExporting}
-                  className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all"
+                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all"
                 >
                   <FileDoc size={18} weight="fill" />
                   {isWordExporting && wordExportMode === "final" ? "Generating Word..." : "Download Word"}
@@ -1274,7 +1372,7 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
                   onClick={handleDownloadPdf}
                   title="Download as PDF"
                   disabled={isPdfExporting}
-                  className="flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
+                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
                 >
                   <FilePdf size={18} weight="fill" />
                   {isPdfExporting ? "Preparing PDF..." : "Download PDF"}
@@ -1382,9 +1480,11 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
 
         {/* Report content */}
         {shouldRenderEnergyAuditTemplate ? (
-          <div className="max-h-[720px] overflow-y-auto bg-white">
-            <div ref={reportRef} className="report-print-area">
-              <CommercialBuildingEnergyAuditTemplate data={reportData} />
+          <div className="report-viewer">
+            <div className="report-page-shell">
+              <div ref={reportRef} className="report-print-area">
+                <CommercialBuildingEnergyAuditTemplate data={reportData} />
+              </div>
             </div>
           </div>
         ) : (
@@ -1393,6 +1493,76 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
           </pre>
         )}
       </div>
+
+      {showFieldFlags && shouldRenderEnergyAuditTemplate && (
+        <>
+          <div className="field-flags-debug-panel bg-black/40 border border-white/10 rounded-xl p-4 mt-2">
+            <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
+              Field Flags Debug
+            </p>
+            <div className="max-h-72 overflow-y-auto space-y-1.5 tool-call-scrollbar">
+              {Object.entries(fieldFlags).map(([path, meta]) => (
+                <div key={path} className="flex items-start justify-between gap-3 text-xs bg-white/5 p-2 rounded">
+                  <div className="min-w-0">
+                    <div className="text-white/90 font-mono break-all">{path}</div>
+                    <div className="text-white/45 mt-1">
+                      {meta.label} · {meta.source} · {meta.message}
+                    </div>
+                  </div>
+                  <span className={`field-flag-badge flag-${meta.flag} shrink-0`}>{meta.flag}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="missing-field-debug-panel bg-black/40 border border-white/10 rounded-xl p-4 mt-2">
+            <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
+              Missing Field Summary
+            </p>
+            {missingFieldSummary.length > 0 ? (
+              <div className="max-h-60 overflow-y-auto space-y-1.5 tool-call-scrollbar">
+                {missingFieldSummary.map((item) => (
+                  <div key={item.path} className="text-xs bg-white/5 p-2 rounded">
+                    <div className="text-white/90 font-mono break-all">{item.path}</div>
+                    <div className="text-white/45 mt-1">
+                      {item.label} · {item.sourceExpected} · {item.message}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-white/55">No missing flagged fields.</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Admin/Debug Provider Attempts Panel */}
+      {isDev && report?.providerAttempts?.length > 0 && (
+        <div className="bg-black/40 border border-white/10 rounded-xl p-4 mt-2">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
+            Provider Attempts Debug
+          </p>
+          <ul className="space-y-1.5">
+            {report.providerAttempts.map((attempt, idx) => (
+              <li key={idx} className="flex flex-col text-xs bg-white/5 p-2 rounded">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/50 font-medium">
+                    Model {attempt.order || idx + 1}:
+                  </span>
+                  <span className={attempt.status === "success" ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                    {attempt.status.toUpperCase()}
+                  </span>
+                  <span className="text-white/80 font-mono">{attempt.model}</span>
+                </div>
+                {attempt.reason && (
+                  <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Start over */}
       <button
@@ -1418,8 +1588,66 @@ export default function PublicReports() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [showSlowWarning, setShowSlowWarning] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [generatedReportData, setGeneratedReportData] = useState(null);
+  const [aiProgress, setAiProgress] = useState(createAiProgressState());
+
+  const showAiProgress =
+    USE_AI_DURING_GENERATION &&
+    isCommercialBuildingEnergyAuditTemplate(selectedTemplate) &&
+    OPENROUTER_MODELS.length > 0;
+
+  useEffect(() => {
+    let timer;
+    if (generating) {
+      setShowSlowWarning(false);
+      timer = setTimeout(() => setShowSlowWarning(true), 15000);
+    } else {
+      setShowSlowWarning(false);
+    }
+    return () => clearTimeout(timer);
+  }, [generating]);
+
+  useEffect(() => {
+    if (!generating || !aiProgress.active || !showAiProgress) return;
+
+    const interval = setInterval(() => {
+      setAiProgress((prev) => {
+        const nextElapsed = prev.elapsedMs + 1000;
+        let nextRemaining = prev.remainingMs - 1000;
+        let nextModelIndex = prev.modelIndex;
+        let nextModelName = prev.modelName;
+        let nextMessage = `Trying AI model ${prev.modelIndex + 1}/${prev.totalModels}`;
+
+        if (nextRemaining <= 0) {
+          if (prev.modelIndex + 1 < OPENROUTER_MODELS.length) {
+            nextMessage = `Model ${prev.modelIndex + 1} timed out. Trying model ${prev.modelIndex + 2}/${OPENROUTER_MODELS.length}...`;
+            nextModelIndex = prev.modelIndex + 1;
+            nextModelName = OPENROUTER_MODELS[nextModelIndex];
+            nextRemaining = prev.timeoutMs;
+          } else {
+            nextRemaining = 0;
+            nextMessage =
+              nextElapsed >= prev.timeoutMs * prev.totalModels + 30000
+                ? "Finalization is taking longer than expected. Backend should return deterministic report."
+                : "AI attempts completed. Finalizing report from deterministic data...";
+          }
+        }
+
+        return {
+          ...prev,
+          elapsedMs: nextElapsed,
+          remainingMs: nextRemaining,
+          modelIndex: nextModelIndex,
+          modelName: nextModelName,
+          message: nextMessage,
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [generating, aiProgress.active, showAiProgress]);
 
   useEffect(() => {
     Reports.getPublicTemplates()
@@ -1502,6 +1730,20 @@ export default function PublicReports() {
     }
 
     setGenerating(true);
+    if (showAiProgress) {
+      setAiProgress({
+        active: true,
+        modelIndex: 0,
+        modelName: OPENROUTER_MODELS[0],
+        totalModels: OPENROUTER_MODELS.length,
+        remainingMs: OPENROUTER_TIMEOUT_MS,
+        elapsedMs: 0,
+        timeoutMs: OPENROUTER_TIMEOUT_MS,
+        message: `Trying AI model 1/${OPENROUTER_MODELS.length}`,
+      });
+    } else {
+      setAiProgress(createAiProgressState());
+    }
     try {
       // Use slug (templateId) from the resolved catalog template.
       // Falls back to numeric DB id if slug not available.
@@ -1513,6 +1755,11 @@ export default function PublicReports() {
       if (res.error) {
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
+        if (res.report?.aiEnhanced === false && res.report?.providerWarning) {
+          showToast("AI enhancement failed. Deterministic report generated successfully.", "warning");
+        } else if (res.report?.providerUsed !== "deterministic" && res.report?.warnings?.length > 0) {
+          showToast(`Warning: ${res.report.warnings[0]}`, "warning");
+        }
         setGeneratedReport(res.report);
         let parsedData = null;
         try {
@@ -1544,6 +1791,7 @@ export default function PublicReports() {
     } catch (err) {
       showToast("Generation error: " + err.message, "error");
     } finally {
+      setAiProgress((prev) => ({ ...prev, active: false }));
       setGenerating(false);
     }
   };
@@ -1601,7 +1849,11 @@ export default function PublicReports() {
           }}
         />
 
-        <div className="relative max-w-[820px] mx-auto px-4 py-8 md:px-8 md:py-10">
+        <div
+          className={`relative mx-auto px-4 py-8 md:px-8 md:py-10 ${
+            step === 5 ? "report-preview-card" : "max-w-[820px]"
+          }`}
+        >
           {/* Page header */}
           <div className="mb-8">
             <div className="flex items-center gap-x-3 mb-1">
@@ -1621,7 +1873,11 @@ export default function PublicReports() {
           <StepIndicator currentStep={step} />
 
           {/* Card */}
-          <div className="bg-white/3 border border-white/8 rounded-2xl p-5 md:p-7 backdrop-blur-sm">
+          <div
+            className={`bg-white/3 border border-white/8 rounded-2xl p-5 md:p-7 backdrop-blur-sm ${
+              step === 5 ? "report-preview-shell" : ""
+            }`}
+          >
             {step === 1 && (
               <Step1
                 templates={templates}
@@ -1649,7 +1905,10 @@ export default function PublicReports() {
                 onGenerate={handleGenerate}
                 onPreviewSample={handlePreviewSample}
                 generating={generating}
+                showSlowWarning={showSlowWarning}
                 hasInvalidExcel={hasInvalidExcel}
+                aiProgress={aiProgress}
+                showAiProgress={showAiProgress}
               />
             )}
             {step === 5 && (

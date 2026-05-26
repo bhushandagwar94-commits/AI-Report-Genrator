@@ -16,7 +16,8 @@
     "seed": "prisma db seed",
     "lint": "eslint --fix .",
     "lint:check": "eslint .",
-    "swagger": "node ./swagger/init.js"
+    "swagger": "node ./swagger/init.js",
+    "test:openrouter-models": "node scripts/test-openrouter-models.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

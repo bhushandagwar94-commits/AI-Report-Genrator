@@ -1,6 +1,10 @@
 import { API_BASE } from "@/utils/constants";
 import { baseHeaders } from "@/utils/request";
 
+const GENERATION_MAX_WAIT_MS = Number(
+  import.meta.env.VITE_GENERATION_MAX_WAIT_MS || 420000
+);
+
 const Reports = {
   // ── Admin ────────────────────────────────────────────────────────────────────
 
@@ -149,16 +153,26 @@ const Reports = {
       status:          "submitted",
     };
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), GENERATION_MAX_WAIT_MS);
+
     return await fetch(`${API_BASE}/reports/generate`, {
       method: "POST",
       headers: baseHeaders(),
       body: JSON.stringify(payload),
+      signal: controller.signal,
     })
       .then((res) => res.json())
       .catch((e) => {
         console.error(e);
-        return { error: e.message };
-      });
+        return {
+          error:
+            e.name === "AbortError"
+              ? "Generation is taking too long. Please check backend logs or retry."
+              : e.message,
+        };
+      })
+      .finally(() => clearTimeout(timeoutId));
   },
 
   recheckQC: async (id) => {
