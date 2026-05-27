@@ -73,14 +73,22 @@ The seed script recreates the required public report setup without committing th
    ```env
    LLM_PROVIDER=openrouter
    OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODEL=openrouter/free
+   OPENROUTER_MODELS=openai/gpt-oss-120b:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free
+   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+   OPENROUTER_TIMEOUT_MS=90000
+   OPENROUTER_TEMPERATURE=0.2
+   OPENROUTER_MAX_TOKENS=12000
    ```
 3. Restart the server:
    ```powershell
    yarn dev:all
    ```
 
-**Note on Automatic Fallback:** If the API key is missing or the provider fails, the system will automatically fall back to generating a report using extracted Excel/form data and "Data required" placeholders without failing.
+**Model Fallback Explanation:** 
+- The first model listed in `OPENROUTER_MODELS` is used as the primary model.
+- If it fails, is rate-limited, or returns invalid JSON, the system automatically tries the second backup model, and so on.
+- The `openrouter/free` model is used as a final API fallback router.
+- If all API models fail, the system still seamlessly builds a report using deterministic data extraction (Excel + form data).
 
 ## Safe Environment Files
 

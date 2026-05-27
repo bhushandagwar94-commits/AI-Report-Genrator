@@ -711,6 +711,243 @@ dialog::backdrop {
   @apply text-[14px] font-bold text-white;
 }
 
+.report-preview-card {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.report-preview-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.report-viewer {
+  width: 100%;
+  max-width: 100%;
+  max-height: 78vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #eef2f7;
+  border-radius: 18px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.report-page-shell {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
+.report-page-shell > .report-print-area {
+  background: white;
+  width: min(100%, 900px);
+  max-width: 900px;
+  box-sizing: border-box;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.report-viewer .report-page {
+  width: min(100%, 794px) !important;
+  max-width: 794px !important;
+  box-sizing: border-box;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.simple-report-fullscreen-body .report-print-area {
+  width: min(100%, 1050px);
+  max-width: 1050px;
+}
+
+.report-print-area table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.report-print-area td,
+.report-print-area th {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.report-print-area img {
+  max-width: 100%;
+  height: auto;
+}
+
+.report-ready-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.report-ready-status {
+  flex: 1 1 240px;
+  min-width: 220px;
+  box-sizing: border-box;
+}
+
+.report-ready-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.report-ready-meta {
+  margin: 0;
+}
+
+.fallback-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.report-export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  flex: 1 1 520px;
+  box-sizing: border-box;
+}
+
+.report-export-button {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ai-generation-progress-card {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 14px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #f8fafc;
+}
+
+.ai-progress-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #facc15;
+  margin-bottom: 12px;
+}
+
+.ai-progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+.ai-progress-row span {
+  color: #cbd5e1;
+}
+
+.ai-progress-row strong {
+  color: #ffffff;
+  text-align: right;
+}
+
+.ai-progress-bar {
+  margin-top: 14px;
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.ai-progress-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.ai-progress-note {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #fef3c7;
+}
+
+.field-flag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.field-flag-badge.flag-1 {
+  background: rgba(22, 163, 74, 0.15);
+  color: #15803d;
+}
+
+.field-flag-badge.flag-0 {
+  background: rgba(220, 38, 38, 0.15);
+  color: #b91c1c;
+}
+
+@media (max-width: 900px) {
+  .report-ready-header {
+    flex-direction: column;
+  }
+
+  .report-export-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .report-export-button {
+    flex: 1 1 180px;
+  }
+
+  .report-viewer {
+    padding: 16px;
+  }
+}
+
 /**
  * ==============================================
  * Markdown Styles
@@ -984,9 +1221,29 @@ does not extend the close button beyond the viewport. */
     left: 0;
     top: 0;
     width: 100%;
+    max-width: none !important;
     max-height: none !important;
     overflow: visible !important;
+    box-shadow: none !important;
     background: white !important;
+  }
+  .report-page {
+    width: 100% !important;
+    max-width: none !important;
+    break-after: page;
+    page-break-after: always;
+  }
+  .report-viewer {
+    overflow: visible !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  .report-ready-header,
+  .report-export-actions,
+  .field-flag-badge,
+  .missing-field-debug-panel,
+  .field-flags-debug-panel {
+    display: none !important;
   }
   .report-preview-scroll {
     max-height: none !important;
@@ -1203,5 +1460,3 @@ does not extend the close button beyond the viewport. */
   -webkit-animation: fadein 0.3s linear forwards;
   animation: fadein 0.3s linear forwards;
 }
-
-

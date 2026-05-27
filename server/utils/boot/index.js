@@ -28,6 +28,10 @@ function bootSSL(app, port = 3001) {
     const certificate = fs.readFileSync(process.env.HTTPS_CERT_PATH);
     const credentials = { key: privateKey, cert: certificate };
     const server = https.createServer(credentials, app);
+    const requestTimeoutMs = Number(process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000);
+    server.requestTimeout = requestTimeoutMs;
+    server.headersTimeout = Math.max(requestTimeoutMs + 5000, 65000);
+    server.keepAliveTimeout = Math.max(Math.min(requestTimeoutMs, 120000), 5000);
 
     server
       .listen(port, async () => {
@@ -62,7 +66,7 @@ function bootSSL(app, port = 3001) {
 function bootHTTP(app, port = 3001) {
   if (!app) throw new Error('No "app" defined - crashing!');
 
-  app
+  const server = app
     .listen(port, async () => {
       await markOnboarded();
       await setupTelemetry();
@@ -76,7 +80,12 @@ function bootHTTP(app, port = 3001) {
     })
     .on("error", catchSigTerms);
 
-  return { app, server: null };
+  const requestTimeoutMs = Number(process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000);
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = Math.max(requestTimeoutMs + 5000, 65000);
+  server.keepAliveTimeout = Math.max(Math.min(requestTimeoutMs, 120000), 5000);
+
+  return { app, server };
 }
 
 function catchSigTerms() {

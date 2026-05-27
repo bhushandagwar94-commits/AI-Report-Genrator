@@ -25,7 +25,15 @@ const {
   buildCommercialBuildingEnergyAuditBaseData,
   validateCommercialBuildingEnergyAuditSchema,
   calculateReportAccuracyScore,
+  buildFieldFlags,
+  buildMissingFieldSummary,
+  stripDebugMetadata,
 } = require("../services/llmProviderService");
+const {
+  runStage1Extraction,
+  buildDeterministicCommercialAuditFallback,
+  generateCommercialAuditComponentReport,
+} = require("../services/reportPipeline");
 
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
@@ -77,6 +85,42 @@ const TEMPLATE_SLUG_MAP = {
   "seetech-solar-001": "Solar Report",
   "seetech-hvac-001": "HVAC Report",
 };
+
+function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
+function buildCommercialAuditArtifacts({
+  reportData,
+  inputDetails,
+  extractedExcelData,
+  providerUsed,
+}) {
+  let finalData = normalizeReportForExport(reportData);
+  finalData.fieldFlags = buildFieldFlags(
+    finalData,
+    { inputDetails, extractedExcelData },
+    { providerUsed }
+  );
+  finalData.missingFieldSummary = buildMissingFieldSummary(finalData.fieldFlags);
+
+  return {
+    finalData,
+    schemaValidation: validateCommercialBuildingEnergyAuditSchema(finalData),
+    qcResult: runReportQC(finalData),
+    accuracyResult: calculateReportAccuracyScore(finalData),
+    finalReportContent: JSON.stringify(finalData),
+  };
+}
 
 /**
  * Resolve a template by either:
@@ -1635,157 +1679,228 @@ function reportEndpoints(app) {
         });
 
         // ── 2 & 4. Data Extraction & Report Drafting via LLM Provider ──
+        console.time("[REPORT] total");
         let finalReportContent = "{}";
-        let providerUsed = "none";
+        let providerUsed = "multi-stage-pipeline";
         let fallbackReason = "";
         let schemaValidation = { success: true, errors: [] };
         let qcResult = { qcPassed: true, qcErrors: [], qcWarnings: [], summary: {} };
         let accuracyResult = { score: 0, passed: false, breakdown: [], qcSummary: {} };
-        const deterministicBaseReportData = template.slug === "commercial-building-energy-audit"
-          ? buildCommercialBuildingEnergyAuditBaseData({
+        let modelUsed = null;
+        let providerAttempts = [];
+        let providerStatus = "success";
+        let providerWarning = null;
+        let aiEnhanced = false;
+        const useAiDuringGeneration = String(process.env.USE_AI_DURING_GENERATION || "true").toLowerCase() === "true";
+        const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 30000);
+        let deterministicArtifacts = null;
+
+        const collectProviderAttempts = (...stageResults) => {
+          for (const stageResult of stageResults) {
+            const attempts = stageResult?.providerAttempts || stageResult?.attempts || [];
+            if (Array.isArray(attempts) && attempts.length) {
+              providerAttempts.push(...attempts);
+            }
+          }
+        };
+        
+        try {
+          if (template.slug === "commercial-building-energy-audit") {
+            console.time("[REPORT] deterministic_build");
+            deterministicArtifacts = buildCommercialAuditArtifacts({
+              reportData: buildDeterministicCommercialAuditFallback({
+                formData: inputDetails,
+                excelTruth: extractedExcelData,
+                extractedExcelData,
+              }),
               inputDetails,
               extractedExcelData,
-              uploadedFiles,
-            })
-          : null;
-        
-        let draftSystemPrompt;
-        if (template.slug === "commercial-building-energy-audit") {
-          draftSystemPrompt = `You are SEE-Tech Solutions’ Commercial Building Energy Audit JSON generator.
+              providerUsed: "deterministic",
+            });
+            console.timeEnd("[REPORT] deterministic_build");
 
-Return valid JSON only.
-Do not return Markdown.
-Do not wrap output in \`\`\`json fences.
-Do not include explanations.
-Output must match CommercialBuildingEnergyAuditData.
-If data is missing, write "Data required".
-Use ₹ for financial values.
-Use units like kWh/year, ₹/year, kW, TR, CFM, m3/hr, bar, deg C.
+            console.log("[REPORT] before deterministic DB save");
+            await prisma.generated_reports.update({
+              where: { id: reportRecord.id },
+              data: {
+                outputContent: deterministicArtifacts.finalReportContent,
+                extractedData: JSON.stringify({
+                  providerUsed: "deterministic",
+                  fallbackReason: "",
+                  extractionAudit: extractedExcelData.extractionAudit || [],
+                  removedRows: extractedExcelData.removedRows || [],
+                  groupCounts: extractedExcelData.groupCounts || {},
+                  mappingConfidence: extractedExcelData.mappingConfidence || [],
+                  datasetProfile: extractedExcelData.datasetProfile || null,
+                  sourceSheet: extractedExcelData.sourceSheet || "",
+                  sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
+                  providerStatus: "success",
+                  modelUsed: null,
+                  providerAttempts: [],
+                  providerWarning: null,
+                  aiEnhanced: false,
+                  schemaValidation: deterministicArtifacts.schemaValidation,
+                  qcResult: deterministicArtifacts.qcResult,
+                  accuracyResult: deterministicArtifacts.accuracyResult,
+                }),
+                missingData: JSON.stringify([]),
+                status: useAiDuringGeneration ? "enhancing_ai" : "completed",
+              },
+            });
+            console.log("[REPORT] after deterministic DB save");
 
-CRITICAL DIRECTIVE ON NARRATIVE GENERATION:
-1. You MUST generate professional, explanatory prose for narrative fields:
-   - existingOperatingCondition
-   - problemGapIdentified
-   - proposedIntervention
-   - scopeOfWork
-   - keyActivities
-   - rationaleForEnergySaving
-   - energySavingCalculation
-   - carbonFootprint explanation
-   - technicalSpecifications
-   - schematicFramework
-   - precautions
-   - measurementVerificationPlan
-   - benefitsOtherThanEnergySaving
-   - caseStudies
-   - finalConclusion
-2. Base the narrative on project-type-specific engineering principles (HVAC, Lighting, Pumps, etc.) and any unstructured text provided in the prompt.
+            let stage1 = { result: {}, providerUsed: "deterministic", providerStatus: "success", modelUsed: null };
+            if (useAiDuringGeneration) {
+              try {
+                console.log("Running Stage 1: Document Extraction...");
+                stage1 = await runStage1Extraction({
+                  retrievedChunks: consolidatedText,
+                  imageMetadata,
+                  formData: inputDetails,
+                  excelTruth: extractedExcelData,
+                  templateConfig: template
+                });
+                collectProviderAttempts(stage1);
+              } catch (stage1Error) {
+                if (Array.isArray(stage1Error?.providerAttempts) && stage1Error.providerAttempts.length) {
+                  providerAttempts.push(...stage1Error.providerAttempts);
+                }
+                fallbackReason = [fallbackReason, `Document extraction skipped: ${stage1Error.message}`].filter(Boolean).join(" | ");
+                console.warn(`[DOCUMENT EXTRACTION FALLBACK] ${stage1Error.message}`);
+              }
+            }
 
-CRITICAL DIRECTIVE ON EXCEL NUMBERS:
-1. You MUST NOT overwrite, change, or invent numeric values for 'expectedEnergySaving', 'expectedAnnualCostSaving', 'estimatedInvestment', 'simplePaybackPeriod'.
-2. The provided 'Extracted Excel Data' is the absolute mathematical truth. Use it verbatim.
-3. The LLM MUST NOT create, remove, merge, split, reorder, or rename ECMs.
-4. The authoritative Excel projects array is the only valid source for:
-   - ECM count
-   - project number
-   - project title
-   - equipment covered
-   - system/category/group
-   - energy saving
-   - annual cost saving
-   - investment
-   - payback
-   - implementation duration
-5. You may only improve narrative wording using these Excel-derived fields:
-   - proposedProjectDescription
-   - rationaleForEnergySaving
-   - keyActivities
-   - scopeOfWork
-   - existingSystemDescription
-   - existingOperatingCondition
-6. When Excel narrative text exists, do not replace it with generic wording.
+            let componentResult = null;
+            if (useAiDuringGeneration) {
+              console.log("Running Component-Based Narrative Pipeline...");
+              componentResult = await generateCommercialAuditComponentReport({
+                formData: inputDetails,
+                extractedExcelData,
+                extractedInfo: stage1.result || {},
+                imageMetadata,
+                uploadedFiles,
+                templateConfig: template,
+              });
+              collectProviderAttempts(componentResult);
+            }
 
-### System Prompt & Prompt Instructions:
-${template.prompt}
-
-### Custom rules:
-${template.rules || "None specified."}`;
-        } else {
-          draftSystemPrompt = `You are the SEE-Tech Solutions AI Technical Report Generation Engine.
-Generate a professional technical report in standard Markdown format.
-
-### System Prompt & Prompt Instructions:
-${template.prompt}
-
-### Report Formatting & Specific Guidelines:
-1. Adhere strictly to the requested markdown layout.
-2. Ensure all financial values use the Indian Rupee symbol (₹).
-3. Use proper technical/engineering units.
-4. Keep the tone strictly formal, technical, and client-ready.
-5. Never output conversational elements, greetings, helper text, or AI dialogue. Start immediately with the report markdown.
-6. If a required value was missing, output "Data required" inside the report where that field is placed. Do not invent values.
-7. Observe the following custom rules:
-${template.rules || "None specified."}`;
-        }
-
-        const draftUserPrompt = `### Basic Details (User Supplied — Public Form):
-Client / Facility Name : ${inputDetails.clientName   || "Data required"}
-Facility / Plant Name  : ${inputDetails.facilityName || "Data required"}
-Location               : ${inputDetails.location     || "Data required"}
-Audit Period           : ${inputDetails.auditPeriod  || "Data required"}
-Report Date            : ${inputDetails.reportDate   || "Data required"}
-Contact Person         : ${inputDetails.contactPerson || "N/A"}
-Output Format          : ${inputDetails.outputFormat  || "PDF"}
-
-### Consolidated Document Text:
-${consolidatedText || "[No document files uploaded — use form details only.]"}
-
-${template.slug === "commercial-building-energy-audit" ? `### Extracted Excel Data (Structured):
-${JSON.stringify(extractedExcelData, null, 2)}
-
-### Deterministic Base Report JSON (Excel Truth):
-${JSON.stringify(deterministicBaseReportData, null, 2)}
-
-### Important Instruction:
-Return only narrative enrichment JSON for the deterministic base report. Do not return or modify project counts, equipment, system, savings, investment, payback, duration, or grouping.
-
-### Uploaded Image Metadata:
-${JSON.stringify(imageMetadata, null, 2)}` : ""}
-
-### Target Report Layout Structure:
-${template.reportFormat || "No structure defined. Output a standard structured engineering report."}
-
-Please generate the final technical report now:`;
-
-        try {
-          const providerResult = await generateWithProvider({
-            templateSlug: template.slug,
-            systemPrompt: draftSystemPrompt,
-            userPrompt: draftUserPrompt,
-            inputDetails,
-            extractedExcelData,
-            uploadedFiles,
-            templateConfig: template,
-            baseReportData: deterministicBaseReportData,
-          });
+            if (componentResult?.aiEnhanced === true && componentResult?.report) {
+              try {
+                console.log("[REPORT] before AI finalization");
+                const enhancedArtifacts = await withTimeout(
+                  Promise.resolve().then(() =>
+                    buildCommercialAuditArtifacts({
+                      reportData: componentResult.report,
+                      inputDetails,
+                      extractedExcelData,
+                      providerUsed: componentResult.providerUsed || "openrouter",
+                    })
+                  ),
+                  aiFinalizationTimeoutMs,
+                  "AI finalization"
+                );
+                console.log("[REPORT] after AI finalization");
+                schemaValidation = enhancedArtifacts.schemaValidation;
+                qcResult = enhancedArtifacts.qcResult;
+                accuracyResult = enhancedArtifacts.accuracyResult;
+                finalReportContent = enhancedArtifacts.finalReportContent;
+                providerUsed = componentResult.providerUsed || "openrouter";
+                providerStatus = "success";
+                modelUsed = componentResult.modelUsed || stage1.modelUsed || null;
+                aiEnhanced = true;
+                providerWarning = null;
+                if (Array.isArray(componentResult.warnings) && componentResult.warnings.length) {
+                  fallbackReason = componentResult.warnings.join(" | ");
+                }
+              } catch (finalizationError) {
+                console.warn(`[AI FINALIZATION] Failed, returning deterministic report: ${finalizationError.message}`);
+                fallbackReason = [fallbackReason, finalizationError.message].filter(Boolean).join(" | ");
+                schemaValidation = deterministicArtifacts.schemaValidation;
+                qcResult = deterministicArtifacts.qcResult;
+                accuracyResult = deterministicArtifacts.accuracyResult;
+                finalReportContent = deterministicArtifacts.finalReportContent;
+                providerUsed = "deterministic";
+                providerStatus = "success";
+                modelUsed = null;
+                providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
+                aiEnhanced = false;
+              }
+            } else {
+              schemaValidation = deterministicArtifacts.schemaValidation;
+              qcResult = deterministicArtifacts.qcResult;
+              accuracyResult = deterministicArtifacts.accuracyResult;
+              finalReportContent = deterministicArtifacts.finalReportContent;
+              providerUsed = "deterministic";
+              providerStatus = "success";
+              modelUsed = null;
+              providerWarning = useAiDuringGeneration
+                ? (componentResult?.providerWarning || "AI enhancement failed after all model attempts. Deterministic report used.")
+                : "AI enhancement disabled. Deterministic report generated successfully.";
+              aiEnhanced = false;
+              if (Array.isArray(componentResult?.warnings) && componentResult.warnings.length) {
+                fallbackReason = componentResult.warnings.join(" | ");
+              }
+            }
+          } else {
+             // Fallback for non-audit reports
+             const res = await generateWithProvider({
+               templateSlug: template.slug,
+               systemPrompt: "You are an AI generator.",
+               userPrompt: draftUserPrompt,
+               inputDetails,
+               extractedExcelData,
+               uploadedFiles,
+               templateConfig: template,
+             });
+             finalReportContent = typeof res.reportData === "string" ? res.reportData : JSON.stringify(res.reportData);
+             providerUsed = res.metadata.providerUsed;
+             providerStatus = res.metadata.providerStatus || (providerUsed === "deterministic-fallback" ? "fallback" : "success");
+             modelUsed = res.metadata.modelUsed || null;
+             providerAttempts = res.metadata.providerAttempts || [];
+             providerWarning = res.metadata.fallbackReason ? `OpenRouter failed: ${res.metadata.fallbackReason}` : null;
+             aiEnhanced = providerUsed !== "deterministic-fallback";
+          }
+        } catch (e) {
+          console.warn(`[GENERATION FALLBACK] LLM pipeline failed: ${e.message}. Using deterministic fallback.`);
+          fallbackReason = e.message;
+          providerAttempts = e.providerAttempts || providerAttempts || [];
           
           if (template.slug === "commercial-building-energy-audit") {
-            providerResult.reportData = normalizeReportForExport(providerResult.reportData);
-            schemaValidation = validateCommercialBuildingEnergyAuditSchema(providerResult.reportData);
-            qcResult = runReportQC(providerResult.reportData);
-            accuracyResult = calculateReportAccuracyScore(providerResult.reportData);
-            finalReportContent = JSON.stringify(providerResult.reportData);
+            deterministicArtifacts =
+              deterministicArtifacts ||
+              buildCommercialAuditArtifacts({
+                reportData: buildDeterministicCommercialAuditFallback({
+                  formData: inputDetails,
+                  excelTruth: extractedExcelData,
+                  extractedExcelData,
+                }),
+                inputDetails,
+                extractedExcelData,
+                providerUsed: "deterministic",
+              });
+            schemaValidation = deterministicArtifacts.schemaValidation;
+            qcResult = deterministicArtifacts.qcResult;
+            accuracyResult = deterministicArtifacts.accuracyResult;
+            finalReportContent = deterministicArtifacts.finalReportContent;
+            providerUsed = "deterministic";
+            providerStatus = "success";
+            modelUsed = null;
+            providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
+            aiEnhanced = false;
           } else {
-            // For markdown reports, it's just content
-            finalReportContent = typeof providerResult.reportData === "string" 
-               ? providerResult.reportData 
-               : JSON.stringify(providerResult.reportData);
+            // For other templates, we don't have a specific fallback yet.
+            throw new Error(`Generation failed: ${e.message}`);
           }
-          
-          providerUsed = providerResult.metadata.providerUsed;
-          fallbackReason = providerResult.metadata.fallbackReason;
-        } catch (e) {
-          throw new Error(`Generation failed: ${e.message}`);
+        }
+
+        if (
+          useAiDuringGeneration &&
+          process.env.OPENROUTER_API_KEY &&
+          process.env.OPENROUTER_MODELS &&
+          providerAttempts.length === 0 &&
+          aiEnhanced
+        ) {
+          console.error("[BUG] OpenRouter configured but providerAttempts is empty. Provider flow was skipped.");
         }
 
         // Internal server logging for admin/debug only
@@ -1825,43 +1940,117 @@ Accuracy Passed: ${accuracyResult.passed}
 Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`);
         }
 
+        const persistMetadata = {
+          providerUsed,
+          fallbackReason,
+          extractionAudit: extractedExcelData.extractionAudit || [],
+          removedRows: extractedExcelData.removedRows || [],
+          groupCounts: extractedExcelData.groupCounts || {},
+          mappingConfidence: extractedExcelData.mappingConfidence || [],
+          datasetProfile: extractedExcelData.datasetProfile || null,
+          sourceSheet: extractedExcelData.sourceSheet || "",
+          sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
+          providerStatus,
+          modelUsed,
+          providerAttempts,
+          providerWarning,
+          aiEnhanced,
+          schemaValidation,
+          qcResult,
+          accuracyResult,
+        };
+
+        console.time("[REPORT] db_save");
+        console.log("[REPORT] before DB save");
         await prisma.generated_reports.update({
           where: { id: reportRecord.id },
           data: {
-            extractedData: JSON.stringify({
-              providerUsed,
-              fallbackReason,
-              extractionAudit: extractedExcelData.extractionAudit || [],
-              removedRows: extractedExcelData.removedRows || [],
-              groupCounts: extractedExcelData.groupCounts || {},
-              mappingConfidence: extractedExcelData.mappingConfidence || [],
-              datasetProfile: extractedExcelData.datasetProfile || null,
-              sourceSheet: extractedExcelData.sourceSheet || "",
-              sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
-              schemaValidation,
-              qcResult,
-              accuracyResult,
-            }),
+            extractedData: JSON.stringify(persistMetadata),
             missingData:   JSON.stringify([]),
           },
         });
 
         // ── 5. Complete DB record ─────────────────────────────────────────────
-        const completedRecord = await prisma.generated_reports.update({
-          where: { id: reportRecord.id },
-          data: {
-            outputContent: finalReportContent,
-            status:        "completed",
-          },
-        });
+        let completedRecord = null;
+        try {
+          completedRecord = await withTimeout(
+            prisma.generated_reports.update({
+              where: { id: reportRecord.id },
+              data: {
+                outputContent: finalReportContent,
+                status: "completed",
+              },
+            }),
+            aiFinalizationTimeoutMs,
+            "AI finalization db save"
+          );
+          console.log("[REPORT] after DB save");
+          console.timeEnd("[REPORT] db_save");
+        } catch (saveError) {
+          if (template.slug !== "commercial-building-energy-audit" || !deterministicArtifacts) {
+            throw saveError;
+          }
+
+          console.warn(`[AI FINALIZATION] Save failed, returning deterministic report: ${saveError.message}`);
+          providerUsed = "deterministic";
+          providerStatus = "success";
+          modelUsed = null;
+          providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
+          aiEnhanced = false;
+          fallbackReason = [fallbackReason, saveError.message].filter(Boolean).join(" | ");
+          schemaValidation = deterministicArtifacts.schemaValidation;
+          qcResult = deterministicArtifacts.qcResult;
+          accuracyResult = deterministicArtifacts.accuracyResult;
+          finalReportContent = deterministicArtifacts.finalReportContent;
+
+          console.log("[REPORT] before deterministic fallback DB save");
+          completedRecord = await prisma.generated_reports.update({
+            where: { id: reportRecord.id },
+            data: {
+              outputContent: finalReportContent,
+              extractedData: JSON.stringify({
+                ...persistMetadata,
+                providerUsed,
+                providerStatus,
+                modelUsed,
+                providerAttempts,
+                providerWarning,
+                aiEnhanced,
+                fallbackReason,
+                schemaValidation,
+                qcResult,
+                accuracyResult,
+              }),
+              missingData: JSON.stringify([]),
+              status: "completed",
+            },
+          });
+          console.log("[REPORT] after deterministic fallback DB save");
+          console.timeEnd("[REPORT] db_save");
+        }
 
         // Return structured response matching the new public payload contract
+        console.time("[REPORT] response_build");
+        console.log("[REPORT] before response return");
         response.status(200).json({
-          report: completedRecord,
+          success: true,
+          report: {
+            ...completedRecord,
+            providerUsed,
+            providerStatus,
+            modelUsed,
+            providerAttempts,
+            aiEnhanced,
+            providerWarning: providerWarning || undefined,
+            warnings: fallbackReason ? [fallbackReason] : []
+          },
           template_id:     String(templateId),
           generation_mode: generationMode || "public",
           status:          "completed",
         });
+        console.log("[REPORT] after response return");
+        console.timeEnd("[REPORT] response_build");
+        console.timeEnd("[REPORT] total");
       } catch (e) {
         console.error(e.message, e);
         if (reportRecord) {
@@ -1870,6 +2059,9 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
             data: { status: "failed", error: e.message },
           });
         }
+        try {
+          console.timeEnd("[REPORT] total");
+        } catch (_) {}
         response.status(500).json({ error: e.message });
       }
     }
@@ -1983,6 +2175,12 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
         const cleanedProjects = cleanAndDeduplicateProjects(rawProjects);
         reportData.projects = cleanedProjects;
         reportData.groupedProjects = buildProjectGroups(cleanedProjects);
+        reportData.fieldFlags = buildFieldFlags(
+          reportData,
+          {},
+          { providerUsed: report.providerUsed || reportData?.providerUsed || reportData?.qcSummary?.providerUsed || "deterministic-fallback" }
+        );
+        reportData.missingFieldSummary = buildMissingFieldSummary(reportData.fieldFlags);
 
         // Save cleaned data back to DB
         await prisma.generated_reports.update({
@@ -2062,9 +2260,11 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
           reportData.reportInfo.clientName = "[DRAFT - QC REVIEW REQUIRED] " + (reportData.reportInfo.clientName || "");
         }
 
+        const exportReport = stripDebugMetadata(reportData);
+
         let buffer;
         try {
-          buffer = await buildCommercialBuildingEnergyAuditDocx(reportData);
+          buffer = await buildCommercialBuildingEnergyAuditDocx(exportReport);
         } catch (docxError) {
           console.error(`[DOCX EXPORT FAILED] Report ID: ${id}`, docxError.stack || docxError);
           throw docxError;

@@ -121,6 +121,20 @@ export interface CommercialBuildingEnergyAuditData {
   auditObservations?: Record<string, ReportValue>[];
   projects?: CommercialBuildingProject[];
   groupedProjects?: CommercialBuildingProjectGroup[];
+  fieldFlags?: Record<string, {
+    flag: 0 | 1;
+    source: string;
+    valueType?: string;
+    label?: string;
+    sourceColumn?: string | null;
+    message?: string;
+  }>;
+  missingFieldSummary?: {
+    path: string;
+    label: string;
+    sourceExpected: string;
+    message: string;
+  }[];
 }
 
 export interface CommercialBuildingProjectGroup {
@@ -203,6 +217,11 @@ function safeValue(value: any): string {
   return safeText(value);
 }
 
+function renderCellContent(value: any) {
+  if (React.isValidElement(value)) return value;
+  return safeValue(value);
+}
+
 function formatINR(value: ReportValue): string {
   if (value === null || value === undefined || value === "") return "Data required";
   const num = Number(String(value).replace(/[₹,\s]/g, ""));
@@ -234,6 +253,72 @@ function weightedPayback(projects: CommercialBuildingProject[] = []) {
   const inv = totalInvestment(projects);
   const sav = totalSavings(projects);
   return inv && sav ? (inv / sav).toFixed(2) : "Data required";
+}
+
+function displayText(value: any): string {
+  const text = safeText(value).trim();
+  return /^data required$/i.test(text) ? "" : text;
+}
+
+function removeDuplicateGroupNo(title: ReportValue, groupNo: string) {
+  const rawTitle = displayText(title);
+  if (!rawTitle) return "";
+  const escapedGroupNo = groupNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return rawTitle.replace(new RegExp(`^${escapedGroupNo}[\\s:.-]*`, "i"), "").trim();
+}
+
+const showFieldFlags =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
+
+function getFieldFlag(data: CommercialBuildingEnergyAuditData, path: string) {
+  return data?.fieldFlags?.[path] || null;
+}
+
+function FieldFlagBadge({ flag }: { flag?: number | null }) {
+  if (!showFieldFlags || (flag !== 0 && flag !== 1)) return null;
+  return (
+    <span className={`field-flag-badge flag-${flag}`} aria-hidden="true">
+      {flag}
+    </span>
+  );
+}
+
+function LabelWithFlag({
+  data,
+  path,
+  label,
+}: {
+  data: CommercialBuildingEnergyAuditData;
+  path: string;
+  label: string;
+}) {
+  const meta = getFieldFlag(data, path);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {label}
+      <FieldFlagBadge flag={meta?.flag} />
+    </span>
+  );
+}
+
+function formatGroupHeading(group: CommercialBuildingProjectGroup, index: number) {
+  const subChapter = `3.${index + 1}`;
+  const groupNo = displayText(group.groupNo) || `GR-${index + 1}`;
+  const cleanTitle = removeDuplicateGroupNo(group.groupTitle, groupNo);
+  return cleanTitle ? `${subChapter} ${groupNo} ${cleanTitle}` : `${subChapter} ${groupNo}`;
+}
+
+function formatEcmTitle(project: CommercialBuildingProject) {
+  const projectTitle = displayText(project.projectTitle);
+  if (!projectTitle) return "";
+  const projectNo = displayText(project.projectNo);
+  return projectNo ? `ECM ${projectNo} – ${projectTitle}` : projectTitle;
+}
+
+function formatEcmNumber(project: CommercialBuildingProject) {
+  const projectNo = displayText(project.projectNo);
+  return projectNo ? `ECM ${projectNo}` : "";
 }
 
 function SectionHeader({ number, title, level = 2 }: { number?: string; title: string; level?: 1 | 2 | 3 }) {
@@ -287,7 +372,7 @@ function ReportTable({
             <tr key={rowIndex} style={{ background: rowIndex % 2 === 0 ? colors.blueLight : colors.white }}>
               {safeColumns.map((col) => (
                 <td key={col.key} style={{ padding: compact ? "8px 9px" : "10px 12px", textAlign: col.align || "left", borderBottom: `1px solid ${colors.border}`, borderRight: `1px solid ${colors.border}`, verticalAlign: "top", color: colors.text }}>
-                  {safeValue(row?.[col.key])}
+                  {renderCellContent(row?.[col.key])}
                 </td>
               ))}
             </tr>
@@ -298,7 +383,7 @@ function ReportTable({
   );
 }
 
-function CoverPage({ data }: { data: ReportInfo }) {
+function CoverPage({ data, reportData }: { data: ReportInfo; reportData: CommercialBuildingEnergyAuditData }) {
   return (
     <section className="report-page" style={{ ...pageStyle, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -323,15 +408,15 @@ function CoverPage({ data }: { data: ReportInfo }) {
 
         <div style={{ marginTop: 34, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden" }}>
           {[
-            ["Prepared For", data.clientName],
+            [<LabelWithFlag key="prepared-for" data={reportData} path="reportInfo.clientName" label="Prepared For" />, data.clientName],
             ["Building Type", data.buildingType],
-            ["Location", data.location],
-            ["Audit Period", data.auditPeriod],
-            ["Report Date", data.reportDate],
-            ["Prepared By", data.preparedBy || "SEE-Tech Solutions"],
+            [<LabelWithFlag key="location" data={reportData} path="reportInfo.location" label="Location" />, data.location],
+            [<LabelWithFlag key="audit-period" data={reportData} path="reportInfo.auditPeriod" label="Audit Period" />, data.auditPeriod],
+            [<LabelWithFlag key="report-date" data={reportData} path="reportInfo.reportDate" label="Report Date" />, data.reportDate],
+            [<LabelWithFlag key="prepared-by" data={reportData} path="reportInfo.preparedBy" label="Prepared By" />, data.preparedBy || "SEE-Tech Solutions"],
             ["Document Version", data.documentVersion],
           ].map(([label, value], i) => (
-            <div key={String(label)} style={{ display: "grid", gridTemplateColumns: "180px 1fr", background: i % 2 === 0 ? colors.blueLight : colors.white, borderBottom: i === 6 ? "none" : `1px solid ${colors.border}` }}>
+            <div key={`cover-row-${i}`} style={{ display: "grid", gridTemplateColumns: "180px 1fr", background: i % 2 === 0 ? colors.blueLight : colors.white, borderBottom: i === 6 ? "none" : `1px solid ${colors.border}` }}>
               <div style={{ padding: "12px 14px", fontWeight: 800, color: colors.primaryBlue }}>{label}</div>
               <div style={{ padding: "12px 14px" }}>{safeValue(value)}</div>
             </div>
@@ -344,37 +429,72 @@ function CoverPage({ data }: { data: ReportInfo }) {
   );
 }
 
-function TableOfContents({ groupedProjects = [] }: { groupedProjects?: CommercialBuildingProjectGroup[] }) {
-  const safeGroupedProjects = asArray(groupedProjects);
-  let chapterIndex = 3;
+function TOCItem({ title, indent = 0 }: { title: string; indent?: number }) {
   return (
-    <section className="report-page" style={pageStyle}>
-      <SectionHeader level={1} title="Table of Contents" />
-      <ol style={{ color: colors.text, fontSize: 14, lineHeight: 1.9, marginTop: 28 }}>
-        <li><b>Executive Summary</b></li>
-        <li><b>Plant / Building Details and Energy Profile</b></li>
-        {safeGroupedProjects.length > 0 ? safeGroupedProjects.map((g, i) => (
-          <li key={i}>
-            <b>{chapterIndex + i}. {g.groupNo} {safeValue(g.groupTitle)}</b>
-            <ol style={{ paddingLeft: 20, listStyleType: "none" }}>
-              {asArray(g.projects).map((p, j) => (
-                <li key={j}>{safeValue(p.projectNo || j + 1)} – {safeValue(p.projectTitle)}</li>
-              ))}
-            </ol>
-          </li>
-        )) : <li><b>3. Energy Saving Projects</b></li>}
-        <li><b>Annexures</b></li>
-      </ol>
-    </section>
+    <div
+      style={{
+        marginLeft: indent * 24,
+        fontSize: indent === 0 ? 15 : indent === 1 ? 14 : 13,
+        fontWeight: indent === 0 ? 700 : indent === 1 ? 600 : 400,
+        lineHeight: 1.8,
+        marginBottom: 4,
+      }}
+    >
+      {title}
+    </div>
   );
 }
 
+function TableOfContents({ groupedProjects = [] }: { groupedProjects?: CommercialBuildingProjectGroup[] }) {
+  const safeGroupedProjects = asArray(groupedProjects);
+
+  return (
+    <section className="report-page" style={pageStyle}>
+      <SectionHeader level={1} title="Table of Contents" />
+      <div style={{ color: colors.text, marginTop: 28 }}>
+        <TOCItem title="Chapter 1. Executive Summary" />
+        <TOCItem title="Chapter 2. Plant / Building Details and Energy Profile" />
+        <TOCItem title="Chapter 3. Energy Saving Projects" />
+        {safeGroupedProjects.map((group, groupIndex) => (
+          <div key={`${displayText(group.groupNo) || groupIndex}`}>
+            <TOCItem indent={1} title={formatGroupHeading(group, groupIndex)} />
+            {asArray(group.projects)
+              .map((project) => formatEcmTitle(project))
+              .filter(Boolean)
+              .map((title, projectIndex) => (
+                <TOCItem key={`${title}-${projectIndex}`} indent={2} title={title} />
+              ))}
+          </div>
+        ))}
+        <TOCItem title="Chapter 4. Annexures" />
+      </div>
+    </section>
+  );
+}
 function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditData }) {
   const projects = asArray(data.projects);
+  const groupedProjects = asArray(data.groupedProjects);
   const es = data.executiveSummary || {};
   const inv = es.totalEstimatedInvestment || totalInvestment(projects);
   const sav = es.totalAnnualCostSavingPotential || totalSavings(projects);
   const energy = es.totalEnergySavingPotential || totalEnergy(projects);
+
+  const categorySummaryRows = (groupedProjects.length ? groupedProjects : [{
+    groupNo: "GR-1",
+    groupTitle: "Energy Saving Projects",
+    projects,
+    totalInvestment: inv,
+    totalAnnualSaving: sav,
+    totalEnergySaving: energy,
+    weightedPayback: es.simplePaybackPeriod || weightedPayback(projects),
+  }]).map((group, index) => ({
+    category: formatGroupHeading(group, index).replace(/^3\.\d+\s*/, ""),
+    count: asArray(group.projects).length,
+    investment: formatINR(group.totalInvestment || totalInvestment(asArray(group.projects))),
+    saving: formatINR(group.totalAnnualSaving || totalSavings(asArray(group.projects))),
+    energy: safeValue(group.totalEnergySaving || totalEnergy(asArray(group.projects))),
+    payback: safeValue(group.weightedPayback || weightedPayback(asArray(group.projects))),
+  }));
 
   return (
     <section className="report-page" style={pageStyle}>
@@ -384,7 +504,9 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
         {safeValue(es.purposeText || `The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects for ${safeValue(data.reportInfo.clientName)}. The audit has been carried out with the objective of converting energy-saving opportunities into actual implementation projects that reduce electricity cost, operating cost and carbon emissions.`)}
       </p>
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>SEE-Tech approach: Energy Assessment → Opportunity Identification → Project Proposal → Implementation → Savings Delivery.</p>
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {"SEE-Tech approach: Energy Assessment -> Opportunity Identification -> Project Proposal -> Implementation -> Savings Delivery."}
+      </p>
 
       <SectionHeader number="1.2" title="Overall Energy Saving Potential" />
       <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "value", label: "Value" }]} rows={[
@@ -392,8 +514,8 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
         { particular: "Annual electricity cost", value: formatINR(es.annualElectricityCost) },
         { particular: "Average electricity tariff considered", value: es.averageTariff },
         { particular: "Number of projects identified", value: es.numberOfProjects || projects.length },
-        { particular: "Total energy saving potential", value: energy },
-        { particular: "Total annual cost saving potential", value: formatINR(sav) },
+        { particular: <LabelWithFlag data={data} path="executiveSummary.totalEnergySavingPotential" label="Total energy saving potential" />, value: energy },
+        { particular: <LabelWithFlag data={data} path="executiveSummary.totalAnnualCostSavingPotential" label="Total annual cost saving potential" />, value: formatINR(sav) },
         { particular: "Total estimated investment", value: formatINR(inv) },
         { particular: "Simple payback period", value: es.simplePaybackPeriod || weightedPayback(projects) },
         { particular: "CO2 reduction potential", value: es.co2ReductionPotential },
@@ -405,78 +527,42 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
         { key: "projectNo", label: "Project No." },
         { key: "project", label: "Energy Saving Project" },
         { key: "system", label: "System" },
-        { key: "investment", label: "Investment ₹" },
-        { key: "saving", label: "Annual Saving ₹/year" },
+        { key: "investment", label: "Investment INR" },
+        { key: "saving", label: "Annual Saving INR/year" },
         { key: "energy", label: "Energy Saving kWh/year" },
         { key: "payback", label: "Payback" },
         { key: "priority", label: "Priority" },
-      ]} rows={asArray(projects).map((p, i) => ({
-        projectNo: p.projectNo || `Project ${i + 1}`,
-        project: p.projectTitle,
-        system: p.system,
-        investment: formatINR(p.estimatedInvestment),
-        saving: formatINR(p.expectedAnnualCostSaving),
-        energy: p.expectedEnergySaving,
-        payback: p.simplePaybackPeriod,
-        priority: p.implementationPriority,
+      ]} rows={projects.map((project, index) => ({
+        projectNo: formatEcmNumber(project) || `ECM ${index + 1}`,
+        project: displayText(project.projectTitle) || safeValue(project.projectTitle),
+        system: project.system,
+        investment: formatINR(project.estimatedInvestment),
+        saving: formatINR(project.expectedAnnualCostSaving),
+        energy: project.expectedEnergySaving,
+        payback: project.simplePaybackPeriod,
+        priority: project.implementationPriority,
       }))} />
 
-      <SectionHeader number="1.4" title="Project Grouping" />
-      <ReportTable columns={[
-        { key: "group", label: "Group" },
-        { key: "category", label: "Project Category" },
-        { key: "typical", label: "Typical Projects" },
-      ]} rows={[
-        { group: "GR-1", category: "HVAC System Optimization", typical: "Chiller, VRF/VRV, AHU, cooling tower, chilled water pumps" },
-        { group: "GR-2", category: "Pumps, Motors and Ventilation", typical: "Domestic pumps, STP pumps, exhaust fans, parking ventilation" },
-        { group: "GR-3", category: "Electrical System and Demand Optimization", typical: "APFC, kVAh billing, demand control, transformer loading" },
-        { group: "GR-4", category: "Lighting and Controls", typical: "LED retrofit, occupancy sensors, daylight control, timer-based control" },
-        { group: "GR-5", category: "Hot Water / Thermal System", typical: "Heat pump, boiler optimization, solar hot water, heat recovery" },
-        { group: "GR-6", category: "Renewable Energy and Monitoring", typical: "Solar PV, energy dashboard, IoT metering, sub-metering" },
-      ]} />
-
-      <SectionHeader number="1.5" title="Category-Wise Financial Summary" />
+      <SectionHeader number="1.4" title="Category-wise Summary" />
       <ReportTable compact columns={[
-        { key: "group", label: "Group" },
+        { key: "category", label: "Category" },
         { key: "count", label: "No. of Projects" },
-        { key: "investment", label: "Investment ₹" },
-        { key: "saving", label: "Annual Saving ₹/year" },
+        { key: "investment", label: "Investment INR" },
+        { key: "saving", label: "Annual Saving INR/year" },
         { key: "energy", label: "Energy Saving kWh/year" },
         { key: "payback", label: "Payback" },
-      ]} rows={[
-        { group: "HVAC system" },
-        { group: "Pumps and motors" },
-        { group: "Lighting" },
-        { group: "Electrical system" },
-        { group: "Hot water / thermal system" },
-        { group: "Renewable energy / monitoring" },
-        { group: "Total", count: projects.length, investment: formatINR(inv), saving: formatINR(sav), energy, payback: es.simplePaybackPeriod || weightedPayback(projects) },
-      ]} />
+      ]} rows={categorySummaryRows} />
 
-      <SectionHeader number="1.6" title="Recommended Implementation Priority" />
-      <ReportTable columns={[
-        { key: "priority", label: "Priority" },
-        { key: "criteria", label: "Criteria" },
-        { key: "action", label: "Recommended Action" },
-      ]} rows={[
-        { priority: "Immediate", criteria: "Low investment, quick payback, no operational risk", action: "Approve immediately" },
-        { priority: "Short Term", criteria: "Moderate investment, payback generally below 2 years", action: "Take budgetary approval" },
-        { priority: "Medium Term", criteria: "Higher investment or needs shutdown planning", action: "Plan phase-wise" },
-        { priority: "Strategic", criteria: "High investment, long-term decarbonization benefit", action: "Include in annual capex plan" },
-      ]} />
-
-      <SectionHeader number="1.7" title="Key Observations" />
+      <SectionHeader number="1.5" title="Key Observations" />
       <ul style={{ fontSize: 13.5, lineHeight: 1.65 }}>
         {(asArray(es.keyObservations).length ? asArray(es.keyObservations) : [
-          "HVAC operation and control generally provide the highest saving potential in commercial buildings.",
-          "Fixed-speed pumps and fans should be reviewed for VFD-based operation wherever load varies.",
-          "Lighting systems should be reviewed for LED retrofit, lux optimization and occupancy-based control.",
-          "Power factor, kVAh billing and demand management should be checked for billing-related savings.",
-          "Energy monitoring, BMS logic and operator practices are critical for sustaining savings after implementation.",
-        ]).map((item, i) => <li key={i}>{safeValue(item)}</li>)}
+          "Cooling, pumping, and compressed air opportunities generally contribute the largest energy-saving potential.",
+          "Projects with simple controls, flow optimization, and high-efficiency retrofits are suitable early candidates for implementation.",
+          "Reliable measurement, verification, and operator follow-through are important for sustaining savings after implementation.",
+        ]).map((item, index) => <li key={index}>{safeValue(item)}</li>)}
       </ul>
 
-      <SectionHeader number="1.8" title="Conclusion and Way Forward" />
+      <SectionHeader number="1.6" title="Conclusion and Way Forward" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
         Based on the audit findings, SEE-Tech recommends that {safeValue(data.reportInfo.clientName)} should proceed with detailed implementation planning for the identified energy-saving projects.
       </p>
@@ -491,7 +577,6 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
     </section>
   );
 }
-
 function BuildingEnergyProfilePage({ data }: { data: CommercialBuildingEnergyAuditData }) {
   const bp = data.buildingProfile || {};
   const esd = data.electricalSupplyDetails || {};
@@ -504,7 +589,7 @@ function BuildingEnergyProfilePage({ data }: { data: CommercialBuildingEnergyAud
 
       <SectionHeader number="2.1" title="General Information" />
       <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "details", label: "Details" }]} rows={[
-        { particular: "Name of facility", details: bp.facilityName || data.reportInfo.clientName },
+        { particular: <LabelWithFlag data={data} path="reportInfo.facilityName" label="Name of facility" />, details: bp.facilityName || data.reportInfo.clientName },
         { particular: "Address", details: bp.address },
         { particular: "Type of building", details: bp.typeOfBuilding || data.reportInfo.buildingType },
         { particular: "Year of construction", details: bp.yearOfConstruction },
@@ -519,134 +604,99 @@ function BuildingEnergyProfilePage({ data }: { data: CommercialBuildingEnergyAud
         { particular: "SEE-Tech audit team", details: bp.seeTechAuditTeam },
       ]} />
 
-      <SectionHeader number="2.2" title="Building Operation Details" />
+      <SectionHeader number="2.2" title="Utility and Energy Sources" />
       <ReportTable columns={[
         { key: "areaFunction", label: "Area / Function" },
         { key: "operatingHours", label: "Operating Hours" },
         { key: "remarks", label: "Remarks" },
       ]} rows={data.buildingOperationDetails || [
-        { areaFunction: "Office area" }, { areaFunction: "Common area" }, { areaFunction: "Basement / parking" },
-        { areaFunction: "Server room / data room" }, { areaFunction: "Kitchen", remarks: "Applicable for hotel / hospital" },
+        { areaFunction: "Office area" },
+        { areaFunction: "Common area" },
+        { areaFunction: "Basement / parking" },
       ]} />
-
-      <SectionHeader number="2.3" title="Utility and Energy Sources" />
       <ReportTable columns={[
         { key: "energySource", label: "Energy Source" },
         { key: "use", label: "Use" },
         { key: "annualConsumption", label: "Annual Consumption" },
-        { key: "annualCost", label: "Annual Cost ₹" },
+        { key: "annualCost", label: "Annual Cost INR" },
       ]} rows={data.utilityAndEnergySources || [
         { energySource: "Grid electricity", use: "HVAC, lighting, pumps, plug loads" },
         { energySource: "Diesel", use: "DG backup" },
         { energySource: "PNG / LPG", use: "Kitchen, boiler, hot water" },
         { energySource: "Solar PV", use: "Captive generation" },
       ]} />
-
-      <SectionHeader number="2.4" title="Electrical Supply Details" />
       <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "details", label: "Details" }]} rows={[
         { particular: "Supply voltage", details: esd.supplyVoltage },
-        { particular: "Consumer number", details: esd.consumerNumber },
         { particular: "Tariff category", details: esd.tariffCategory },
         { particular: "Contract demand / sanctioned load", details: esd.contractDemand },
         { particular: "Connected load", details: esd.connectedLoad },
         { particular: "Transformer capacity", details: esd.transformerCapacity },
-        { particular: "DG capacity", details: esd.dgCapacity },
-        { particular: "APFC panel capacity", details: esd.apfcPanelCapacity },
         { particular: "Average power factor", details: esd.averagePowerFactor },
         { particular: "Billing type", details: esd.billingType || "kWh / kVAh / TOD" },
-        { particular: "Average electricity tariff", details: esd.averageElectricityTariff || "₹/kWh" },
+        { particular: "Average electricity tariff", details: esd.averageElectricityTariff || "INR/kWh" },
       ]} />
 
-      <SectionHeader number="2.5" title="Electricity Consumption and Billing Summary" />
+      <SectionHeader number="2.3" title="Major Energy Consuming Systems" />
+      <ReportTable columns={[
+        { key: "system", label: "System" },
+        { key: "majorEquipment", label: "Major Equipment" },
+        { key: "estimatedShare", label: "Estimated Share of Energy Consumption" },
+        { key: "remarks", label: "Remarks" },
+      ]} rows={data.majorEnergyConsumingSystems || [
+        { system: "Cooling system", majorEquipment: "Chiller / pumps / cooling tower" },
+        { system: "Production machines", majorEquipment: "Dryers, heaters, servo systems" },
+        { system: "Compressed air", majorEquipment: "Air compressors and boosters" },
+        { system: "Auxiliary systems", majorEquipment: "Fans, blowers, grinders, APFC" },
+      ]} />
       <ReportTable compact columns={[
-        { key: "month", label: "Month" }, { key: "kwh", label: "kWh" }, { key: "kvah", label: "kVAh" },
-        { key: "maximumDemandKva", label: "Maximum Demand kVA" }, { key: "pf", label: "PF" },
-        { key: "billAmount", label: "Bill Amount ₹" }, { key: "specificConsumption", label: "Specific Consumption" },
-      ]} rows={data.electricityBillingSummary || ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Total / Average"].map(month => ({ month }))} />
+        { key: "equipment", label: "Equipment" },
+        { key: "capacity", label: "Capacity" },
+        { key: "quantity", label: "Quantity" },
+        { key: "connectedLoad", label: "Connected Load" },
+        { key: "controlSystem", label: "Control System" },
+        { key: "remarks", label: "Remarks" },
+      ]} rows={data.hvacSystemDetails || [{ equipment: "Chiller / VRF outdoor unit" }, { equipment: "AHU" }, { equipment: "Cooling tower" }]} />
+      <ReportTable compact columns={[
+        { key: "area", label: "Area" },
+        { key: "existingFixture", label: "Existing Fixture" },
+        { key: "wattage", label: "Wattage" },
+        { key: "quantity", label: "Quantity" },
+        { key: "operatingHours", label: "Operating Hours" },
+        { key: "controlType", label: "Control Type" },
+      ]} rows={data.lightingSystemDetails || [{ area: "Office area" }, { area: "Production area" }, { area: "Outdoor" }]} />
+      <ReportTable compact columns={[
+        { key: "pumpOrMotor", label: "Pump / Motor" },
+        { key: "application", label: "Application" },
+        { key: "ratingKw", label: "Rating kW" },
+        { key: "quantity", label: "Quantity" },
+        { key: "operatingHours", label: "Operating Hours" },
+        { key: "controlMethod", label: "Control Method" },
+        { key: "remarks", label: "Remarks" },
+      ]} rows={data.pumpsAndMotors || [{ pumpOrMotor: "Process pump" }, { pumpOrMotor: "Secondary pump" }, { pumpOrMotor: "Booster compressor motor" }]} />
+      <ReportTable compact columns={[
+        { key: "system", label: "System" },
+        { key: "controlPresent", label: "Control Present" },
+        { key: "energyImpact", label: "Energy Impact" },
+      ]} rows={data.buildingAutomationControls || [{ system: "Process automation" }, { system: "Compressed air management" }, { system: "Auxiliary fan controls" }]} />
 
-      <SectionHeader number="2.6" title="Specific Energy Consumption Benchmark" />
-      <ReportTable columns={[{ key: "buildingType", label: "Building Type" }, { key: "recommendedBenchmark", label: "Recommended Benchmark" }]} rows={[
-        { buildingType: "Office building", recommendedBenchmark: "kWh/sq.ft/year" },
-        { buildingType: "IT park", recommendedBenchmark: "kWh/sq.ft/year and kWh/workstation/year" },
-        { buildingType: "Hotel", recommendedBenchmark: "kWh/occupied room night" },
-        { buildingType: "Hospital", recommendedBenchmark: "kWh/bed/day or kWh/sq.ft/year" },
-        { buildingType: "Mall", recommendedBenchmark: "kWh/sq.ft/year" },
-      ]} />
+      <SectionHeader number="2.4" title="Audit Observations" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={[
         { parameter: "Annual electricity consumption", value: benchmark.annualElectricityConsumption },
-        { parameter: "Built-up area", value: benchmark.builtUpArea },
-        { parameter: "Conditioned area", value: benchmark.conditionedArea },
-        { parameter: "Annual occupancy / room nights / bed days", value: benchmark.annualOccupancy },
         { parameter: "Specific energy consumption", value: benchmark.specificEnergyConsumption },
         { parameter: "Reference / target benchmark", value: benchmark.referenceBenchmark },
         { parameter: "Improvement potential", value: benchmark.improvementPotential },
       ]} />
-
-      <SectionHeader number="2.7" title="Major Energy-Consuming Systems" />
       <ReportTable columns={[
-        { key: "system", label: "System" }, { key: "majorEquipment", label: "Major Equipment" },
-        { key: "estimatedShare", label: "Estimated Share of Energy Consumption" }, { key: "remarks", label: "Remarks" },
-      ]} rows={data.majorEnergyConsumingSystems || [
-        { system: "HVAC", majorEquipment: "Chiller / VRF / AHU / pumps / cooling tower" },
-        { system: "Lighting", majorEquipment: "Indoor / outdoor / parking / facade" },
-        { system: "Pumps", majorEquipment: "Domestic / STP / hot water / HVAC" },
-        { system: "Plug loads", majorEquipment: "Office equipment / appliances" },
-      ]} />
-
-      <SectionHeader number="2.8" title="HVAC System Details" />
-      <ReportTable compact columns={[
-        { key: "equipment", label: "Equipment" }, { key: "capacity", label: "Capacity" }, { key: "quantity", label: "Quantity" },
-        { key: "connectedLoad", label: "Connected Load" }, { key: "controlSystem", label: "Control System" }, { key: "remarks", label: "Remarks" },
-      ]} rows={data.hvacSystemDetails || [
-        { equipment: "Chiller / VRF outdoor unit" }, { equipment: "AHU" }, { equipment: "FCU" },
-        { equipment: "Cooling tower" }, { equipment: "Chilled water pump" }, { equipment: "Condenser water pump" },
-      ]} />
-      <p style={{ fontSize: 13, lineHeight: 1.6 }}>The HVAC system is one of the major energy-consuming systems in the building. During the audit, operating hours, loading pattern, temperature settings, pump and fan operation, control philosophy and maintenance condition should be reviewed.</p>
-
-      <SectionHeader number="2.9" title="Lighting System Details" />
-      <ReportTable compact columns={[
-        { key: "area", label: "Area" }, { key: "existingFixture", label: "Existing Fixture" }, { key: "wattage", label: "Wattage" },
-        { key: "quantity", label: "Quantity" }, { key: "operatingHours", label: "Operating Hours" }, { key: "controlType", label: "Control Type" },
-      ]} rows={data.lightingSystemDetails || [
-        { area: "Office area" }, { area: "Corridor" }, { area: "Parking" }, { area: "Outdoor" }, { area: "Back-of-house" },
-      ]} />
-
-      <SectionHeader number="2.10" title="Pumps and Motors" />
-      <ReportTable compact columns={[
-        { key: "pumpOrMotor", label: "Pump / Motor" }, { key: "application", label: "Application" }, { key: "ratingKw", label: "Rating kW" },
-        { key: "quantity", label: "Quantity" }, { key: "operatingHours", label: "Operating Hours" },
-        { key: "controlMethod", label: "Control Method" }, { key: "remarks", label: "Remarks" },
-      ]} rows={data.pumpsAndMotors || [
-        { pumpOrMotor: "Domestic water pump" }, { pumpOrMotor: "Hydro-pneumatic pump" }, { pumpOrMotor: "STP pump / blower" }, { pumpOrMotor: "HVAC pump" },
-      ]} />
-
-      <SectionHeader number="2.11" title="Building Automation and Controls" />
-      <ReportTable columns={[
-        { key: "system", label: "System" }, { key: "existingControl", label: "Existing Control" },
-        { key: "observation", label: "Observation" }, { key: "savingOpportunity", label: "Saving Opportunity" },
-      ]} rows={data.buildingAutomationControls || [
-        { system: "HVAC scheduling", existingControl: "Manual / BMS / Timer" },
-        { system: "AHU control", existingControl: "On-off / VFD / CO2 control" },
-        { system: "Pump control", existingControl: "Manual / pressure-based / VFD" },
-        { system: "Lighting control", existingControl: "Manual / timer / sensor" },
-        { system: "Parking ventilation", existingControl: "Manual / timer / CO sensor" },
-      ]} />
-
-      <SectionHeader number="2.12" title="Summary of Audit Observations" />
-      <ReportTable columns={[
-        { key: "srNo", label: "Sr. No." }, { key: "observation", label: "Observation" },
-        { key: "impact", label: "Impact" }, { key: "recommendedProject", label: "Recommended Project" },
+        { key: "observation", label: "Observation" },
+        { key: "impact", label: "Impact" },
+        { key: "recommendation", label: "Recommendation" },
       ]} rows={data.auditObservations || [
-        { srNo: 1, impact: "High energy consumption" },
-        { srNo: 2, impact: "Higher demand / kVAh billing" },
-        { srNo: 3, impact: "Excess operating hours" },
-        { srNo: 4, impact: "Inefficient equipment" },
-        { srNo: 5, impact: "Poor control / manual operation" },
+        { observation: "Optimization opportunities exist in cooling, production, compressed air, and auxiliary systems.", impact: "Higher than necessary energy consumption", recommendation: "Implement ECMs in a phased manner." },
+        { observation: "Control improvements can reduce part-load losses.", impact: "Avoidable operating cost", recommendation: "Adopt automatic controls and monitoring." },
       ]} />
     </section>
   );
 }
-
 function ImageBlock({ src, caption }: { src?: ReportValue; caption?: ReportValue }) {
   if (!src) {
     return (
@@ -663,20 +713,17 @@ function ImageBlock({ src, caption }: { src?: ReportValue; caption?: ReportValue
   );
 }
 
-function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBuildingProject; chapterNumber: number }) {
-  const n = (sectionNumber: number) => {
-    const base = chapterNumber || project?.chapterNumber || String(project?.projectNo).replace(/\D/g, "") || "3";
-    return `${base}.${sectionNumber}`;
-  };
+function ProjectChapterPage({ project }: { project: CommercialBuildingProject }) {
+  const ecmTitle = formatEcmTitle(project) || safeValue(project.projectTitle || "ECM");
 
   return (
     <section className="report-page" style={pageStyle}>
-      <SectionHeader level={2} title={`${safeValue(project.projectNo)} – ${safeValue(project.projectTitle)}`} />
+      <SectionHeader level={2} title={ecmTitle} />
 
       <SectionHeader level={3} title="Project Summary" />
       <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "details", label: "Details" }]} rows={[
         { particular: "Project title", details: project.projectTitle },
-        { particular: "Project number", details: project.projectNo },
+        { particular: "Project number", details: formatEcmNumber(project) || project.projectNo },
         { particular: "System", details: project.system },
         { particular: "Location", details: project.location },
         { particular: "Equipment covered", details: project.equipmentCovered },
@@ -690,209 +737,114 @@ function ProjectChapterPage({ project, chapterNumber }: { project: CommercialBui
         { particular: "Implementation priority", details: project.implementationPriority },
       ]} />
 
-      <SectionHeader number={n(2)} title="Existing System Description" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.existingSystemDescription || `The existing system consists of ${safeValue(project.equipmentCovered)}. The system is presently operated through ${safeValue(project.existingOperatingCondition)}. During the audit, it was observed that the present operation does not fully match the actual building load variation, resulting in avoidable energy consumption.`)}</p>
+      <SectionHeader level={3} title="Existing System Description" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.existingSystemDescription || `The existing system consists of ${safeValue(project.equipmentCovered)}. The system is presently operated through ${safeValue(project.existingOperatingCondition)}. During the audit, it was observed that the present operation does not fully match the actual load variation, resulting in avoidable energy consumption.`)}</p>
 
-      <SectionHeader number={n(3)} title="Baseline Data and Measurements" />
+      <SectionHeader level={3} title="Baseline Data and Measurements" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.baselineData || [
         { parameter: "Equipment rating", unit: "kW / TR / HP" },
         { parameter: "Quantity", unit: "Nos." },
         { parameter: "Operating hours", unit: "hours/day" },
-        { parameter: "Operating days", unit: "days/year" },
-        { parameter: "Existing power consumption", unit: "kW" },
-        { parameter: "Annual operating hours", unit: "hours/year" },
         { parameter: "Baseline annual consumption", unit: "kWh/year" },
-        { parameter: "Average tariff", unit: "₹/kWh" },
-        { parameter: "Baseline annual energy cost", unit: "₹/year" },
       ]} />
       <ReportTable columns={[{ key: "measurement", label: "Measurement" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.measurementData || [
         { measurement: "Voltage", unit: "V" },
         { measurement: "Current", unit: "A" },
-        { measurement: "Power factor", unit: "-" },
         { measurement: "Measured power", unit: "kW" },
-        { measurement: "Flow / airflow", unit: "m3/hr / CFM" },
-        { measurement: "Pressure / head / static pressure", unit: "m / mmWC / bar" },
-        { measurement: "Temperature inlet", unit: "deg C" },
-        { measurement: "Temperature outlet", unit: "deg C" },
-        { measurement: "Operating frequency", unit: "Hz" },
       ]} />
 
-      <SectionHeader number={n(4)} title="Problem / Gap Identified" />
+      <SectionHeader level={3} title="Problem / Gap Identified" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.problemGapIdentified || "The audit team observed that the existing system has potential for energy saving due to fixed-speed operation, over-capacity, higher operating hours, poor control, inefficient equipment, or absence of automation.")}</p>
       <ReportTable columns={[{ key: "system", label: "System" }, { key: "typicalGap", label: "Typical Gap" }]} rows={project.typicalGapTable || [
-        { system: "AHU / fan", typicalGap: "Constant speed operation despite variable occupancy" },
-        { system: "Pump", typicalGap: "Throttling, bypass or fixed-flow operation" },
-        { system: "Chiller", typicalGap: "High kW/TR due to poor condenser temperature or low delta-T" },
-        { system: "Lighting", typicalGap: "High wattage and manual operation" },
-        { system: "APFC", typicalGap: "Low PF or kVAh billing loss" },
-        { system: "Hot water", typicalGap: "High cost from electric heater / boiler" },
-        { system: "Solar PV", typicalGap: "Available roof area not utilized" },
-        { system: "BMS", typicalGap: "No monitoring of actual energy performance" },
+        { system: "System under review", typicalGap: "Control and efficiency improvement opportunity identified" },
       ]} />
 
-      <SectionHeader number={n(5)} title="Proposed Project" />
+      <SectionHeader level={3} title="Proposed Project" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.proposedProjectDescription || `It is proposed to implement ${safeValue(project.proposedIntervention)} for ${safeValue(project.equipmentCovered)}. The project includes supply, installation, testing and commissioning of major components and controls.`)}</p>
       <ReportTable columns={[{ key: "srNo", label: "Sr. No." }, { key: "scopeItem", label: "Scope Item" }]} rows={project.scopeOfWork || [
         { srNo: 1, scopeItem: "Detailed site measurement and final engineering" },
-        { srNo: 2, scopeItem: "Supply of equipment / VFD / controller / motor / sensor / panel" },
+        { srNo: 2, scopeItem: "Supply of equipment / controller / motor / accessories" },
         { srNo: 3, scopeItem: "Installation and integration with existing system" },
-        { srNo: 4, scopeItem: "Cabling, piping or ducting modification, if required" },
-        { srNo: 5, scopeItem: "Testing and commissioning" },
-        { srNo: 6, scopeItem: "Performance monitoring" },
-        { srNo: 7, scopeItem: "Operator training and handover" },
+        { srNo: 4, scopeItem: "Testing and commissioning" },
       ]} />
 
-      <SectionHeader number={n(6)} title="Key Activities for Implementation" />
+      <SectionHeader level={3} title="Key Activities for Implementation" />
       <ReportTable columns={[{ key: "activity", label: "Activity" }, { key: "details", label: "Details" }, { key: "responsibility", label: "Responsibility" }]} rows={project.keyActivities || [
         { activity: "Site verification", details: "Confirm equipment rating, location and operating condition", responsibility: "SEE-Tech + Client" },
         { activity: "Design finalization", details: "Finalize technical specifications and control logic", responsibility: "SEE-Tech" },
-        { activity: "Procurement", details: "Arrange equipment and accessories", responsibility: "SEE-Tech / Vendor" },
         { activity: "Installation", details: "Install system with minimum disturbance", responsibility: "SEE-Tech" },
-        { activity: "Integration", details: "Integrate with panel / BMS / controls", responsibility: "SEE-Tech" },
-        { activity: "Trial run", details: "Operate under different load conditions", responsibility: "SEE-Tech + Client" },
         { activity: "Measurement", details: "Record before and after performance", responsibility: "SEE-Tech" },
-        { activity: "Handover", details: "Submit performance report and train operators", responsibility: "SEE-Tech" },
       ]} />
 
-      <SectionHeader number={n(7)} title="Rationale for Energy Saving" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.rationaleForEnergySaving)}</p>
-      <ReportTable columns={[{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }]} rows={project.savingRationaleTable || [
-        { projectType: "Fan or pump VFD", savingRationale: "Fans and pumps follow affinity laws; reduction in speed results in significant reduction in power." },
-        { projectType: "IE4 / IE5 motor retrofit", savingRationale: "Higher motor efficiency reduces electrical losses and improves system efficiency." },
-        { projectType: "Lighting retrofit", savingRationale: "LED fixtures provide required lux level at lower wattage; controls reduce operating hours." },
-        { projectType: "APFC / kVAh optimization", savingRationale: "Improved power factor reduces kVA demand and billing losses." },
-        { projectType: "Heat pump", savingRationale: "Heat is transferred instead of directly generated, reducing electricity per unit of hot water." },
-        { projectType: "Solar PV", savingRationale: "Part of grid electricity consumption is replaced by captive renewable generation." },
-      ]} />
+      <SectionHeader level={3} title="Rationale for Energy Saving" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.rationaleForEnergySaving || "Energy will reduce through improved controls, reduced losses, and higher equipment efficiency.")}</p>
 
-      <SectionHeader number={n(8)} title="Energy Saving Calculation" />
+      <SectionHeader level={3} title="Energy Saving Calculation" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.energySavingCalculation || [
-        { parameter: "Existing connected load / measured load", unit: "kW" },
-        { parameter: "Proposed load after project", unit: "kW" },
-        { parameter: "Load reduction", unit: "kW" },
-        { parameter: "Operating hours", unit: "hours/year" },
         { parameter: "Annual energy saving", unit: "kWh/year", value: project.expectedEnergySaving },
-        { parameter: "Average tariff", unit: "₹/kWh" },
-        { parameter: "Annual cost saving", unit: "₹/year", value: project.expectedAnnualCostSaving },
-        { parameter: "Estimated investment", unit: "₹", value: project.estimatedInvestment },
+        { parameter: "Annual cost saving", unit: "INR/year", value: project.expectedAnnualCostSaving },
+        { parameter: "Estimated investment", unit: "INR", value: project.estimatedInvestment },
         { parameter: "Simple payback", unit: "years", value: project.simplePaybackPeriod },
       ]} />
-      <p style={{ fontSize: 12.5, lineHeight: 1.6 }}>Annual Energy Saving = Load Reduction x Annual Operating Hours | Annual Cost Saving = Annual Energy Saving x Average Electricity Tariff | Simple Payback = Estimated Investment / Annual Cost Saving</p>
 
-      <SectionHeader number={n(9)} title="Carbon Footprint" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        The proposed project will contribute to carbon footprint reduction by lowering annual electricity consumption. The CO2 reduction shall be calculated based on the annual energy saving and applicable grid emission factor.
-      </p>
+      <SectionHeader level={3} title="Carbon Footprint" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={[
         { parameter: "Annual energy saving", value: project.carbonFootprint?.annualEnergySaving || project.expectedEnergySaving },
         { parameter: "Grid emission factor", value: project.carbonFootprint?.emissionFactor || "Data required" },
         { parameter: "Estimated CO2 reduction", value: project.carbonFootprint?.estimatedCO2Reduction || "Data required" },
-        { parameter: "Calculation basis", value: project.carbonFootprint?.calculationBasis || "Annual Energy Saving x Grid Emission Factor" },
-        { parameter: "Remarks", value: project.carbonFootprint?.remarks || "Data required" },
       ]} />
 
-      <SectionHeader number={n(10)} title="Key Metrics" />
-      <ReportTable columns={[{ key: "srNo", label: "Sr. No." }, { key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={project.keyMetrics || [
-        { srNo: 1, parameter: "Baseline consumption", value: "Data required" },
-        { srNo: 2, parameter: "Energy saving", value: project.expectedEnergySaving },
-        { srNo: 3, parameter: "Percentage saving", value: "Data required" },
-        { srNo: 4, parameter: "Cost saving", value: formatINR(project.expectedAnnualCostSaving) },
-        { srNo: 5, parameter: "Estimated investment", value: formatINR(project.estimatedInvestment) },
-        { srNo: 6, parameter: "Payback period", value: project.simplePaybackPeriod },
-        { srNo: 7, parameter: "CO2 reduction", value: "Data required" },
-      ]} />
-
-      <SectionHeader number={n(11)} title="Technical Specifications" />
+      <SectionHeader level={3} title="Technical Specifications" />
       <ReportTable columns={[{ key: "item", label: "Item" }, { key: "specification", label: "Specification" }]} rows={project.technicalSpecifications || [
-        { item: "Equipment / technology" }, { item: "Capacity" }, { item: "Quantity" },
-        { item: "Motor efficiency class, if applicable", specification: "IE4 / IE5" },
-        { item: "VFD rating, if applicable" }, { item: "Sensor type" }, { item: "Controller / PLC / IoT system" },
-        { item: "Communication", specification: "Modbus / BACnet / Cloud / BMS" },
-        { item: "Panel requirement" }, { item: "Civil / mechanical modification" }, { item: "Safety requirement" },
+        { item: "Equipment / technology" },
+        { item: "Capacity" },
+        { item: "Quantity" },
       ]} />
 
-      <SectionHeader number={n(12)} title="Schematic / Conceptual Framework" />
-      <ReportTable columns={[{ key: "stage", label: "Stage" }, { key: "description", label: "Description" }]} rows={project.schematicFramework || [
-        { stage: "Stage 1: Current State", description: "Existing inefficient or non-optimized operation" },
-        { stage: "Stage 2: Intervention", description: "What SEE-Tech will install or modify" },
-        { stage: "Stage 3: Physics of Saving", description: "Why energy will reduce after the intervention" },
-        { stage: "Stage 4: Outcome", description: "kWh saving, ₹ saving, payback and reliability benefit" },
-      ]} />
-      {(asArray(project.images).length ? asArray(project.images) : [{ src: "", caption: "" }]).map((img, index) => (
-        <ImageBlock key={index} src={img.src} caption={img.caption} />
-      ))}
-
-      <SectionHeader number={n(13)} title="Implementation Duration" />
-      <ReportTable columns={[{ key: "activity", label: "Activity" }, { key: "duration", label: "Duration" }]} rows={project.implementationDurationTable || [
-        { activity: "Engineering and approval", duration: "1 week" },
-        { activity: "Procurement", duration: "2-4 weeks" },
-        { activity: "Installation", duration: "1-2 weeks" },
-        { activity: "Testing and commissioning", duration: "1 week" },
-        { activity: "Performance monitoring", duration: "2-4 weeks" },
-        { activity: "Total expected duration", duration: project.implementationDuration || "Data required" },
-      ]} />
-
-      <SectionHeader number={n(14)} title="Precautions / Aspects to be Taken Care Of" />
-      <ReportTable columns={[{ key: "area", label: "Area" }, { key: "precaution", label: "Precaution" }]} rows={project.precautions || [
-        { area: "Technical suitability", precaution: "Confirm equipment rating, sizing and compatibility" },
-        { area: "Operation", precaution: "Ensure project does not affect comfort, safety or process requirement" },
-        { area: "Controls", precaution: "Test control logic under different load conditions" },
-        { area: "Electrical safety", precaution: "Ensure proper protection, earthing and panel safety" },
-        { area: "Maintenance", precaution: "Train maintenance team for operation and troubleshooting" },
-        { area: "Measurement", precaution: "Record before and after data for savings validation" },
-        { area: "Shutdown planning", precaution: "Plan installation during low-load or non-operating hours" },
-      ]} />
-
-      <SectionHeader number={n(15)} title="Measurement and Verification Plan" />
+      <SectionHeader level={3} title="Measurement and Verification Plan" />
       <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "baselineMeasurement", label: "Baseline Measurement" }, { key: "postImplementationMeasurement", label: "Post-Implementation Measurement" }]} rows={project.measurementVerificationPlan || [
         { parameter: "Power consumption", baselineMeasurement: "kW before project", postImplementationMeasurement: "kW after project" },
-        { parameter: "Operating hours", baselineMeasurement: "Existing operating schedule", postImplementationMeasurement: "Revised operating schedule" },
         { parameter: "Energy consumption", baselineMeasurement: "kWh/year baseline", postImplementationMeasurement: "kWh/year after project" },
-        { parameter: "Performance parameter", baselineMeasurement: "Flow / pressure / temperature / lux / PF", postImplementationMeasurement: "Confirmed after commissioning" },
-        { parameter: "Saving validation", baselineMeasurement: "Calculated from baseline", postImplementationMeasurement: "Verified from measured data" },
       ]} />
 
-      <SectionHeader number={n(16)} title="Benefits Other Than Energy Saving" />
-      <ReportTable columns={[{ key: "benefit", label: "Benefit" }, { key: "description", label: "Description" }]} rows={project.benefitsOtherThanEnergySaving || [
-        { benefit: "Reduced operating cost", description: "Lower electricity / fuel bill" },
-        { benefit: "Improved reliability", description: "Better control and reduced stress on equipment" },
-        { benefit: "Better comfort", description: "Stable temperature / ventilation / lighting" },
-        { benefit: "Lower maintenance", description: "Reduced wear and tear" },
-        { benefit: "Better monitoring", description: "Availability of real-time performance data" },
-        { benefit: "Sustainability", description: "Reduction in CO2 emissions" },
-        { benefit: "Modernization", description: "Upgrade of old system with efficient technology" },
-      ]} />
-
-      <SectionHeader number={n(17)} title="Case Studies" />
+      <SectionHeader level={3} title="Conclusion" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        The following reference case studies or similar implementation examples may be considered for understanding the practical relevance of this project.
-      </p>
-      <ReportTable compact columns={[
-        { key: "title", label: "Case Study" },
-        { key: "clientType", label: "Client Type" },
-        { key: "system", label: "System" },
-        { key: "implementedMeasure", label: "Implemented Measure" },
-        { key: "result", label: "Result" },
-        { key: "relevance", label: "Relevance" },
-      ]} rows={project.caseStudies && project.caseStudies.length ? project.caseStudies : [
-        {
-          title: "Data required",
-          clientType: "Data required",
-          system: project.system || "Data required",
-          implementedMeasure: project.proposedIntervention || "Data required",
-          result: "Data required",
-          relevance: "Data required",
-        },
-      ]} />
-
-      <SectionHeader level={3} title="Case Studies" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        {safeValue(project.finalConclusion || project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year. With an estimated investment of ${formatINR(project.estimatedInvestment)}, the simple payback period is expected to be ${safeValue(project.simplePaybackPeriod)}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeValue(project.implementationPriority)}.`)}
+        {safeValue(project.finalConclusion || project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year.`)}
       </p>
     </section>
   );
 }
 
+function EnergySavingProjectsIntroPage() {
+  return (
+    <section className="report-page" style={pageStyle}>
+      <SectionHeader level={1} title="Chapter 3: Energy Saving Projects" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        This chapter presents the identified energy conservation measures grouped by system and application area. Each group includes a summary table followed by detailed ECM descriptions.
+      </p>
+    </section>
+  );
+}
+
+function AnnexuresPage() {
+  return (
+    <section className="report-page" style={pageStyle}>
+      <SectionHeader level={1} title="Chapter 4: Annexures" />
+
+      <SectionHeader number="4.1" title="Uploaded Data Sources" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>Uploaded spreadsheets, measurements, and supporting documents used for this report are referenced here.</p>
+
+      <SectionHeader number="4.2" title="Assumptions" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>Savings, investment, and implementation assumptions are based on the data made available during the audit and SEE-Tech engineering judgment where direct readings were not available.</p>
+
+      <SectionHeader number="4.3" title="Image / Figure References" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>Photographs, schematics, and reference figures included in the report are listed in this section.</p>
+
+      <SectionHeader number="4.4" title="Calculation Notes" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>Calculation notes, formulas, and validation references supporting the ECM analysis are documented here.</p>
+    </section>
+  );
+}
 export const sampleCommercialBuildingEnergyAuditData: CommercialBuildingEnergyAuditData = {
   reportInfo: {
     reportTitle: "Detailed Energy Audit Report",
@@ -954,16 +906,28 @@ export default function CommercialBuildingEnergyAuditTemplate({
   data: CommercialBuildingEnergyAuditData;
 }) {
   const groupedProjects = asArray(data.groupedProjects);
-  let currentChapter = 3;
+  const projectGroups = groupedProjects.length
+    ? groupedProjects
+    : [
+        {
+          groupNo: "GR-1",
+          groupTitle: "Energy Saving Projects",
+          projects: asArray(data.projects),
+          totalInvestment: totalInvestment(asArray(data.projects)),
+          totalAnnualSaving: totalSavings(asArray(data.projects)),
+          totalEnergySaving: totalEnergy(asArray(data.projects)),
+          weightedPayback: weightedPayback(asArray(data.projects)),
+        },
+      ];
 
   return (
     <div className="commercial-building-energy-audit-report report-print-area">
       <style>{printCss}</style>
 
-      <CoverPage data={data.reportInfo} />
+      <CoverPage data={data.reportInfo} reportData={data} />
       <div className="page-break" />
 
-      <TableOfContents groupedProjects={groupedProjects} />
+      <TableOfContents groupedProjects={projectGroups} />
       <div className="page-break" />
 
       <ExecutiveSummaryPage data={data} />
@@ -972,49 +936,45 @@ export default function CommercialBuildingEnergyAuditTemplate({
       <BuildingEnergyProfilePage data={data} />
       <div className="page-break" />
 
-      {groupedProjects.length ? (
-        groupedProjects.map((group, index) => {
-          const chapterNumber = currentChapter + index;
-          return (
-            <React.Fragment key={group.groupNo}>
-              <section className="report-page" style={pageStyle}>
-                <SectionHeader level={1} title={`Chapter ${chapterNumber}: ${group.groupNo} ${safeValue(group.groupTitle)}`} />
-                <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-                  This chapter covers {asArray(group.projects).length} energy conservation measures (ECMs) under the {safeValue(group.groupTitle)} category. 
-                  The summary of these projects is provided below, followed by detailed descriptions of each individual project.
-                </p>
-                
-                <SectionHeader level={2} title="Group Summary" />
-                <ReportTable compact columns={[
-                  { key: "projectNo", label: "ECM No." },
-                  { key: "projectTitle", label: "ECM Name" },
-                  { key: "investment", label: "Investment ₹" },
-                  { key: "saving", label: "Annual Saving ₹/year" },
-                  { key: "energy", label: "Energy Saving kWh/year" },
-                  { key: "payback", label: "Payback" },
-                ]} rows={asArray(group.projects).map((p) => ({
-                  projectNo: p.projectNo,
-                  projectTitle: p.projectTitle,
-                  investment: formatINR(p.estimatedInvestment),
-                  saving: formatINR(p.expectedAnnualCostSaving),
-                  energy: safeValue(p.expectedEnergySaving),
-                  payback: safeValue(p.simplePaybackPeriod),
-                }))} />
-              </section>
-              <div className="page-break" />
+      <EnergySavingProjectsIntroPage />
+      <div className="page-break" />
 
-              {asArray(group.projects).map((project, pIndex) => (
-                <React.Fragment key={`${project.projectNo || pIndex}`}>
-                  <ProjectChapterPage project={project} chapterNumber={chapterNumber} />
-                  <div className="page-break" />
-                </React.Fragment>
-              ))}
+      {projectGroups.map((group, index) => (
+        <React.Fragment key={`${displayText(group.groupNo) || index}`}>
+          <section className="report-page" style={pageStyle}>
+            <SectionHeader level={2} title={formatGroupHeading(group, index)} />
+            <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+              This section covers {asArray(group.projects).length} energy conservation measures under the {displayText(group.groupTitle) || displayText(group.groupNo) || "selected"} category.
+            </p>
+            <SectionHeader level={3} title="Group Summary Table" />
+            <ReportTable compact columns={[
+              { key: "projectNo", label: "ECM No." },
+              { key: "projectTitle", label: "ECM Name" },
+              { key: "investment", label: "Investment INR" },
+              { key: "saving", label: "Annual Saving INR/year" },
+              { key: "energy", label: "Energy Saving kWh/year" },
+              { key: "payback", label: "Payback" },
+            ]} rows={asArray(group.projects).map((project) => ({
+              projectNo: formatEcmNumber(project),
+              projectTitle: displayText(project.projectTitle) || safeValue(project.projectTitle),
+              investment: formatINR(project.estimatedInvestment),
+              saving: formatINR(project.expectedAnnualCostSaving),
+              energy: safeValue(project.expectedEnergySaving),
+              payback: safeValue(project.simplePaybackPeriod),
+            }))} />
+          </section>
+          <div className="page-break" />
+
+          {asArray(group.projects).map((project, projectIndex) => (
+            <React.Fragment key={`${displayText(project.projectNo) || projectIndex}-${displayText(project.projectTitle) || "project"}`}>
+              <ProjectChapterPage project={project} />
+              <div className="page-break" />
             </React.Fragment>
-          );
-        })
-      ) : (
-        <ProjectChapterPage chapterNumber={3} project={{ projectNo: "Project 1", projectTitle: "[Name of Energy Saving Project]" }} />
-      )}
+          ))}
+        </React.Fragment>
+      ))}
+
+      <AnnexuresPage />
     </div>
   );
 }

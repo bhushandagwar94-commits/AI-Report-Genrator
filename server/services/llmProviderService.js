@@ -158,6 +158,255 @@ function normalizeReportForExport(reportData) {
   };
 }
 
+function getBinaryFlag(value) {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string" && value.trim() === "") return 0;
+  if (typeof value === "string" && value.trim().toLowerCase() === "data required") return 0;
+  if (Array.isArray(value) && value.length === 0) return 0;
+  if (
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  ) {
+    return 0;
+  }
+
+  return 1;
+}
+
+function setFieldFlag(fieldFlags, path, value, options = {}) {
+  const flag = Number(getBinaryFlag(value));
+  const source = flag === 0 ? "missing" : (options.source || "default");
+  const inferredType = Array.isArray(value) ? "array" : typeof value;
+
+  fieldFlags[path] = {
+    flag,
+    source,
+    valueType: options.valueType || inferredType,
+    label: options.label || path,
+    sourceColumn: options.sourceColumn || null,
+    message:
+      flag === 1
+        ? (options.successMessage || `Available from ${source}`)
+        : (options.missingMessage || "Data required"),
+  };
+}
+
+function buildMissingFieldSummary(fieldFlags = {}) {
+  return Object.entries(fieldFlags)
+    .filter(([, meta]) => Number(meta?.flag) === 0)
+    .map(([path, meta]) => ({
+      path,
+      label: meta.label,
+      sourceExpected: meta.source,
+      message: meta.message,
+    }));
+}
+
+function stripDebugMetadata(reportData) {
+  const cloned = reportData && typeof structuredClone === "function"
+    ? structuredClone(reportData)
+    : JSON.parse(JSON.stringify(reportData || {}));
+
+  delete cloned.fieldFlags;
+  delete cloned.missingFieldSummary;
+  delete cloned.providerAttempts;
+  return cloned;
+}
+
+const FIELD_FLAG_FORM_FIELDS = [
+  {
+    path: "reportInfo.clientName",
+    inputKey: "clientName",
+    getter: (reportJson) => reportJson?.reportInfo?.clientName,
+    label: "Client Name",
+  },
+  {
+    path: "reportInfo.facilityName",
+    inputKey: "facilityName",
+    getter: (reportJson) => reportJson?.buildingProfile?.facilityName || reportJson?.reportInfo?.facilityName,
+    label: "Facility Name",
+  },
+  {
+    path: "reportInfo.location",
+    inputKey: "location",
+    getter: (reportJson) => reportJson?.reportInfo?.location,
+    label: "Location",
+  },
+  {
+    path: "reportInfo.auditPeriod",
+    inputKey: "auditPeriod",
+    getter: (reportJson) => reportJson?.reportInfo?.auditPeriod,
+    label: "Audit Period",
+  },
+  {
+    path: "reportInfo.reportDate",
+    inputKey: "reportDate",
+    getter: (reportJson) => reportJson?.reportInfo?.reportDate,
+    label: "Report Date",
+  },
+  {
+    path: "reportInfo.preparedBy",
+    inputKey: "preparedBy",
+    getter: (reportJson) => reportJson?.reportInfo?.preparedBy,
+    label: "Prepared By",
+  },
+];
+
+function buildFieldFlags(reportJson, mappingContext = {}, providerInfo = {}) {
+  const normalizedReport = normalizeReportForExport(stripDebugMetadata(reportJson));
+  const fieldFlags = {};
+  const projects = asArray(normalizedReport.projects);
+  const formData = mappingContext?.inputDetails || mappingContext?.formData || {};
+  const narrativeSource = ["deterministic-fallback", "deterministic"].includes(providerInfo?.providerUsed)
+    ? "deterministic"
+    : "ai";
+
+  FIELD_FLAG_FORM_FIELDS.forEach(({ path, getter, label, inputKey }) => {
+    const hasRawFormValue = inputKey && Object.prototype.hasOwnProperty.call(formData, inputKey);
+    const rawValue = hasRawFormValue ? formData[inputKey] : undefined;
+    const resolvedValue = hasRawFormValue ? rawValue : getter(normalizedReport);
+    const resolvedSource = hasRawFormValue ? "form" : "default";
+
+    setFieldFlag(fieldFlags, path, resolvedValue, {
+      source: resolvedSource,
+      valueType: "text",
+      label,
+      successMessage: resolvedSource === "form" ? "Fetched from form input" : "Applied default value",
+      missingMessage: resolvedSource === "form" ? "Missing from form input" : "Data required",
+    });
+  });
+
+  setFieldFlag(
+    fieldFlags,
+    "executiveSummary.totalEnergySavingPotential",
+    normalizedReport?.executiveSummary?.totalEnergySavingPotential,
+    {
+      source: "calculated",
+      valueType: "number",
+      label: "Total Energy Saving Potential",
+      successMessage: "Calculated from Excel project values",
+    }
+  );
+  setFieldFlag(
+    fieldFlags,
+    "executiveSummary.totalAnnualCostSavingPotential",
+    normalizedReport?.executiveSummary?.totalAnnualCostSavingPotential,
+    {
+      source: "calculated",
+      valueType: "number",
+      label: "Total Annual Cost Saving Potential",
+      successMessage: "Calculated from Excel project savings",
+    }
+  );
+  setFieldFlag(
+    fieldFlags,
+    "executiveSummary.totalEstimatedInvestment",
+    normalizedReport?.executiveSummary?.totalEstimatedInvestment,
+    {
+      source: "calculated",
+      valueType: "number",
+      label: "Total Estimated Investment",
+      successMessage: "Calculated from Excel project investments",
+    }
+  );
+  setFieldFlag(
+    fieldFlags,
+    "executiveSummary.simplePaybackPeriod",
+    normalizedReport?.executiveSummary?.simplePaybackPeriod,
+    {
+      source: "calculated",
+      valueType: "number",
+      label: "Simple Payback Period",
+      successMessage: "Calculated from Excel project totals",
+    }
+  );
+
+  projects.forEach((project, index) => {
+    setFieldFlag(fieldFlags, `projects[${index}].projectNo`, project.projectNo, {
+      source: "excel",
+      sourceColumn: "Sr.",
+      valueType: "text",
+      label: "ECM Number",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].projectTitle`, project.projectTitle, {
+      source: "excel",
+      sourceColumn: "Project Name",
+      valueType: "text",
+      label: "Project Title",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].equipmentCovered`, project.equipmentCovered, {
+      source: "excel",
+      sourceColumn: "Equipment Name",
+      valueType: "text",
+      label: "Equipment Covered",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].expectedEnergySaving`, project.expectedEnergySaving, {
+      source: "excel",
+      sourceColumn: "Saving, kWh/ Year",
+      valueType: "number",
+      label: "Expected Energy Saving",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].expectedAnnualCostSaving`, project.expectedAnnualCostSaving, {
+      source: "excel",
+      sourceColumn: "Savings in Rs/Year",
+      valueType: "number",
+      label: "Expected Annual Cost Saving",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].estimatedInvestment`, project.estimatedInvestment, {
+      source: "excel",
+      sourceColumn: "Investment, Rs.",
+      valueType: "number",
+      label: "Estimated Investment",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].simplePaybackPeriod`, project.simplePaybackPeriod, {
+      source: "excel",
+      sourceColumn: "Payback Period, Years",
+      valueType: "number",
+      label: "Simple Payback Period",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].implementationDuration`, project.implementationDuration, {
+      source: "excel",
+      sourceColumn: "Project Lead Time",
+      valueType: "text",
+      label: "Implementation Duration",
+      successMessage: "Fetched from Excel",
+    });
+    setFieldFlag(
+      fieldFlags,
+      `projects[${index}].co2Reduction`,
+      project?.co2Reduction || project?.carbonFootprint?.estimatedCO2Reduction,
+      {
+        source: "calculated",
+        valueType: "number",
+        label: "CO2 Reduction",
+        successMessage: "Calculated from energy saving data",
+      }
+    );
+    setFieldFlag(fieldFlags, `projects[${index}].proposedProjectDescription`, project.proposedProjectDescription, {
+      source: narrativeSource,
+      valueType: "text",
+      label: "Proposed Project Description",
+      successMessage: narrativeSource === "ai" ? "Generated by AI" : "Generated by deterministic fallback",
+    });
+    setFieldFlag(fieldFlags, `projects[${index}].rationaleForEnergySaving`, project.rationaleForEnergySaving, {
+      source: narrativeSource,
+      valueType: "text",
+      label: "Rationale for Energy Saving",
+      successMessage: narrativeSource === "ai" ? "Generated by AI" : "Generated by deterministic fallback",
+    });
+  });
+
+  return fieldFlags;
+}
+
 function scanForRenderedObjectStrings(value, path, qcErrors) {
   if (typeof value === "string") {
     if (value.toLowerCase().includes("[object object]")) {
@@ -1191,60 +1440,225 @@ function buildCommercialBuildingEnergyAuditFallback({
 /**
  * Cleans the raw text response to ensure valid JSON is returned
  */
-function cleanJsonResponse(rawText) {
-  let cleaned = rawText.trim();
-  // Remove markdown fences
+function stripMarkdownFences(rawText = "") {
+  let cleaned = String(rawText || "").trim();
   cleaned = cleaned.replace(/^```(json)?/im, "");
   cleaned = cleaned.replace(/```$/im, "");
-  cleaned = cleaned.trim();
-  
-  // Try finding the first JSON object array or curly braces block if extra text exists
+  return cleaned.trim();
+}
+
+function safeParseAiJson(content) {
+  if (!content || typeof content !== "string") {
+    throw new Error("AI returned empty content");
+  }
+
+  if (content.length > 2_000_000) {
+    throw new Error("AI response too large");
+  }
+
+  let cleaned = stripMarkdownFences(content);
   const startIndex = cleaned.indexOf("{");
   const lastIndex = cleaned.lastIndexOf("}");
   if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
     cleaned = cleaned.substring(startIndex, lastIndex + 1);
   }
-  
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (error) {
+    throw new Error(`AI JSON parse failed: ${error.message}`);
+  }
 }
 
-/**
- * OpenRouter direct generation function
- */
-async function generateWithOpenRouter(systemPrompt, userPrompt) {
-  const endpoint = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1/chat/completions";
-  const model = process.env.OPENROUTER_MODEL || "openrouter/free";
-  const apiKey = process.env.OPENROUTER_API_KEY;
+function cleanJsonResponse(rawText) {
+  return safeParseAiJson(rawText);
+}
 
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is missing");
+function getOpenRouterModels() {
+  const models = process.env.OPENROUTER_MODELS
+    ? process.env.OPENROUTER_MODELS.split(",").map((m) => m.trim()).filter(Boolean)
+    : process.env.OPENROUTER_MODEL
+      ? [process.env.OPENROUTER_MODEL]
+      : [];
+      
+  console.log("[OPENROUTER MODELS PARSED]", models);
+  
+  if (!models || models.length === 0) {
+    console.error("OPENROUTER_MODELS missing in runtime env");
+  }
+  
+  return models;
+}
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "http://localhost:3000",
-      "X-Title": "SEE-Tech AI Report Generator",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.1,
-    }),
-  });
+async function callOpenRouterModel(model, messages, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || 30000);
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenRouter API failed with status ${response.status}: ${errText}`);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost:3000",
+        "X-Title": "SEE-Tech AI Report Generator"
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: Number(process.env.OPENROUTER_TEMPERATURE || 0.2),
+        max_tokens: Number(process.env.OPENROUTER_MAX_TOKENS || 12000)
+      }),
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter ${response.status}: ${text.slice(0, 500)}`);
+    }
+
+    const data = JSON.parse(text);
+    const content = data?.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("OpenRouter returned no message content");
+    }
+
+    return {
+      content,
+      raw: data
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateWithOpenRouterFallback(messages, options = {}) {
+  const skipLlmForDev =
+    process.env.NODE_ENV === "development" &&
+    String(process.env.SKIP_LLM_FOR_DEV || "false").toLowerCase() === "true";
+  const models = getOpenRouterModels();
+  const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || 30000);
+
+  if (!process.env.OPENROUTER_API_KEY) {
+    return {
+      success: false,
+      providerUsed: "deterministic-fallback",
+      providerStatus: "fallback",
+      modelUsed: null,
+      providerAttempts: [],
+      error: "OPENROUTER_API_KEY missing"
+    };
   }
 
-  const data = await response.json();
-  const textResponse = data?.choices?.[0]?.message?.content;
-  if (!textResponse) throw new Error("OpenRouter API returned empty content");
-  return textResponse;
+  if (!models.length) {
+    return {
+      success: false,
+      providerUsed: "deterministic-fallback",
+      providerStatus: "fallback",
+      modelUsed: null,
+      providerAttempts: [],
+      error: "No OpenRouter models configured"
+    };
+  }
+
+  if (skipLlmForDev) {
+    return {
+      success: false,
+      providerUsed: "deterministic-fallback",
+      providerStatus: "fallback",
+      modelUsed: null,
+      providerAttempts: [],
+      error: "SKIP_LLM_FOR_DEV enabled",
+    };
+  }
+
+  const attempts = [];
+  console.log(`[LLM OPENROUTER] Using models ${models.join(",")} with timeout ${timeoutMs}ms`);
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
+    const attempt = {
+      order: i + 1,
+      model,
+      status: "started",
+      startedAt: new Date().toISOString()
+    };
+    attempts.push(attempt);
+
+    try {
+      console.log(`[LLM] Trying model ${i + 1}/${models.length}: ${model}`);
+      const result = await callOpenRouterModel(model, messages, options);
+
+      if (result && result.content) {
+        let parsedData = null;
+        try {
+          parsedData = cleanJsonResponse(result.content);
+        } catch (parseError) {
+          console.warn(`[LLM] OpenRouter model ${model} returned invalid JSON: ${parseError.message}`);
+          attempt.status = "failed";
+          attempt.reason = `Invalid JSON returned: ${parseError.message}`;
+          attempt.jsonValid = false;
+          attempt.finishedAt = new Date().toISOString();
+          continue;
+        }
+
+        console.log(`[LLM] OpenRouter model succeeded: ${model}`);
+        attempt.status = "success";
+        attempt.finishedAt = new Date().toISOString();
+        attempt.jsonValid = true;
+        return {
+          success: true,
+          providerUsed: "openrouter",
+          providerStatus: "success",
+          modelUsed: model,
+          providerAttempts: attempts,
+          content: result.content,
+          parsedData: parsedData,
+          raw: result.raw,
+          attempts
+        };
+      }
+
+      attempt.status = "failed";
+      attempt.reason = "Empty content returned";
+      attempt.jsonValid = false;
+      attempt.finishedAt = new Date().toISOString();
+    } catch (error) {
+      if (error.message.includes("timed out")) {
+        console.warn(`[LLM] Model timed out after ${timeoutMs}ms: ${model}`);
+      } else {
+        console.warn(`[LLM] OpenRouter model failed: ${model}`, error.message);
+      }
+      attempt.status = "failed";
+      attempt.reason = error.message;
+      attempt.jsonValid = false;
+      attempt.finishedAt = new Date().toISOString();
+      continue;
+    }
+  }
+
+  if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODELS && attempts.length === 0) {
+    console.error("[BUG] OpenRouter configured but providerAttempts is empty. Provider flow was skipped.");
+  }
+
+  return {
+    success: false,
+    providerUsed: "deterministic-fallback",
+    providerStatus: "fallback",
+    modelUsed: null,
+    providerAttempts: attempts,
+    error: "All OpenRouter models failed",
+    attempts
+  };
 }
 
 /**
@@ -1263,9 +1677,17 @@ async function generateWithProvider({
   let providerUsed = "none";
   let fallbackReason = "";
   let finalReportData = null;
+  const metadata = {};
+
+  console.log("[LLM] Provider:", process.env.LLM_PROVIDER);
+  console.log("[LLM] OpenRouter key present:", Boolean(process.env.OPENROUTER_API_KEY));
+  console.log("[LLM] OpenRouter model:", process.env.OPENROUTER_MODEL);
+
+  const preferredProvider = process.env.LLM_PROVIDER;
 
   // A. Try AnythingLLM if explicitly enabled and configured
   if (
+    (preferredProvider === "anythingllm" || templateConfig?.useAnythingLLM === true) &&
     templateConfig?.useAnythingLLM === true &&
     process.env.ANYTHING_LLM_WORKSPACE_SLUG
   ) {
@@ -1290,14 +1712,24 @@ async function generateWithProvider({
   }
 
   // B. Try OpenRouter if configured
-  if (!finalReportData && process.env.OPENROUTER_API_KEY) {
-    try {
-      const textResponse = await generateWithOpenRouter(systemPrompt, userPrompt);
-      finalReportData = cleanJsonResponse(textResponse);
+  if (!finalReportData && (!preferredProvider || preferredProvider === "openrouter") && process.env.OPENROUTER_API_KEY) {
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ];
+    const openRouterResult = await generateWithOpenRouterFallback(messages);
+    
+    if (openRouterResult.success) {
+      finalReportData = openRouterResult.parsedData;
       providerUsed = "openrouter";
-    } catch (e) {
-      console.error("[generateWithProvider] OpenRouter failed:", e.message);
-      fallbackReason += `OpenRouter: ${e.message}; `;
+      metadata.modelUsed = openRouterResult.modelUsed;
+      metadata.providerStatus = openRouterResult.providerStatus || "success";
+      metadata.providerAttempts = openRouterResult.providerAttempts || openRouterResult.attempts || [];
+    } else {
+      console.warn(`[generateWithProvider] OpenRouter models failed. Fallback reason: ${openRouterResult.error}`);
+      fallbackReason += `OpenRouter: ${openRouterResult.error}; `;
+      metadata.providerStatus = openRouterResult.providerStatus || "fallback";
+      metadata.providerAttempts = openRouterResult.providerAttempts || openRouterResult.attempts || [];
     }
   }
 
@@ -1356,7 +1788,9 @@ async function generateWithProvider({
     reportData: finalReportData,
     metadata: {
       providerUsed,
+      providerStatus: metadata.providerStatus || (providerUsed === "deterministic_fallback" ? "fallback" : "success"),
       fallbackReason,
+      ...metadata,
     },
   };
 }
@@ -1369,7 +1803,7 @@ module.exports = {
   validateCommercialBuildingEnergyAuditSchema,
   calculateReportAccuracyScore,
   cleanJsonResponse,
-  generateWithOpenRouter,
+  generateWithOpenRouterFallback,
   asArray,
   safeReportValue,
   groupAndSortProjects,
@@ -1377,5 +1811,10 @@ module.exports = {
   buildProjectGroups,
   getProjectsForQC,
   normalizeReportForExport,
-  runReportQC
+  runReportQC,
+  getBinaryFlag,
+  setFieldFlag,
+  buildFieldFlags,
+  buildMissingFieldSummary,
+  stripDebugMetadata
 };
