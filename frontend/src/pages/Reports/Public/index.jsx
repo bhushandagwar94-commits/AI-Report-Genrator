@@ -44,6 +44,14 @@ import {
   Info,
 } from "@phosphor-icons/react";
 
+const USE_AI_DURING_GENERATION =
+  import.meta.env.VITE_USE_AI_DURING_GENERATION === "true";
+
+const SKIP_LLM_FOR_DEV =
+  import.meta.env.VITE_SKIP_LLM_FOR_DEV === "true";
+
+const AI_PROVIDER = import.meta.env.VITE_AI_PROVIDER || "openrouter";
+
 // ─── Template definitions (shown in UI — no admin data exposed) ─────────────────
 // Keys match the server-side TEMPLATE_SLUG_MAP (seetech-xxx-001 format)
 const TEMPLATE_CATALOG = [
@@ -110,12 +118,10 @@ const TEMPLATE_CATALOG = [
 ];
 
 const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG = "commercial-building-energy-audit";
-const USE_AI_DURING_GENERATION =
-  import.meta.env.VITE_USE_AI_DURING_GENERATION !== "false";
-const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 120000);
+const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 45000);
 const OPENROUTER_MODELS = (
   import.meta.env.VITE_OPENROUTER_MODELS ||
-  "openai/gpt-oss-120b:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free"
+  "openai/gpt-oss-120b:free,openrouter/free"
 )
   .split(",")
   .map((model) => model.trim())
@@ -140,6 +146,25 @@ function createAiProgressState() {
     message: OPENROUTER_MODELS.length ? `Trying AI model 1/${OPENROUTER_MODELS.length}` : "",
   };
 }
+
+function cleanAiFailureMessage(reason) {
+  if (!reason) return "AI enhancement failed";
+  return reason
+    .replace(/AI enhancement failed:?/gi, "")
+    .replace(/Deterministic report used\.?/gi, "")
+    .replace(/Your report is still ready\.?/gi, "")
+    .trim();
+}
+
+const getAiModels = () =>
+  (import.meta.env.VITE_OPENROUTER_MODELS ||
+    "openai/gpt-oss-120b:free,openrouter/free")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+
+const getAiTimeoutMs = () =>
+  Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 45000);
 
 function isCommercialBuildingEnergyAuditTemplate(template) {
   return [
@@ -539,12 +564,19 @@ function ExcelValidationCard({ validation }) {
   if (!validation) {
     return (
       <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone()}`}>
-        Excel validation pending.
+        Validation pending.
       </div>
     );
   }
 
-  const { status, readinessScore, professionalSummary, criticalIssues, highPriorityRecommendations, mediumPriorityRecommendations, optionalRecommendations, technicalDetails, mappedColumns } = validation;
+  const { status, readinessScore, professionalSummary, criticalIssues, highPriorityRecommendations, mediumPriorityRecommendations, optionalRecommendations, technicalDetails, mappedColumns, role } = validation;
+
+  const roleLabel = role === "ecm_project_sheet" ? "ECM Project Sheet" : 
+                    role === "equipment_master" ? "Equipment Master" :
+                    role === "energy_consumption_data" ? "Energy Consumption Data" :
+                    role === "specification_data" ? "Specification Data" :
+                    role === "image_evidence" ? "Image Evidence" :
+                    "Supporting Document";
 
   return (
     <div className={`mt-3 rounded-xl border p-4 text-sm ${validationTone(status)}`}>
@@ -560,10 +592,12 @@ function ExcelValidationCard({ validation }) {
               <CheckCircle size={20} weight="fill" className="shrink-0" />
             )}
             <span className="font-bold text-base">
-              {status === "valid" ? "Excel Validation: Passed" : status === "warning" ? "Excel Validation: Warning" : "Excel Validation: Error"}
+              {status === "valid" || status === "accepted_project_file" ? "Accepted: Project File" : 
+               status === "accepted_supporting_file" ? `Accepted: ${roleLabel}` : 
+               status === "warning" ? "Validation: Warning" : "Validation: Error"}
             </span>
           </div>
-          {readinessScore !== undefined && (
+          {readinessScore !== undefined && readinessScore > 0 && role === "ecm_project_sheet" && (
             <div className="flex flex-col items-end">
               <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">Data Readiness</span>
               <span className="text-lg font-black">{readinessScore}%</span>
@@ -573,7 +607,7 @@ function ExcelValidationCard({ validation }) {
 
         {/* Summary */}
         <p className="opacity-90 leading-relaxed font-medium">
-          {professionalSummary || "Excel validation completed."}
+          {professionalSummary || "Validation completed."}
         </p>
 
         {/* Critical Issues */}
@@ -587,7 +621,7 @@ function ExcelValidationCard({ validation }) {
         )}
 
         {/* High Priority Recommendations */}
-        {highPriorityRecommendations?.length > 0 && (
+        {highPriorityRecommendations?.length > 0 && role === "ecm_project_sheet" && (
           <div className="mt-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-3">
             <p className="font-bold text-yellow-400 mb-2 flex items-center gap-x-1.5"><WarningCircle size={16}/> High-Priority Improvements</p>
             <div className="grid gap-2 text-xs text-yellow-300/80">
@@ -618,7 +652,7 @@ function ExcelValidationCard({ validation }) {
         {detailsOpen && (
           <div className="mt-2 grid gap-y-3 text-xs opacity-70 bg-black/10 rounded-lg p-3">
             {/* Medium & Optional */}
-            {(mediumPriorityRecommendations?.length > 0 || optionalRecommendations?.length > 0) && (
+            {(mediumPriorityRecommendations?.length > 0 || optionalRecommendations?.length > 0) && role === "ecm_project_sheet" && (
               <div>
                 <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Additional Recommendations</p>
                 <ul className="list-disc list-inside space-y-1 mt-1">
@@ -633,16 +667,18 @@ function ExcelValidationCard({ validation }) {
             )}
             
             {/* Mapped Columns */}
-            <div>
-               <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Detected Mapping</p>
-               <div className="grid grid-cols-2 gap-1 mt-1">
-                 {Object.entries(mappedColumns || {}).filter(([, val]) => val).map(([key, val], i) => (
-                   <span key={i} className="truncate" title={`${key} → ${val}`}>
-                     <span className="opacity-60">{key}:</span> {val}
-                   </span>
-                 ))}
-               </div>
-            </div>
+            {role === "ecm_project_sheet" && (
+              <div>
+                 <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Detected Mapping</p>
+                 <div className="grid grid-cols-2 gap-1 mt-1">
+                   {Object.entries(mappedColumns || {}).filter(([, val]) => val).map(([key, val], i) => (
+                     <span key={i} className="truncate" title={`${key} → ${val}`}>
+                       <span className="opacity-60">{key}:</span> {val}
+                     </span>
+                   ))}
+                 </div>
+              </div>
+            )}
 
             {/* Raw Details */}
             <div>
@@ -782,9 +818,9 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
                   {f.token_count_estimate > 0 ? ` - ~${f.token_count_estimate.toLocaleString()} tokens` : ""}
                 </p>
               </div>
-              {isExcelFileName(f.filename) && f.validation?.status === "error" ? (
+              {f.validation?.status === "error" ? (
                 <X size={14} className="text-red-400 shrink-0" />
-              ) : isExcelFileName(f.filename) && f.validation?.status === "warning" ? (
+              ) : f.validation?.status === "warning" ? (
                 <WarningCircle size={14} className="text-yellow-400 shrink-0" />
               ) : (
                 <CheckCircle size={14} weight="fill" className="text-green-400 shrink-0" />
@@ -796,7 +832,7 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
               >
                 <X size={14} />
               </button>
-              {isExcelFileName(f.filename) && (
+              {f.validation && (
                 <div className="basis-full">
                   <ExcelValidationCard validation={f.validation} />
                 </div>
@@ -826,7 +862,9 @@ function Step4({
   showSlowWarning,
   hasInvalidExcel,
   aiProgress,
-  showAiProgress,
+  hasProjectFile,
+  allowGenerateWithSupportingFilesOnly,
+  setAllowGenerateWithSupportingFilesOnly,
 }) {
   const filledDetails = Object.entries(details).filter(([k, v]) => k !== "outputFormat" && v?.trim?.());
   const labelMap = {
@@ -933,26 +971,46 @@ function Step4({
       {/* Generate button */}
       {hasInvalidExcel && (
         <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          Please fix or remove the invalid Excel file before generating the report.
+          Please fix or remove the invalid file before generating the report.
         </div>
       )}
+      
+      {!hasProjectFile && uploadedFiles.length > 0 && !hasInvalidExcel && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+          <label className="flex items-start gap-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowGenerateWithSupportingFilesOnly}
+              onChange={(e) => setAllowGenerateWithSupportingFilesOnly(e.target.checked)}
+              className="mt-1 flex-shrink-0"
+            />
+            <div className="text-sm text-amber-200">
+              <span className="font-bold block mb-0.5">Generate preliminary audit profile</span>
+              <span className="opacity-80">No ECM project sheet was found. Check this box to generate a draft report using only the supporting data.</span>
+            </div>
+          </label>
+        </div>
+      )}
+      
       <button
         onClick={onGenerate}
-        disabled={generating || hasInvalidExcel}
+        disabled={generating || hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)}
         className="flex items-center justify-center gap-x-3 w-full py-4 rounded-2xl font-bold text-base text-white transition-all shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] disabled:opacity-55 disabled:cursor-not-allowed disabled:scale-100"
         style={{
           background: generating
             ? "rgba(70,200,255,0.3)"
-            : hasInvalidExcel
+            : hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)
               ? "rgba(239,68,68,0.25)"
             : "linear-gradient(135deg, #46c8ff 0%, #3b82f6 100%)",
-          boxShadow: generating || hasInvalidExcel ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
+          boxShadow: generating || hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly) ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
         }}
       >
         {generating ? (
           <>
             <SpinnerGap size={22} className="animate-spin" />
-            AI is generating your report…
+            {USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV
+              ? "AI is enhancing your report..."
+              : "Building report from data..."}
           </>
         ) : (
           <>
@@ -977,7 +1035,10 @@ function Step4({
       {/* Progress bar */}
       {generating && (
         <div className="flex flex-col items-center gap-y-2 -mt-2">
-          {showAiProgress && aiProgress.active && (
+          {generating &&
+            USE_AI_DURING_GENERATION &&
+            !SKIP_LLM_FOR_DEV &&
+            aiProgress.active && (
             <div className="ai-generation-progress-card w-full animate-fade-in">
               <div className="ai-progress-title">AI is enhancing your report...</div>
               <div className="ai-progress-row">
@@ -987,7 +1048,8 @@ function Step4({
               <div className="ai-progress-row">
                 <span>Current model</span>
                 <strong>
-                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}: {aiProgress.modelName || "Waiting..."}
+                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}:{" "}
+                  {aiProgress.modelName || "Waiting..."}
                 </strong>
               </div>
               <div className="ai-progress-row">
@@ -1009,15 +1071,16 @@ function Step4({
                   }}
                 />
               </div>
-              <p className="ai-progress-note">
-                AI generation may take a few minutes because free models can be queued.
-              </p>
             </div>
           )}
-          {showSlowWarning && !showAiProgress && (
+          {showSlowWarning && (
             <div className="flex items-center gap-x-2 text-amber-400 text-sm mb-1 px-3 py-1.5 bg-amber-400/10 border border-amber-400/20 rounded-lg animate-fade-in">
               <Info size={16} />
-              <span>AI generation may take a few minutes because free models can be queued.</span>
+              <span>
+                {USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV
+                  ? "AI enhancement is taking longer than expected."
+                  : "Deterministic report generation is taking longer than expected."}
+              </span>
             </div>
           )}
           <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden">
@@ -1032,16 +1095,32 @@ function Step4({
             />
           </div>
           <p className="text-xs text-white/35 animate-pulse">
-            Extracting data · Drafting report · Applying formatting…
+            {USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV
+              ? "Extracting data - Running AI enhancement - Applying formatting..."
+              : "Extracting data - Building deterministic report - Applying formatting..."}
           </p>
         </div>
       )}
+      <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+        AI enhancement is optional. If models are slow, deterministic report will be used automatically.
+      </div>
     </div>
   );
 }
 
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
-function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onReportUpdated }) {
+function Step5({
+  report,
+  selectedTemplate,
+  onStartOver,
+  generatedReportData,
+  onReportUpdated,
+  onEnhanceWithAi,
+  aiEnhancing,
+  aiProgress,
+  canEnhanceWithAi,
+  retryCooldown,
+}) {
   const [copied, setCopied] = useState(false);
   const [qcResult, setQcResult] = useState(null);
   const [rechecking, setRechecking] = useState(false);
@@ -1345,6 +1424,23 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
 
           {shouldRenderEnergyAuditTemplate && (
             <>
+                <button
+                  type="button"
+                  onClick={onEnhanceWithAi}
+                  disabled={!canEnhanceWithAi || aiEnhancing || retryCooldown > 0}
+                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Sparkle size={18} weight="fill" />
+                  {retryCooldown > 0
+                    ? `Retry Gemini in ${retryCooldown}s`
+                    : aiEnhancing
+                      ? AI_PROVIDER === "gemini"
+                        ? "Gemini is enhancing report explanations..."
+                        : "Enhancing..."
+                      : AI_PROVIDER === "gemini"
+                        ? "Enhance with Gemini AI"
+                        : "Enhance with AI"}
+                </button>
                 {isDev && (
                   <button
                     type="button"
@@ -1370,17 +1466,111 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  title="Download as PDF"
+                  title="Print / Save as PDF"
                   disabled={isPdfExporting}
                   className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
                 >
                   <FilePdf size={18} weight="fill" />
-                  {isPdfExporting ? "Preparing PDF..." : "Download PDF"}
+                  {isPdfExporting ? "Preparing PDF..." : "Print / Save as PDF"}
                 </button>
             </>
           )}
         </div>
       </div>
+
+      {shouldRenderEnergyAuditTemplate && (
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden">
+          <p className="text-sm text-sky-100">
+            AI enhancement is optional. If models are slow, deterministic report will be used automatically.
+          </p>
+          
+          {isDev && (
+            <details className="mt-4 rounded-lg bg-black/20 border border-white/10 p-3 animate-fade-in print:hidden">
+              <summary className="cursor-pointer text-sm font-bold text-white/80 flex items-center gap-x-2">
+                <Info size={16} />
+                AI Enhancement Debug (Dev Only)
+              </summary>
+              <div className="mt-3 text-xs text-white/70 space-y-2 font-mono">
+                <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus || 'unknown'}</div>
+                <div><span className="font-bold opacity-80 text-white">Provider Attempted:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
+                <div><span className="font-bold opacity-80 text-white">Model Used:</span> {report?.modelUsed || report?.providerAttempts?.[0]?.model || 'none'}</div>
+                
+                {report?.aiFailureReason && (
+                  <div className="text-red-400"><span className="font-bold opacity-80">Failure Reason:</span> {report.aiFailureReason}</div>
+                )}
+                
+                {report?.aiEnhancedFields && report.aiEnhancedFields.length > 0 && (
+                  <div>
+                    <span className="font-bold opacity-80 text-green-400">AI Enhanced Fields:</span>
+                    <ul className="list-disc ml-5 mt-1 text-green-300/80">
+                      {report.aiEnhancedFields.map((f, i) => <li key={i}>{f}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {report?.aiDroppedFields && report.aiDroppedFields.length > 0 && (
+                  <div>
+                    <span className="font-bold opacity-80 text-yellow-400">AI Dropped Fields:</span>
+                    <ul className="list-disc ml-5 mt-1 text-yellow-300/80">
+                      {report.aiDroppedFields.map((df, i) => (
+                        <li key={i}>
+                          <div>{df.field} <span className="opacity-75">({df.reason})</span></div>
+                          {df.preview && <div className="opacity-60 break-words">{df.preview}</div>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div>
+                  <span className="font-bold opacity-80 text-white">Provider Attempts:</span>
+                  <pre className="mt-1 bg-black/50 p-2 rounded max-h-48 overflow-y-auto overflow-x-auto whitespace-pre-wrap text-white/60">
+                    {JSON.stringify(report?.providerAttempts || [], null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </details>
+          )}
+
+          {aiEnhancing && (
+            <div className="ai-generation-progress-card w-full animate-fade-in mt-4">
+              <div className="ai-progress-title">AI is enhancing your report...</div>
+              <div className="ai-progress-row">
+                <span>Status</span>
+                <strong>{aiProgress.message}</strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Current model</span>
+                <strong>
+                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}: {aiProgress.modelName || "Waiting..."}
+                </strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Time remaining for this model</span>
+                <strong>{formatDuration(aiProgress.remainingMs)}</strong>
+              </div>
+              <div className="ai-progress-row">
+                <span>Total elapsed time</span>
+                <strong>{formatDuration(aiProgress.elapsedMs)}</strong>
+              </div>
+              <div className="ai-progress-bar">
+                <div
+                  className="ai-progress-bar-fill"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      ((aiProgress.timeoutMs - aiProgress.remainingMs) / aiProgress.timeoutMs) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <p className="ai-progress-note">
+                Models are limited to 45 seconds each. Total expected wait is about 90 seconds.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
         {/* QC Failure Panel */}
         {qcResult && qcResult.qcFailed && (
@@ -1543,24 +1733,54 @@ function Step5({ report, selectedTemplate, onStartOver, generatedReportData, onR
           <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
             Provider Attempts Debug
           </p>
-          <ul className="space-y-1.5">
-            {report.providerAttempts.map((attempt, idx) => (
-              <li key={idx} className="flex flex-col text-xs bg-white/5 p-2 rounded">
-                <div className="flex items-center gap-2">
-                  <span className="text-white/50 font-medium">
-                    Model {attempt.order || idx + 1}:
-                  </span>
-                  <span className={attempt.status === "success" ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
-                    {attempt.status.toUpperCase()}
-                  </span>
-                  <span className="text-white/80 font-mono">{attempt.model}</span>
-                </div>
-                {attempt.reason && (
-                  <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+          {(() => {
+            const nonSkippedAttempts = (report.providerAttempts || []).filter((attempt) => attempt.status !== "skipped");
+            const skippedAttempts = (report.providerAttempts || []).filter((attempt) => attempt.status === "skipped");
+
+            return (
+              <>
+                <ul className="space-y-1.5">
+                  {nonSkippedAttempts.map((attempt, idx) => (
+                    <li key={`attempt-${idx}`} className="flex flex-col text-xs bg-white/5 p-2 rounded">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/50 font-medium">
+                          Model {attempt.order || idx + 1}:
+                        </span>
+                        <span className={attempt.status === "success" ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                          {attempt.status.toUpperCase()}
+                        </span>
+                        <span className="text-white/80 font-mono">{attempt.model}</span>
+                      </div>
+                      {attempt.reason && (
+                        <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {skippedAttempts.length > 0 && (
+                  <details className="mt-3 text-xs text-white/55">
+                    <summary className="cursor-pointer select-none">
+                      Skipped attempts ({skippedAttempts.length})
+                    </summary>
+                    <ul className="space-y-1.5 mt-2">
+                      {skippedAttempts.map((attempt, idx) => (
+                        <li key={`skipped-${idx}`} className="flex flex-col text-xs bg-white/5 p-2 rounded">
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/50 font-medium">Skipped:</span>
+                            <span className="text-yellow-300 font-bold">SKIPPED</span>
+                            <span className="text-white/80 font-mono">{attempt.model}</span>
+                          </div>
+                          {attempt.reason && (
+                            <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
-              </li>
-            ))}
-          </ul>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1588,15 +1808,100 @@ export default function PublicReports() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [aiEnhancing, setAiEnhancing] = useState(false);
   const [showSlowWarning, setShowSlowWarning] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [generatedReportData, setGeneratedReportData] = useState(null);
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
+  const [allowGenerateWithSupportingFilesOnly, setAllowGenerateWithSupportingFilesOnly] = useState(false);
+  const [retryCooldown, setRetryCooldown] = useState(0);
 
-  const showAiProgress =
-    USE_AI_DURING_GENERATION &&
-    isCommercialBuildingEnergyAuditTemplate(selectedTemplate) &&
-    OPENROUTER_MODELS.length > 0;
+  useEffect(() => {
+    let interval;
+    if (retryCooldown > 0) {
+      interval = setInterval(() => {
+        setRetryCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [retryCooldown]);
+
+  const aiTimerRef = useRef(null);
+  const aiStartedAtRef = useRef(null);
+  const aiModelStartedAtRef = useRef(null);
+  const aiModelIndexRef = useRef(0);
+
+  function startAiCountdown() {
+    const models = getAiModels();
+    const timeoutMs = getAiTimeoutMs();
+  
+    aiStartedAtRef.current = Date.now();
+    aiModelStartedAtRef.current = Date.now();
+    aiModelIndexRef.current = 0;
+  
+    setAiProgress({
+      active: true,
+      modelIndex: 0,
+      modelName: models[0],
+      totalModels: models.length,
+      remainingMs: timeoutMs,
+      elapsedMs: 0,
+      timeoutMs,
+      message: `Trying AI model 1/${models.length}`
+    });
+  
+    if (aiTimerRef.current) clearInterval(aiTimerRef.current);
+  
+    aiTimerRef.current = setInterval(() => {
+      const now = Date.now();
+      const elapsedMs = now - aiStartedAtRef.current;
+      const currentModelElapsedMs = now - aiModelStartedAtRef.current;
+  
+      let modelIndex = aiModelIndexRef.current;
+      let remainingMs = timeoutMs - currentModelElapsedMs;
+  
+      if (remainingMs <= 0 && modelIndex < models.length - 1) {
+        modelIndex += 1;
+        aiModelIndexRef.current = modelIndex;
+        aiModelStartedAtRef.current = now;
+        remainingMs = timeoutMs;
+      }
+  
+      if (remainingMs < 0) remainingMs = 0;
+  
+      setAiProgress({
+        active: true,
+        modelIndex,
+        modelName: models[modelIndex],
+        totalModels: models.length,
+        remainingMs,
+        elapsedMs,
+        timeoutMs,
+        message:
+          remainingMs === 0 && modelIndex === models.length - 1
+            ? "AI attempts completed. Finalizing report from deterministic data..."
+            : `Trying AI model ${modelIndex + 1}/${models.length}`
+      });
+    }, 1000);
+  }
+
+  function stopAiCountdown() {
+    if (aiTimerRef.current) {
+      clearInterval(aiTimerRef.current);
+      aiTimerRef.current = null;
+    }
+  
+    setAiProgress((prev) => ({
+      ...prev,
+      active: false
+    }));
+  }
+
+  useEffect(() => {
+    return () => {
+      if (aiTimerRef.current) clearInterval(aiTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -1609,45 +1914,7 @@ export default function PublicReports() {
     return () => clearTimeout(timer);
   }, [generating]);
 
-  useEffect(() => {
-    if (!generating || !aiProgress.active || !showAiProgress) return;
-
-    const interval = setInterval(() => {
-      setAiProgress((prev) => {
-        const nextElapsed = prev.elapsedMs + 1000;
-        let nextRemaining = prev.remainingMs - 1000;
-        let nextModelIndex = prev.modelIndex;
-        let nextModelName = prev.modelName;
-        let nextMessage = `Trying AI model ${prev.modelIndex + 1}/${prev.totalModels}`;
-
-        if (nextRemaining <= 0) {
-          if (prev.modelIndex + 1 < OPENROUTER_MODELS.length) {
-            nextMessage = `Model ${prev.modelIndex + 1} timed out. Trying model ${prev.modelIndex + 2}/${OPENROUTER_MODELS.length}...`;
-            nextModelIndex = prev.modelIndex + 1;
-            nextModelName = OPENROUTER_MODELS[nextModelIndex];
-            nextRemaining = prev.timeoutMs;
-          } else {
-            nextRemaining = 0;
-            nextMessage =
-              nextElapsed >= prev.timeoutMs * prev.totalModels + 30000
-                ? "Finalization is taking longer than expected. Backend should return deterministic report."
-                : "AI attempts completed. Finalizing report from deterministic data...";
-          }
-        }
-
-        return {
-          ...prev,
-          elapsedMs: nextElapsed,
-          remainingMs: nextRemaining,
-          modelIndex: nextModelIndex,
-          modelName: nextModelName,
-          message: nextMessage,
-        };
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [generating, aiProgress.active, showAiProgress]);
+  // Old interval useEffect has been removed to fix frozen countdown
 
   useEffect(() => {
     Reports.getPublicTemplates()
@@ -1730,21 +1997,20 @@ export default function PublicReports() {
     }
 
     setGenerating(true);
-    if (showAiProgress) {
-      setAiProgress({
-        active: true,
-        modelIndex: 0,
-        modelName: OPENROUTER_MODELS[0],
-        totalModels: OPENROUTER_MODELS.length,
-        remainingMs: OPENROUTER_TIMEOUT_MS,
-        elapsedMs: 0,
-        timeoutMs: OPENROUTER_TIMEOUT_MS,
-        message: `Trying AI model 1/${OPENROUTER_MODELS.length}`,
-      });
-    } else {
-      setAiProgress(createAiProgressState());
-    }
     try {
+      if (USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV) {
+        setAiProgress({
+          active: true,
+          modelIndex: 0,
+          modelName: OPENROUTER_MODELS[0] || "",
+          totalModels: OPENROUTER_MODELS.length,
+          remainingMs: OPENROUTER_TIMEOUT_MS,
+          elapsedMs: 0,
+          timeoutMs: OPENROUTER_TIMEOUT_MS,
+          message: `Trying AI model 1/${Math.max(OPENROUTER_MODELS.length, 1)}`,
+        });
+      }
+
       // Use slug (templateId) from the resolved catalog template.
       // Falls back to numeric DB id if slug not available.
       const res = await Reports.generateReport({
@@ -1755,11 +2021,6 @@ export default function PublicReports() {
       if (res.error) {
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
-        if (res.report?.aiEnhanced === false && res.report?.providerWarning) {
-          showToast("AI enhancement failed. Deterministic report generated successfully.", "warning");
-        } else if (res.report?.providerUsed !== "deterministic" && res.report?.warnings?.length > 0) {
-          showToast(`Warning: ${res.report.warnings[0]}`, "warning");
-        }
         setGeneratedReport(res.report);
         let parsedData = null;
         try {
@@ -1791,8 +2052,63 @@ export default function PublicReports() {
     } catch (err) {
       showToast("Generation error: " + err.message, "error");
     } finally {
-      setAiProgress((prev) => ({ ...prev, active: false }));
+      if (USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV) {
+        setAiProgress((prev) => ({ ...prev, active: false }));
+      }
       setGenerating(false);
+    }
+  };
+
+  const handleEnhanceWithAi = async () => {
+    if (!generatedReport?.id || aiEnhancing || retryCooldown > 0) return;
+
+    setAiEnhancing(true);
+    startAiCountdown();
+
+    try {
+      const res = await Reports.enhanceReportWithAi(generatedReport.id);
+      if (res.error) {
+        showToast("AI enhancement failed. Your report is still ready.", "warning");
+        return;
+      }
+
+      if (res.report) {
+        setGeneratedReport(res.report);
+        try {
+          if (res.report.outputContent) {
+            setGeneratedReportData(JSON.parse(res.report.outputContent));
+          }
+        } catch (e) {
+          console.warn("Could not parse enhanced report JSON.");
+        }
+      }
+
+      if (res.report?.aiEnhancementStatus === "quota_exceeded") {
+        const seconds = res.report.retryAfterSeconds || 60;
+        setRetryCooldown(seconds);
+        showToast(`Gemini free quota exceeded. Please retry after ${seconds} seconds.`, "warning");
+      } else if (res.report?.aiEnhanced) {
+        showToast("AI enhancement applied successfully.", "success");
+      } else {
+        const reason = res.report?.aiFailureReason || res.report?.providerWarning || "AI enhancement failed";
+        const cleanReason = cleanAiFailureMessage(reason);
+        
+        toast.warning(
+          cleanReason
+            ? `AI enhancement failed: ${cleanReason}. Your report is still ready.`
+            : "AI enhancement failed. Your report is still ready."
+        );
+      }
+    } catch (err) {
+      const cleanReason = cleanAiFailureMessage(err.message);
+      toast.warning(
+        cleanReason
+          ? `AI enhancement failed: ${cleanReason}. Your report is still ready.`
+          : "AI enhancement failed. Your report is still ready."
+      );
+    } finally {
+      stopAiCountdown();
+      setAiEnhancing(false);
     }
   };
 
@@ -1811,6 +2127,9 @@ export default function PublicReports() {
     setUploadedFiles([]);
     setGeneratedReport(null);
     setGeneratedReportData(null);
+    setAiEnhancing(false);
+    setAiProgress(createAiProgressState());
+    setAllowGenerateWithSupportingFilesOnly(false);
   };
 
   // Navigation guards
@@ -1908,7 +2227,15 @@ export default function PublicReports() {
                 showSlowWarning={showSlowWarning}
                 hasInvalidExcel={hasInvalidExcel}
                 aiProgress={aiProgress}
-                showAiProgress={showAiProgress}
+                hasProjectFile={uploadedFiles.some(
+                  (file) =>
+                    isExcelFileName(file.filename) &&
+                    (file.validation?.status === "accepted_project_file" ||
+                      file.validation?.status === "valid" ||
+                      file.validation?.status === "warning")
+                )}
+                allowGenerateWithSupportingFilesOnly={allowGenerateWithSupportingFilesOnly}
+                setAllowGenerateWithSupportingFilesOnly={setAllowGenerateWithSupportingFilesOnly}
               />
             )}
             {step === 5 && (
@@ -1925,6 +2252,15 @@ export default function PublicReports() {
                     }
                   } catch(e) {}
                 }}
+                onEnhanceWithAi={handleEnhanceWithAi}
+                aiEnhancing={aiEnhancing}
+                aiProgress={aiProgress}
+                canEnhanceWithAi={
+                  isCommercialBuildingEnergyAuditTemplate(selectedTemplate) &&
+                  OPENROUTER_MODELS.length > 0 &&
+                  !!generatedReport?.id
+                }
+                retryCooldown={retryCooldown}
               />
             )}
           </div>

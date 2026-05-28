@@ -167,6 +167,15 @@ if (process.env.NODE_ENV !== "development") {
   });
 }
 
+app.use((err, req, res, next) => {
+  console.error("[SERVER ERROR]", err);
+  res.status(500).json({
+    error: err.message,
+    code: err.code,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+  });
+});
+
 app.all("*", function (_, response) {
   response.sendStatus(404);
 });

@@ -1,5 +1,6 @@
 const { getLLMProvider } = require("../utils/helpers");
 const { cleanJsonResponse, generateWithOpenRouterFallback } = require("./llmProviderService");
+const { generateWithGemini } = require("./geminiProviderService");
 const {
   buildCommercialBuildingEnergyAuditBaseData,
   cleanAndDeduplicateProjects,
@@ -25,7 +26,7 @@ function withTimeout(promise, timeoutMs, label) {
 /**
  * Helper to call the active LLM provider for a prompt stage
  */
-async function runPromptStage(systemPrompt, userPrompt, templateConfig) {
+async function runPromptStage(systemPrompt, userPrompt, templateConfig, options = {}) {
   let providerUsed = "none";
   let providerStatus = "idle";
   let fallbackReason = "";
@@ -33,11 +34,9 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig) {
   let modelUsed = null;
   let providerAttempts = [];
 
-  console.log("[LLM] Provider:", process.env.LLM_PROVIDER);
-  console.log("[LLM] OpenRouter key present:", Boolean(process.env.OPENROUTER_API_KEY));
-  console.log("[LLM] OpenRouter model:", process.env.OPENROUTER_MODEL);
+  const provider = (process.env.AI_PROVIDER || process.env.LLM_PROVIDER || "openrouter").toLowerCase();
 
-  const preferredProvider = process.env.LLM_PROVIDER;
+  console.log("[runPromptStage] Selected provider:", provider);
 
   // A. Try AnythingLLM if explicitly enabled
   if (templateConfig?.useAnythingLLM === true && process.env.ANYTHING_LLM_WORKSPACE_SLUG) {
@@ -62,8 +61,91 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig) {
     }
   }
 
+  // B0. Try Gemini
+  if (!jsonResult && provider === "gemini") {
+    console.log("[REPORT PIPELINE] About to call generateWithGemini");
+    const promptText = `System:\n${systemPrompt}\n\nUser:\n${userPrompt}`;
+    const geminiResult = await generateWithGemini(promptText);
+    
+    if (geminiResult.providerAttempts) {
+      providerAttempts.push(...geminiResult.providerAttempts);
+    } else {
+      providerAttempts.push({
+        provider: "gemini",
+        model: geminiResult.modelUsed || "gemini-1.5-flash",
+        status: geminiResult.success ? "success" : "failed",
+        reason: geminiResult.error || null,
+        error: geminiResult.error || null
+      });
+    }
+
+    if (geminiResult.success) {
+      try {
+        jsonResult = cleanJsonResponse(geminiResult.content);
+        providerUsed = "gemini";
+        providerStatus = "success";
+        modelUsed = geminiResult.modelUsed;
+        return { 
+          result: jsonResult, 
+          providerUsed, 
+          providerStatus,
+          fallbackReason,
+          modelUsed,
+          providerAttempts
+        };
+      } catch (parseError) {
+        console.warn(`[runPromptStage] Initial Gemini JSON parse failed, attempting repair...`);
+        const repairPrompt = `System:\nFix this into valid JSON only. Do not change values. Do not add fields.\n\nUser:\n${geminiResult.content}`;
+        const repairResult = await generateWithGemini(repairPrompt);
+        
+        providerAttempts.push({
+          provider: "gemini",
+          model: repairResult.modelUsed || "gemini-1.5-flash",
+          status: repairResult.success ? "success" : "failed",
+          reason: repairResult.error || "Repair attempt failed",
+          error: repairResult.error || "Repair attempt failed"
+        });
+
+        if (repairResult.success) {
+          try {
+            jsonResult = cleanJsonResponse(repairResult.content);
+            providerUsed = "gemini";
+            providerStatus = "success";
+            modelUsed = repairResult.modelUsed;
+            return { 
+              result: jsonResult, 
+              providerUsed, 
+              providerStatus,
+              fallbackReason,
+              modelUsed,
+              providerAttempts
+            };
+          } catch (repairParseError) {
+             geminiResult.success = false;
+             geminiResult.error = repairParseError.message;
+          }
+        } else {
+           geminiResult.success = false;
+           geminiResult.error = repairResult.error;
+        }
+      }
+    }
+    
+    if (!geminiResult.success) {
+      console.warn(`[runPromptStage] Gemini failed: ${geminiResult.error}`);
+      return {
+        success: false,
+        result: null,
+        providerUsed: "gemini",
+        providerStatus: "failed",
+        error: geminiResult.error,
+        providerAttempts
+      };
+    }
+  }
+
   // B. Try OpenRouter
-  if (!jsonResult && (!preferredProvider || preferredProvider === "openrouter") && process.env.OPENROUTER_API_KEY) {
+  if (!jsonResult && provider === "openrouter" && process.env.OPENROUTER_API_KEY) {
     const messages = [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -73,7 +155,7 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig) {
     console.log("[REPORT GENERATE] OPENROUTER_API_KEY present:", Boolean(process.env.OPENROUTER_API_KEY));
     console.log("[REPORT GENERATE] OPENROUTER_MODELS:", process.env.OPENROUTER_MODELS);
     
-    const openRouterResult = await generateWithOpenRouterFallback(messages);
+    const openRouterResult = await generateWithOpenRouterFallback(messages, options);
     providerAttempts = openRouterResult?.providerAttempts || openRouterResult?.attempts || [];
     console.log("[REPORT PIPELINE] LLM result:", {
       success: openRouterResult?.success,
@@ -136,7 +218,7 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig) {
   throw finalError;
 }
 
-const NUMERIC_DRIFT_PATTERN = /\d/;
+
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -225,20 +307,202 @@ function assertLockedFieldsUnchanged(before, after, lockedFields = [], component
   }
 }
 
-function containsNumericNarrative(value) {
-  if (typeof value === "string") {
-    return NUMERIC_DRIFT_PATTERN.test(value);
+function collectApprovedNumericTokens(report) {
+  const tokens = new Set();
+
+  function walk(value) {
+    if (value === null || value === undefined) return;
+
+    if (typeof value === "number") {
+      tokens.add(String(value));
+      tokens.add(Number(value).toLocaleString("en-IN"));
+      return;
+    }
+
+    if (typeof value === "string") {
+      const matches = value.match(/₹?\s?\d[\d,]*(?:\.\d+)?%?/g) || [];
+      matches.forEach((m) => {
+        const clean = m.replace(/[₹,\s%]/g, "");
+        if (clean) tokens.add(clean);
+        tokens.add(m.trim());
+      });
+      return;
+    }
+
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (typeof value === "object") Object.values(value).forEach(walk);
   }
-  if (Array.isArray(value)) {
-    return value.some((item) => containsNumericNarrative(item));
-  }
-  if (value && typeof value === "object") {
-    return Object.values(value).some((item) => containsNumericNarrative(item));
-  }
-  return false;
+
+  walk(report.reportInfo);
+  walk(report.executiveSummary);
+  walk(report.projects);
+  walk(report.groupedProjects);
+
+  return tokens;
 }
 
-function validateNarrativeOutputShape(payload, llmOutput) {
+function findUnapprovedNumbers(text, approvedTokens) {
+  if (!text || typeof text !== "string") return [];
+
+  const matches = text.match(/₹?\s?\d[\d,]*(?:\.\d+)?%?/g) || [];
+
+  return matches.filter((m) => {
+    const clean = m.replace(/[₹,\s%]/g, "");
+    return !approvedTokens.has(clean) && !approvedTokens.has(m.trim());
+  });
+}
+
+function validateNarrativeNumbers(value, approvedTokens, path) {
+  if (typeof value === "string") {
+    const unapproved = findUnapprovedNumbers(value, approvedTokens);
+    return unapproved.map((num) => ({ path, num, text: value }));
+  }
+  
+  if (Array.isArray(value)) {
+    const bad = [];
+    value.forEach((item, index) => {
+      bad.push(...validateNarrativeNumbers(item, approvedTokens, `${path}[${index}]`));
+    });
+    return bad;
+  }
+  
+  if (value && typeof value === "object") {
+    const bad = [];
+    Object.entries(value).forEach(([k, v]) => {
+      bad.push(...validateNarrativeNumbers(v, approvedTokens, `${path}.${k}`));
+    });
+    return bad;
+  }
+  
+  return [];
+}
+
+const GENERIC_NARRATIVE_PHRASES = [
+  "this project saves energy",
+  "this will improve efficiency",
+  "it will improve efficiency",
+  "this measure will save energy",
+  "this can save energy",
+  "this improves reliability",
+  "this improves performance",
+  "this is recommended",
+  "implementation can be carried out",
+];
+
+function normalizeWhitespace(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function previewValue(value, maxLength = 160) {
+  const text = typeof value === "string"
+    ? normalizeWhitespace(value)
+    : normalizeWhitespace(JSON.stringify(value));
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function wordCount(text) {
+  return normalizeWhitespace(text).split(/\s+/).filter(Boolean).length;
+}
+
+function hasMeaningfulNarrativeContext(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => hasMeaningfulNarrativeContext(item));
+  }
+  if (typeof value === "object") {
+    return Object.values(value).some((item) => hasMeaningfulNarrativeContext(item));
+  }
+  const text = normalizeWhitespace(value);
+  return Boolean(text) && text.toLowerCase() !== "data required";
+}
+
+function isGenericNarrative(text) {
+  const normalized = normalizeWhitespace(text).toLowerCase();
+  return GENERIC_NARRATIVE_PHRASES.some((phrase) => normalized === phrase || normalized.includes(phrase));
+}
+
+function getFieldQualityRule(field) {
+  const bulletFieldRule = {
+    minItems: 2,
+    minWordsPerItem: 5,
+  };
+
+  switch (field) {
+    case "scopeOfWork":
+    case "keyActivities":
+      return { ...bulletFieldRule, minItems: 3 };
+    case "measurementVerificationPlan":
+    case "benefitsOtherThanEnergySaving":
+      return { ...bulletFieldRule };
+    case "keyObservations":
+      return { ...bulletFieldRule, minItems: 2 };
+    case "conclusionAndWayForward":
+      return { minItems: 2, minWordsPerItem: 4, allowObjectItems: true };
+    default:
+      return { minWords: 25 };
+  }
+}
+
+function validateNarrativeFieldQuality(field, value, sourceContextAvailable) {
+  if (value === undefined) return null;
+
+  if (typeof value === "string") {
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) return "empty value";
+    if (normalized === "Data required") {
+      return sourceContextAvailable ? "used Data required despite available context" : null;
+    }
+    if (isGenericNarrative(normalized)) return "generic wording";
+    if (wordCount(normalized) < (getFieldQualityRule(field).minWords || 0)) {
+      return "too short";
+    }
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    const rule = getFieldQualityRule(field);
+    if (value.length < (rule.minItems || 1)) {
+      return "too few bullets";
+    }
+
+    for (const item of value) {
+      const itemText = typeof item === "object" && item !== null
+        ? normalizeWhitespace(item.action || item.text || "")
+        : normalizeWhitespace(item);
+
+      if (!itemText) return "empty bullet";
+      if (itemText === "Data required") {
+        if (sourceContextAvailable) return "used Data required despite available context";
+        continue;
+      }
+      if (isGenericNarrative(itemText)) return "generic wording";
+      if (wordCount(itemText) < (rule.minWordsPerItem || 0)) {
+        return "bullet too short";
+      }
+    }
+
+    return null;
+  }
+
+  return null;
+}
+
+function enforceNarrativeQuality(payload, llmOutput, warnings) {
+  if (!llmOutput || typeof llmOutput !== "object") return;
+
+  const sourceContext = payload?.qualityContext || {};
+
+  Object.entries(llmOutput).forEach(([field, value]) => {
+    const sourceContextAvailable = hasMeaningfulNarrativeContext(sourceContext[field]);
+    const qualityIssue = validateNarrativeFieldQuality(field, value, sourceContextAvailable);
+    if (qualityIssue) {
+      warnings.push(`Removed AI field ${payload.componentId}.${field} because the narrative was ${qualityIssue}.`);
+      delete llmOutput[field];
+    }
+  });
+}
+
+function validateNarrativeOutputShape(payload, llmOutput, approvedTokens, warnings) {
   if (!llmOutput || typeof llmOutput !== "object" || Array.isArray(llmOutput)) {
     throw new Error(`Invalid narrative response for ${payload.componentId}. Expected JSON object.`);
   }
@@ -256,10 +520,387 @@ function validateNarrativeOutputShape(payload, llmOutput) {
   });
 
   Object.entries(llmOutput).forEach(([field, value]) => {
-    if (containsNumericNarrative(value)) {
-      throw new Error(`Numeric content detected in LLM narrative for ${payload.componentId}.${field}`);
+    const badNums = validateNarrativeNumbers(value, approvedTokens, `${payload.componentId}.${field}`);
+    if (badNums.length > 0) {
+      warnings.push(`Removed AI field ${payload.componentId}.${field} because it contained unapproved numeric token: ${badNums[0].num}`);
+      delete llmOutput[field];
     }
   });
+
+  enforceNarrativeQuality(payload, llmOutput, warnings);
+}
+
+function buildSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageMetadata = [] }) {
+  const observationLines = [
+    ...(Array.isArray(extractedInfo?.facilityObservations) ? extractedInfo.facilityObservations : []),
+    ...(Array.isArray(extractedInfo?.utilityObservations) ? extractedInfo.utilityObservations : []),
+    ...(Array.isArray(extractedInfo?.projectSupportingNotes)
+      ? extractedInfo.projectSupportingNotes.flatMap((note) => [
+          note?.existingConditionNotes,
+          note?.implementationNotes,
+        ])
+      : []),
+    ...(Array.isArray(imageMetadata) ? imageMetadata.map((image) => image?.caption || image?.placementSection) : []),
+    ...(Array.isArray(uploadedFiles) ? uploadedFiles.map((file) => file?.originalname || file?.filename) : []),
+  ]
+    .map((item) => normalizeWhitespace(item))
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.indexOf(item) === index)
+    .slice(0, 10);
+
+  return observationLines.join(" | ") || "Data required";
+}
+
+function buildSummaryOnlyBatch({ report, formData = {}, extractedInfo = {}, uploadedFiles = [], imageMetadata = [] }) {
+  const executiveSummaryDefinition = getReportComponentDefinition("executive_summary") || {};
+  const groupedProjects = Array.isArray(report?.groupedProjects) ? report.groupedProjects : [];
+  const supportingContext = buildSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
+  const groupSummariesOnly = groupedProjects.map((group) => ({
+    groupTitle: group.groupTitle,
+    groupIntroduction: group.summaryParagraph || "Data required",
+    groupObservation: group.technicalObservation || "Data required",
+  }));
+
+  return [
+    {
+      name: "summary_only",
+      componentId: "summary_narrative_enhancement",
+      payload: {
+        reportType: "Detailed Energy Audit Report",
+        clientName: formData.clientName || "Data required",
+        facilityType: formData.buildingType || report?.buildingProfile?.typeOfBuilding || "Data required",
+        supportingContext,
+        executiveSummary: {
+          purposeText: report?.executiveSummary?.purposeText || "Data required",
+          keyObservations: report?.executiveSummary?.keyObservations || [],
+          conclusionAndWayForward: report?.executiveSummary?.conclusionAndWayForward || "Data required",
+        },
+        projectGroups: groupedProjects.map((group) => ({
+          groupTitle: group.groupTitle || "Data required",
+          projectTitles: Array.isArray(group.projects)
+            ? group.projects.map((project) => project.projectTitle || "Data required")
+            : [],
+        })),
+        groups: groupSummariesOnly,
+        allowedOutputFields: [
+          "executiveSummary.purposeText",
+          "executiveSummary.keyObservations",
+          "executiveSummary.conclusionAndWayForward",
+          "groups[].groupIntroduction",
+          "groups[].groupObservation",
+        ],
+      },
+      meta: {
+        executiveSummaryAllowedFields: executiveSummaryDefinition.llmAllowedFields || [],
+        executiveSummaryLockedFields: executiveSummaryDefinition.lockedFields || [],
+      },
+    },
+  ];
+}
+
+function buildStandardNarrativeBatches(llmEligiblePayloads = [], batchSize = 4) {
+  const batches = [];
+  for (let i = 0; i < llmEligiblePayloads.length; i += batchSize) {
+    const batchNumber = batches.length + 1;
+    batches.push({
+      name: `Batch ${batchNumber}`,
+      componentId: "batch_narrative_enhancement",
+      payload: llmEligiblePayloads.slice(i, i + batchSize),
+    });
+  }
+  return batches;
+}
+
+async function runSummaryOnlyNarrativeStage(batch, templateConfig, options = {}) {
+  const systemPrompt = `You are a senior energy audit report writer.
+
+Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+
+Important rules:
+1. Do not generate any numerical values.
+2. Do not modify any numerical values.
+3. Do not estimate missing values.
+4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
+5. Do not change project names, equipment names, group names, project numbers, or priorities.
+6. Use only the provided context.
+7. If information is not available, write "Data required".
+8. Return valid JSON only.
+9. Return only the allowed fields.
+10. Do not include markdown.
+11. Do not include tables.
+12. Do not repeat the same sentence across groups or summary sections.
+
+Writing expectations:
+- Use professional energy audit language.
+- Improve clarity, explainability, and client-readiness.
+- Explain opportunity areas, implementation intent, and operational value in words only.
+- Keep text concise but meaningful.
+- Do not create per-project outputs in summary-only mode.`;
+
+  const userPrompt = `Enhance only the executive summary and group-level summary narratives.
+Use the audit purpose, project groups, supporting file context, and implementation roadmap to make the wording more professional and explainable.
+Do not add any new numbers.
+
+${JSON.stringify(batch.payload, null, 2)}
+
+Return valid JSON only using exactly this schema:
+
+{
+  "executiveSummary": {
+    "purposeText": "Write 80 to 120 words explaining the purpose of this detailed energy audit in professional language.",
+    "keyObservations": [
+      "Observation 1 in 20 to 35 words.",
+      "Observation 2 in 20 to 35 words.",
+      "Observation 3 in 20 to 35 words.",
+      "Observation 4 in 20 to 35 words."
+    ],
+    "conclusionAndWayForward": "Write 80 to 120 words explaining recommended next steps and implementation approach."
+  },
+  "groups": [
+    {
+      "groupTitle": "Must exactly match one provided group title",
+      "groupIntroduction": "Write 40 to 70 words explaining this opportunity area.",
+      "groupObservation": "Write 30 to 60 words explaining why this group is important."
+    }
+  ]
+}
+
+Rules:
+- Do not generate or modify numbers.
+- Prefer wording without numeric figures.
+- Do not use Data required unless context is missing.
+- Do not add unsupported claims.
+- Do not include markdown.
+- Do not include extra keys.`;
+
+  return runPromptStage(systemPrompt, userPrompt, templateConfig, options);
+}
+
+function normalizeAiSummaryOutput(ai) {
+  const executiveSummary =
+    ai.executiveSummary ||
+    ai.executive_summary ||
+    ai.summary ||
+    {};
+  let keyObservations = executiveSummary.keyObservations ||
+                        executiveSummary.key_observations ||
+                        executiveSummary.observations ||
+                        executiveSummary.keyFindings ||
+                        executiveSummary.findings ||
+                        [];
+
+  if (typeof keyObservations === "string") {
+    keyObservations = keyObservations
+      .split(/\\n|•|-/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return {
+    executiveSummary: {
+      purposeText:
+        executiveSummary.purposeText ||
+        executiveSummary.purpose ||
+        executiveSummary.auditPurpose ||
+        executiveSummary.summaryPurpose ||
+        null,
+
+      keyObservations,
+
+      conclusionAndWayForward:
+        executiveSummary.conclusionAndWayForward ||
+        executiveSummary.conclusion ||
+        executiveSummary.wayForward ||
+        executiveSummary.nextSteps ||
+        null
+    },
+    groups: Array.isArray(ai.groups)
+      ? ai.groups
+      : Array.isArray(ai.groupNarratives)
+        ? ai.groupNarratives
+        : []
+  };
+}
+
+function applySummaryOnlyNarrative(report, batch, narrativeOutput, approvedTokens, warnings) {
+  if (!narrativeOutput || typeof narrativeOutput !== "object" || Array.isArray(narrativeOutput)) {
+    throw new Error("Invalid summary-only narrative response. Expected JSON object.");
+  }
+
+  const normalizedAi = normalizeAiSummaryOutput(narrativeOutput);
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[AI RAW SUMMARY OUTPUT]", JSON.stringify(normalizedAi, null, 2));
+  }
+
+  const changedFields = [];
+  const droppedFields = [];
+  const addDroppedField = (fieldPath, reason, value) => {
+    const dropped = {
+      field: fieldPath,
+      reason,
+      preview: previewValue(value),
+    };
+    droppedFields.push(dropped);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[AI FIELD REJECTED]", {
+        fieldPath,
+        reason,
+        value
+      });
+    }
+  };
+  const hasUnapprovedNumbers = (value, fieldPath) => {
+    const badNums = validateNarrativeNumbers(value, approvedTokens, fieldPath);
+    if (badNums.length > 0) {
+      addDroppedField(fieldPath, `Unapproved numeric token: ${badNums[0].num}`, value);
+      return true;
+    }
+    return false;
+  };
+  const isExtremelyGeneric = (text) => {
+    const normalized = normalizeWhitespace(text).toLowerCase();
+    return [
+      "this project saves energy.",
+      "this improves efficiency.",
+      "data required.",
+      "this project saves energy",
+      "this improves efficiency",
+      "data required"
+    ].includes(normalized);
+  };
+  const isDifferentFromExisting = (nextValue, existingValue) =>
+    normalizeWhitespace(nextValue) !== normalizeWhitespace(existingValue);
+
+  const executiveBefore = cloneJson(report.executiveSummary || {});
+  if (!report.executiveSummary) report.executiveSummary = {};
+
+  const purposeText = typeof normalizedAi.executiveSummary.purposeText === "string"
+    ? normalizeWhitespace(normalizedAi.executiveSummary.purposeText)
+    : "";
+  if (purposeText) {
+    if (purposeText.length < 80) {
+      addDroppedField("executiveSummary.purposeText", "Too short", purposeText);
+    } else if (isExtremelyGeneric(purposeText)) {
+      addDroppedField("executiveSummary.purposeText", "Extremely generic wording", purposeText);
+    } else if (!isDifferentFromExisting(purposeText, executiveBefore?.purposeText)) {
+      addDroppedField("executiveSummary.purposeText", "Same as deterministic text", purposeText);
+    } else if (!hasUnapprovedNumbers(purposeText, "executiveSummary.purposeText")) {
+      report.executiveSummary.purposeText = purposeText;
+      changedFields.push("executiveSummary.purposeText");
+    }
+  }
+
+  if (Array.isArray(normalizedAi.executiveSummary.keyObservations) && normalizedAi.executiveSummary.keyObservations.length > 0) {
+    const validObservations = [];
+    normalizedAi.executiveSummary.keyObservations.forEach((obs, index) => {
+      const observation = typeof obs === "string" ? normalizeWhitespace(obs) : "";
+      const fieldPath = `executiveSummary.keyObservations[${index}]`;
+      if (!observation) return;
+      if (observation.length < 50) {
+        addDroppedField(fieldPath, "Too short", observation);
+        return;
+      }
+      if (isExtremelyGeneric(observation)) {
+        addDroppedField(fieldPath, "Extremely generic wording", observation);
+        return;
+      }
+      if (hasUnapprovedNumbers(observation, fieldPath)) {
+        return;
+      }
+      validObservations.push(observation);
+    });
+
+    if (validObservations.length >= 1) {
+      report.executiveSummary.keyObservations = validObservations;
+      changedFields.push("executiveSummary.keyObservations");
+    } else {
+      addDroppedField("executiveSummary.keyObservations", "No valid observations survived validation", normalizedAi.executiveSummary.keyObservations);
+    }
+  }
+
+  const conclusionValue = normalizedAi.executiveSummary.conclusionAndWayForward;
+  const conclusionText = Array.isArray(conclusionValue)
+    ? conclusionValue
+        .map((item) => normalizeWhitespace(item?.action || item?.text || item))
+        .filter(Boolean)
+        .join(" ")
+    : typeof conclusionValue === "string"
+      ? normalizeWhitespace(conclusionValue)
+      : "";
+  if (conclusionText) {
+    if (conclusionText.length < 80) {
+      addDroppedField("executiveSummary.conclusionAndWayForward", "Too short", conclusionValue);
+    } else if (isExtremelyGeneric(conclusionText)) {
+      addDroppedField("executiveSummary.conclusionAndWayForward", "Extremely generic wording", conclusionValue);
+    } else if (!isDifferentFromExisting(conclusionText, executiveBefore?.conclusionAndWayForward)) {
+      addDroppedField("executiveSummary.conclusionAndWayForward", "Same as deterministic text", conclusionValue);
+    } else if (!hasUnapprovedNumbers(conclusionText, "executiveSummary.conclusionAndWayForward")) {
+      report.executiveSummary.conclusionAndWayForward = conclusionText;
+      changedFields.push("executiveSummary.conclusionAndWayForward");
+    }
+  }
+
+  if (Array.isArray(normalizedAi.groups)) {
+    normalizedAi.groups.forEach((groupOutput) => {
+      const groupIndex = (report.groupedProjects || []).findIndex(
+        (group) => String(group?.groupTitle || "").trim().toLowerCase() === String(groupOutput?.groupTitle || "").trim().toLowerCase()
+      );
+      if (groupIndex === -1) return;
+
+      const groupIntroduction = typeof groupOutput.groupIntroduction === "string"
+        ? normalizeWhitespace(groupOutput.groupIntroduction)
+        : "";
+      if (groupIntroduction) {
+        if (groupIntroduction.length < 60) {
+          addDroppedField(`groups[${groupIndex}].groupIntroduction`, "Too short", groupIntroduction);
+        } else if (isExtremelyGeneric(groupIntroduction)) {
+          addDroppedField(`groups[${groupIndex}].groupIntroduction`, "Extremely generic wording", groupIntroduction);
+        } else if (!hasUnapprovedNumbers(groupIntroduction, `groups[${groupIndex}].groupIntroduction`)) {
+          report.groupedProjects[groupIndex].summaryParagraph = groupIntroduction;
+          report.groupedProjects[groupIndex].groupIntroduction = groupIntroduction;
+          changedFields.push(`groups[${groupIndex}].groupIntroduction`);
+        }
+      }
+
+      const groupObservation = typeof groupOutput.groupObservation === "string"
+        ? normalizeWhitespace(groupOutput.groupObservation)
+        : "";
+      if (groupObservation) {
+        if (groupObservation.length < 60) {
+          addDroppedField(`groups[${groupIndex}].groupObservation`, "Too short", groupObservation);
+        } else if (isExtremelyGeneric(groupObservation)) {
+          addDroppedField(`groups[${groupIndex}].groupObservation`, "Extremely generic wording", groupObservation);
+        } else if (!hasUnapprovedNumbers(groupObservation, `groups[${groupIndex}].groupObservation`)) {
+          report.groupedProjects[groupIndex].technicalObservation = groupObservation;
+          report.groupedProjects[groupIndex].groupObservation = groupObservation;
+          changedFields.push(`groups[${groupIndex}].groupObservation`);
+        }
+      }
+    });
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[AI MERGE SUMMARY]", {
+      aiEnhancedFields: changedFields,
+      aiDroppedFields: droppedFields,
+      purposeTextChanged: executiveBefore?.purposeText !== report.executiveSummary?.purposeText,
+      keyObservationsBefore: executiveBefore?.keyObservations?.length || 0,
+      keyObservationsAfter: report.executiveSummary?.keyObservations?.length || 0
+    });
+  }
+
+  const aiEnhancementStatus = changedFields.length > 0
+    ? (droppedFields.length > 0 ? "partial_success" : "success")
+    : "no_fields_changed";
+
+  return { 
+    report, 
+    changedFields,
+    droppedFields,
+    aiEnhanced: changedFields.length > 0,
+    aiEnhancementStatus
+  };
 }
 
 function buildAnnexures(uploadedFiles = [], imageMetadata = []) {
@@ -322,6 +963,7 @@ function buildComponentPayloads({
   const payloads = [];
   const groupedProjects = Array.isArray(baseReport?.groupedProjects) ? baseReport.groupedProjects : [];
   const projects = Array.isArray(baseReport?.projects) ? baseReport.projects : [];
+  const supportingContext = buildSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
 
   payloads.push({
     ...getReportComponentDefinition("cover_page"),
@@ -348,19 +990,27 @@ function buildComponentPayloads({
   payloads.push({
     ...getReportComponentDefinition("executive_summary"),
     componentTitle: "Chapter 1: Executive Summary",
-    baseComponent: cloneJson(baseReport.executiveSummary || {}),
     lockedData: getComponentLockedSnapshot(baseReport.executiveSummary || {}, getReportComponentDefinition("executive_summary")?.lockedFields),
+    qualityContext: {
+      purposeText: baseReport?.executiveSummary?.purposeText,
+      keyObservations: groupedProjects.map((group) => group.groupTitle),
+      conclusionAndWayForward: baseReport?.executiveSummary?.conclusionAndWayForward,
+    },
     narrativeInputs: {
-      formData: {
-        clientName: formData.clientName || "Data required",
-        facilityName: formData.facilityName || "Data required",
-        location: formData.location || "Data required",
+      reportType: "Detailed Energy Audit Report",
+      clientName: formData.clientName || "Data required",
+      facilityType: formData.buildingType || baseReport?.buildingProfile?.typeOfBuilding || "Data required",
+      auditPurpose: baseReport?.executiveSummary?.purposeText || "Data required",
+      currentNarrative: {
+        purposeText: baseReport?.executiveSummary?.purposeText || "Data required",
+        keyObservations: baseReport?.executiveSummary?.keyObservations || [],
+        conclusionAndWayForward: baseReport?.executiveSummary?.conclusionAndWayForward || [],
       },
-      groupSummary: groupedProjects.map((group) => ({
+      projectGroups: groupedProjects.map((group) => ({
         groupTitle: group.groupTitle,
-        projectCount: (group.projects || []).length,
+        projectTitles: (group.projects || []).map((project) => project.projectTitle),
       })),
-      extractedObservations: extractedInfo?.facilityObservations || [],
+      supportingContext,
     },
     mergeTarget: { type: "executive_summary" },
     forbiddenFields: getReportComponentDefinition("executive_summary")?.lockedFields || [],
@@ -369,12 +1019,24 @@ function buildComponentPayloads({
   payloads.push({
     ...getReportComponentDefinition("plant_profile"),
     componentTitle: "Chapter 2: Plant / Building Details and Energy Profile",
-    baseComponent: cloneJson(baseReport.buildingProfile || {}),
     lockedData: getComponentLockedSnapshot(baseReport.buildingProfile || {}, getReportComponentDefinition("plant_profile")?.lockedFields),
+    qualityContext: {
+      facilityDescription: extractedInfo?.facilityObservations,
+      utilityDescription: extractedInfo?.utilityObservations,
+      operatingPatternNarrative: extractedInfo?.facilityObservations,
+      majorSystemsNarrative: extractedInfo?.utilityObservations,
+    },
     narrativeInputs: {
-      facilityObservations: extractedInfo?.facilityObservations || [],
-      utilityObservations: extractedInfo?.utilityObservations || [],
-      supportingFormData: {
+      reportType: "Detailed Energy Audit Report",
+      facilityType: formData.buildingType || baseReport?.buildingProfile?.typeOfBuilding || "Data required",
+      currentNarrative: {
+        facilityDescription: baseReport?.buildingProfile?.facilityDescription || "Data required",
+        utilityDescription: baseReport?.buildingProfile?.utilityDescription || "Data required",
+        operatingPatternNarrative: baseReport?.buildingProfile?.operatingPatternNarrative || "Data required",
+        majorSystemsNarrative: baseReport?.buildingProfile?.majorSystemsNarrative || "Data required",
+      },
+      supportingContext,
+      facilityContext: {
         facilityName: formData.facilityName || "Data required",
         location: formData.location || "Data required",
         contactPerson: formData.contactPerson || "Data required",
@@ -388,7 +1050,6 @@ function buildComponentPayloads({
     payloads.push({
       ...getReportComponentDefinition("project_group"),
       componentTitle: `${group.groupNo} ${group.groupTitle}`,
-      baseComponent: cloneJson(group),
       lockedData: {
         groupNo: group.groupNo,
         groupTitle: group.groupTitle,
@@ -398,9 +1059,23 @@ function buildComponentPayloads({
         totalEnergySaving: group.totalEnergySaving,
         weightedPayback: group.weightedPayback,
       },
+      qualityContext: {
+        summaryParagraph: group.groupTitle,
+        technicalObservation: (group.projects || []).map((project) => project.projectTitle),
+        implementationStrategy: extractedInfo?.facilityObservations,
+        groupConclusion: extractedInfo?.utilityObservations,
+      },
       narrativeInputs: {
+        reportType: "Detailed Energy Audit Report",
+        groupTitle: group.groupTitle || "Data required",
         projectTitles: (group.projects || []).map((project) => project.projectTitle),
-        extractedObservations: extractedInfo?.facilityObservations || [],
+        currentNarrative: {
+          summaryParagraph: group.summaryParagraph || "Data required",
+          technicalObservation: group.technicalObservation || "Data required",
+          implementationStrategy: group.implementationStrategy || "Data required",
+          groupConclusion: group.groupConclusion || "Data required",
+        },
+        supportingContext,
       },
       mergeTarget: { type: "project_group", groupIndex },
       forbiddenFields: getReportComponentDefinition("project_group")?.lockedFields || [],
@@ -416,20 +1091,38 @@ function buildComponentPayloads({
     payloads.push({
       ...getReportComponentDefinition("project_detail"),
       componentTitle: safeReportValue(project.projectTitle),
-      baseComponent: cloneJson(project),
       lockedData: getComponentLockedSnapshot(project, getReportComponentDefinition("project_detail")?.lockedFields),
+      qualityContext: {
+        existingSystemDescription: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition,
+        proposedProjectDescription: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention,
+        rationaleForEnergySaving: supportingNotes.implementationNotes || project.proposedIntervention || project.system,
+        problemGapIdentified: supportingNotes.existingConditionNotes || project.existingOperatingCondition || project.system,
+        scopeOfWork: supportingNotes.implementationNotes || project.proposedIntervention,
+        keyActivities: supportingNotes.implementationNotes || project.proposedIntervention,
+        measurementVerificationPlan: supportingNotes.existingConditionNotes || project.system,
+        benefitsOtherThanEnergySaving: project.system || project.equipmentCovered,
+        finalConclusion: project.system || project.projectTitle,
+      },
       narrativeInputs: {
-        baselineDetails: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition || "Data required",
-        projectActivitiesText: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention || "Data required",
-        documentText: [
-          supportingNotes.proposedMeasureNotes,
-          supportingNotes.rationaleNotes,
-          supportingNotes.measurementVerificationNotes,
-          supportingNotes.caseStudyNotes,
-        ].filter(Boolean).join("\n") || "Data required",
-        imageReferences: imageMetadata.filter((image) =>
-          String(image?.projectNo || "").trim() === String(project.projectNo || "").trim()
-        ),
+        reportType: "Detailed Energy Audit Report",
+        projectNo: project.projectNo || "Data required",
+        projectTitle: project.projectTitle || "Data required",
+        equipmentCovered: project.equipmentCovered || "Data required",
+        system: project.system || project.groupTitle || "Data required",
+        baselineContext: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition || "Data required",
+        proposedContext: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention || "Data required",
+        supportingContext,
+        currentNarrative: {
+          existingSystemDescription: project.existingSystemDescription || "Data required",
+          proposedProjectDescription: project.proposedProjectDescription || "Data required",
+          rationaleForEnergySaving: project.rationaleForEnergySaving || "Data required",
+          problemGapIdentified: project.problemGapIdentified || "Data required",
+          scopeOfWork: project.scopeOfWork || "Data required",
+          keyActivities: project.keyActivities || "Data required",
+          measurementVerificationPlan: project.measurementVerificationPlan || "Data required",
+          benefitsOtherThanEnergySaving: project.benefitsOtherThanEnergySaving || "Data required",
+          finalConclusion: project.finalConclusion || "Data required",
+        },
       },
       mergeTarget: { type: "project_detail", projectIndex },
       forbiddenFields: getReportComponentDefinition("project_detail")?.lockedFields || [],
@@ -445,22 +1138,37 @@ function buildComponentPayloads({
   return payloads;
 }
 
-async function runComponentNarrativeStage(payload, templateConfig) {
-  const systemPrompt = `You are generating professional technical narrative for a Detailed Energy Audit Report.
+async function runComponentNarrativeStage(payload, templateConfig, options = {}) {
+  const systemPrompt = `You are a senior energy audit report writer.
 
-Strict rules:
+Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+
+Important rules:
 1. Do not generate any numerical values.
 2. Do not modify any numerical values.
-3. Do not estimate missing numbers.
-4. Do not change project names, equipment names, savings, investment, payback, duration, priority, or counts.
-5. Use only the provided input context.
-6. If information is missing, write "Data required".
-7. Return JSON only.
-8. Only fill fields listed in allowedOutputFields.
-9. Never include markdown fences.
-10. Do not add extra fields.`;
+3. Do not estimate missing values.
+4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
+5. Do not change project names, equipment names, group names, project numbers, or priorities.
+6. Use only the provided context.
+7. If information is not available, write "Data required".
+8. Return valid JSON only.
+9. Return only the allowed fields.
+10. Do not include markdown.
+11. Do not include tables.
+12. Do not repeat the same sentence across projects.
 
-  const userPrompt = `Generate narrative for this report component.
+Writing expectations:
+- Explain the existing system condition in practical engineering terms.
+- Explain the proposed measure clearly.
+- Explain the energy-saving principle without creating numbers.
+- Explain the scope of implementation.
+- Explain key activities required for implementation.
+- Explain how savings should be verified after implementation.
+- Mention operational, reliability, maintenance, safety, or monitoring benefits where relevant.
+- Use formal client-ready language suitable for a Detailed Energy Audit Report.`;
+
+  const userPrompt = `Improve the report explanation for this component.
+AI is a report writer, not a calculator.
 
 ${JSON.stringify({
     componentId: payload.id,
@@ -473,26 +1181,44 @@ ${JSON.stringify({
 
 Return JSON now:`;
 
-  return runPromptStage(systemPrompt, userPrompt, templateConfig);
+  return runPromptStage(systemPrompt, userPrompt, templateConfig, options);
 }
 
-async function runBatchComponentNarrativeStage(payloads, templateConfig) {
-  const systemPrompt = `You are generating professional technical narrative for a Detailed Energy Audit Report.
+async function runBatchComponentNarrativeStage(payloads, templateConfig, options = {}) {
+  const systemPrompt = `You are a senior energy audit report writer.
 
-Strict rules:
+Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+
+Important rules:
 1. Do not generate any numerical values.
 2. Do not modify any numerical values.
-3. Do not estimate missing numbers.
-4. Do not change project names, equipment names, savings, investment, payback, duration, priority, or counts.
-5. Use only the provided input context.
-6. If information is missing, write "Data required".
-7. Return JSON only.
-8. Only fill fields listed in allowedOutputFields.
-9. Never include markdown fences.
-10. Do not add extra fields.
-11. Return one output object per componentKey.`;
+3. Do not estimate missing values.
+4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
+5. Do not change project names, equipment names, group names, project numbers, or priorities.
+6. Use only the provided context.
+7. If information is not available, write "Data required".
+8. Return valid JSON only.
+9. Return only the allowed fields.
+10. Do not include markdown.
+11. Do not include tables.
+12. Do not repeat the same sentence across projects.
 
-  const userPrompt = `Generate narrative for these report components.
+Writing expectations:
+- Explain the existing system condition in practical engineering terms.
+- Explain the proposed measure clearly.
+- Explain the energy-saving principle without creating numbers.
+- Explain the scope of implementation.
+- Explain key activities required for implementation.
+- Explain how savings should be verified after implementation.
+- Mention operational, reliability, maintenance, safety, or monitoring benefits where relevant.
+- Use formal client-ready language suitable for a Detailed Energy Audit Report.
+- Keep text concise but meaningful.
+- For scopeOfWork and keyActivities, return 3 to 5 concise bullets.
+- For measurementVerificationPlan and benefitsOtherThanEnergySaving, return 3 to 4 concise bullets.
+- For conclusion fields, write a short client-ready conclusion.`;
+
+  const userPrompt = `Improve the report explanation for these components.
+AI is a report writer, not a calculator.
 
 ${JSON.stringify({
     components: payloads.map((payload) => ({
@@ -502,24 +1228,26 @@ ${JSON.stringify({
       lockedData: payload.lockedData || {},
       narrativeInputs: payload.narrativeInputs || {},
       allowedOutputFields: payload.llmAllowedFields || [],
-      forbiddenFields: payload.forbiddenFields || [],
     })),
   }, null, 2)}
 
-Return JSON in this format:
+Return JSON exactly in this format. No nested objects inside output:
 {
   "components": [
     {
-      "componentKey": "",
-      "output": {}
+      "componentKey": "...",
+      "output": {
+        "field1": "...",
+        "field2": "..."
+      }
     }
   ]
 }`;
 
-  return runPromptStage(systemPrompt, userPrompt, templateConfig);
+  return runPromptStage(systemPrompt, userPrompt, templateConfig, options);
 }
 
-function applyComponentNarrative(report, payload, narrativeOutput) {
+function applyComponentNarrative(report, payload, narrativeOutput, approvedTokens, warnings) {
   const allowedOutputFields = payload.llmAllowedFields || [];
   const lockedFields = payload.lockedFields || [];
 
@@ -527,7 +1255,7 @@ function applyComponentNarrative(report, payload, narrativeOutput) {
     componentId: payload.id,
     allowedOutputFields,
     lockedFields,
-  }, narrativeOutput);
+  }, narrativeOutput, approvedTokens, warnings);
 
   if (payload.mergeTarget?.type === "executive_summary") {
     const before = cloneJson(report.executiveSummary || {});
@@ -592,20 +1320,30 @@ async function generateCommercialAuditComponentReport({
   imageMetadata = [],
   uploadedFiles = [],
   templateConfig,
+  baseReportOverride = null,
+  useAiOverride = null,
 }) {
-  const useAiDuringGeneration = String(process.env.USE_AI_DURING_GENERATION || "true").toLowerCase() === "true";
+  const useAiDuringGeneration = typeof useAiOverride === "boolean"
+    ? useAiOverride
+    : String(process.env.USE_AI_DURING_GENERATION || "true").toLowerCase() === "true";
   const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 30000);
   let providerUsed = "deterministic";
   let providerStatus = "success";
   let modelUsed = null;
   const providerAttempts = [];
   const warnings = [];
+  let quotaExceededRetry = null;
+  let aiFailureReason = null;
+  let allAiEnhancedFields = [];
+  let allAiDroppedFields = [];
 
-  let report = buildCommercialBuildingEnergyAuditBaseData({
-    inputDetails: formData,
-    extractedExcelData,
-    uploadedFiles,
-  });
+  let report = baseReportOverride
+    ? cloneJson(baseReportOverride)
+    : buildCommercialBuildingEnergyAuditBaseData({
+        inputDetails: formData,
+        extractedExcelData,
+        uploadedFiles,
+      });
 
   report = normalizeReportForExport({
     ...report,
@@ -636,6 +1374,8 @@ async function generateCommercialAuditComponentReport({
     uploadedFiles,
   });
 
+  const approvedTokens = collectApprovedNumericTokens(report);
+
   const deterministicReport = finalizeCommercialAuditReport({
     report: cloneJson(report),
     componentPayloads,
@@ -651,113 +1391,220 @@ async function generateCommercialAuditComponentReport({
   let lastSuccessProvider = null;
   let lastSuccessModel = null;
   let aiEnhancementFailed = false;
-  const llmEligiblePayloads = componentPayloads.filter((payload) => payload?.allowLLM);
+  let exactErrorStr = null;
+  let llmEligiblePayloads = componentPayloads.filter((payload) => payload?.allowLLM);
+  const enhancementMode = process.env.AI_ENHANCEMENT_MODE || "all";
+  const maxAiCalls = Number(process.env.MAX_AI_CALLS_PER_REPORT || 1);
+  const stopOnRateLimit = String(process.env.STOP_AI_ON_RATE_LIMIT || "true").toLowerCase() === "true";
+  let aiCallsUsed = 0;
+  let batches = [];
+
+  console.log("[AI ENHANCE CONFIG]", {
+    mode: process.env.AI_ENHANCEMENT_MODE,
+    maxCalls: process.env.MAX_AI_CALLS_PER_REPORT,
+    stopOnRateLimit: process.env.STOP_AI_ON_RATE_LIMIT
+  });
 
   if (!useAiDuringGeneration) {
     warnings.push("AI enhancement disabled. Deterministic report generated successfully.");
   } else {
-    if (llmEligiblePayloads.length) {
-      try {
-        console.time("[REPORT] ai_attempts");
-        console.log("[REPORT] before AI call");
-        const result = await runBatchComponentNarrativeStage(llmEligiblePayloads, templateConfig);
-        console.log("[REPORT] after AI call");
-        console.timeEnd("[REPORT] ai_attempts");
-        const attempts = result?.providerAttempts || [];
-        if (Array.isArray(attempts) && attempts.length) {
-          providerAttempts.push(...attempts.map((attempt) => ({
-            ...attempt,
-            componentId: "batch_narrative_enhancement",
-            componentTitle: "Batched narrative enhancement",
-          })));
-        }
-
-        if (!result?.result || !Array.isArray(result.result.components)) {
-          throw new Error("AI returned no component outputs");
-        }
-
-        const outputs = result.result.components;
-        const payloadMap = new Map(
-          llmEligiblePayloads.map((payload) => [buildComponentInstanceKey(payload), payload])
-        );
-
-        if (!attempts.some((attempt) => attempt.status === "success") && providerAttempts.length > 0) {
-          llmFailureCount += llmEligiblePayloads.length;
-          warnings.push("AI enhancement failed after all model attempts. Deterministic report used.");
-        } else {
-          report = await withTimeout(
-            Promise.resolve().then(() => {
-              console.time("[REPORT] ai_parse");
-              console.log("[REPORT] before JSON parse");
-              console.log("[REPORT] after JSON parse");
-              console.timeEnd("[REPORT] ai_parse");
-
-              console.time("[REPORT] narrative_merge");
-              console.log("[REPORT] before merge");
-              let mergedReport = cloneJson(report);
-              outputs.forEach((item) => {
-                const payload = payloadMap.get(item?.componentKey);
-                if (!payload) return;
-                mergedReport = applyComponentNarrative(mergedReport, payload, item?.output || {});
-                llmSuccessCount += 1;
-              });
-              console.log("[REPORT] after merge");
-              console.timeEnd("[REPORT] narrative_merge");
-
-              console.time("[REPORT] qc");
-              const finalizedReport = finalizeCommercialAuditReport({
-                report: mergedReport,
-                componentPayloads,
-                extractedExcelData,
-                llmSuccessCount,
-                llmFailureCount,
-                aiEnhanced: llmSuccessCount > 0,
-                useAiDuringGeneration,
-              });
-              console.log("[REPORT] after qc");
-              console.timeEnd("[REPORT] qc");
-              return finalizedReport;
-            }),
-            aiFinalizationTimeoutMs,
-            "AI finalization"
-          );
-        }
-
-        if (llmSuccessCount > 0) {
-          lastSuccessProvider = result?.providerUsed || lastSuccessProvider;
-          lastSuccessModel = result?.modelUsed || lastSuccessModel;
-        } else {
-          llmFailureCount += llmEligiblePayloads.length;
-          warnings.push("AI enhancement returned no usable narrative updates. Deterministic report used.");
-        }
-      } catch (error) {
-        aiEnhancementFailed = true;
-        llmSuccessCount = 0;
-        lastSuccessProvider = null;
-        lastSuccessModel = null;
-        llmFailureCount += llmEligiblePayloads.length;
-        if (Array.isArray(error?.providerAttempts) && error.providerAttempts.length) {
-          providerAttempts.push(...error.providerAttempts.map((attempt) => ({
-            ...attempt,
-            componentId: "batch_narrative_enhancement",
-            componentTitle: "Batched narrative enhancement",
-          })));
-        }
-        warnings.push(`Batched narrative enhancement: ${error.message}`);
-        console.warn(`[COMPONENT LLM FALLBACK] Batched narrative enhancement: ${error.message}`);
-      }
+    if (enhancementMode === "selected_projects") {
+      const selectedProjectNos = Array.isArray(formData?.aiSelectedProjects)
+        ? formData.aiSelectedProjects.map((value) => String(value).trim()).filter(Boolean)
+        : String(process.env.AI_SELECTED_PROJECTS || "")
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean);
+      llmEligiblePayloads = llmEligiblePayloads.filter((payload) =>
+        payload?.id === "project_detail" &&
+        selectedProjectNos.includes(String(payload?.lockedData?.projectNo || "").trim())
+      );
     }
 
-    if (llmSuccessCount > 0) {
-      providerUsed = lastSuccessProvider || "openrouter";
-      providerStatus = "success";
-      modelUsed = lastSuccessModel || null;
-    } else if (providerAttempts.length > 0) {
-      warnings.push("AI enhancement failed after all model attempts. Deterministic report used.");
-    } else if (llmFailureCount > 0) {
-      warnings.push("AI enhancement failed. Deterministic report used.");
-    } else {
-      warnings.push("AI enhancement was skipped. Deterministic report used.");
+    const batchSize = Number(process.env.AI_ENHANCEMENT_BATCH_SIZE || 4);
+    batches = enhancementMode === "summary_only"
+      ? buildSummaryOnlyBatch({ report, formData, extractedInfo, uploadedFiles, imageMetadata })
+      : buildStandardNarrativeBatches(llmEligiblePayloads, batchSize);
+
+    if (batches.length) {
+      console.log("[AI ENHANCE BATCHES]", {
+        enhancementMode,
+        batchCount: batches.length,
+        maxAiCalls,
+      });
+
+      console.time("[REPORT] ai_attempts");
+      for (const [b, batch] of batches.entries()) {
+        const batchName = batch.name || `Batch ${b + 1}`;
+        if (aiCallsUsed >= maxAiCalls) {
+          providerAttempts.push({
+            provider: "gemini",
+            model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
+            status: "skipped",
+            reason: `MAX_AI_CALLS_PER_REPORT reached (${maxAiCalls})`,
+            batch: batchName,
+            componentId: batch.componentId,
+          });
+          break;
+        }
+
+        aiCallsUsed += 1;
+        try {
+          console.log(`[REPORT] before AI call for batch ${b + 1}/${batches.length}`);
+          const result = batch.name === "summary_only"
+            ? await runSummaryOnlyNarrativeStage(batch, templateConfig, { isManualEnhancement: useAiOverride === true })
+            : await runBatchComponentNarrativeStage(batch.payload, templateConfig, { isManualEnhancement: useAiOverride === true });
+          console.log(`[REPORT] after AI call for batch ${b + 1}/${batches.length}`);
+          
+          const attempts = result?.providerAttempts || [];
+          if (Array.isArray(attempts) && attempts.length) {
+            providerAttempts.push(...attempts.map((attempt) => ({
+              ...attempt,
+              batch: batchName,
+              componentId: batch.componentId,
+              componentTitle: batch.name === "summary_only"
+                ? "Summary narrative enhancement"
+                : `Batched narrative enhancement (${batchName})`,
+            })));
+          }
+
+          if (result?.success === false && result?.error) {
+            const batchItemCount = batch.name === "summary_only"
+              ? 1 + (Array.isArray(batch.payload?.groups) ? batch.payload.groups.length : 0)
+              : batch.payload.length;
+            llmFailureCount += batchItemCount;
+            warnings.push(`${batchName} AI enhancement failed: ${result.error}`);
+            if (!exactErrorStr) exactErrorStr = result.error;
+            
+            const isQuotaExceeded = result?.isQuotaExceeded || attempts.some((a) => a.isQuotaExceeded);
+            if (isQuotaExceeded) {
+              quotaExceededRetry = result?.retryAfterSeconds || attempts.find((a) => a.retryAfterSeconds)?.retryAfterSeconds || 60;
+              aiFailureReason = `Gemini quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
+              if (stopOnRateLimit) {
+                break;
+              }
+            }
+            continue;
+          }
+
+          if (batch.name === "summary_only") {
+            if (!result?.result || typeof result.result !== "object") {
+              llmFailureCount += 1 + (Array.isArray(batch.payload?.groups) ? batch.payload.groups.length : 0);
+              warnings.push(`${batchName} AI returned no summary outputs`);
+              continue;
+            }
+
+            const summaryResult = applySummaryOnlyNarrative(report, batch, result.result, approvedTokens, warnings);
+            report = summaryResult.report;
+            if (summaryResult.changedFields) {
+              allAiEnhancedFields.push(...summaryResult.changedFields);
+            }
+            if (summaryResult.droppedFields) {
+              allAiDroppedFields.push(...summaryResult.droppedFields);
+            }
+
+            if (summaryResult.aiEnhanced) {
+              llmSuccessCount += 1;
+              lastSuccessProvider = result?.providerUsed || lastSuccessProvider;
+              lastSuccessModel = result?.modelUsed || lastSuccessModel;
+            } else {
+              llmFailureCount += 1 + (Array.isArray(batch.payload?.groups) ? batch.payload.groups.length : 0);
+              warnings.push(`${batchName} AI responded, but no valid narrative fields were merged.`);
+              if (!exactErrorStr) exactErrorStr = "AI responded, but no valid narrative fields were merged due to quality checks.";
+            }
+            continue;
+          }
+
+          const batchPayloads = batch.payload;
+
+          if (!result?.result || !Array.isArray(result.result.components)) {
+            llmFailureCount += batchPayloads.length;
+            warnings.push(`${batchName} AI returned no component outputs`);
+            continue;
+          }
+
+          const outputs = result.result.components;
+          const payloadMap = new Map(
+            batchPayloads.map((payload) => [buildComponentInstanceKey(payload), payload])
+          );
+
+          if (!attempts.some((attempt) => attempt.status === "success") && attempts.length > 0) {
+            llmFailureCount += batchPayloads.length;
+            warnings.push(`${batchName} AI enhancement failed after all model attempts.`);
+          } else {
+            let mergedReport = cloneJson(report);
+            outputs.forEach((item) => {
+              const payload = payloadMap.get(item?.componentKey);
+              if (!payload) return;
+              mergedReport = applyComponentNarrative(mergedReport, payload, item?.output || {}, approvedTokens, warnings);
+              llmSuccessCount += 1;
+            });
+            report = mergedReport;
+            lastSuccessProvider = result?.providerUsed || lastSuccessProvider;
+            lastSuccessModel = result?.modelUsed || lastSuccessModel;
+          }
+        } catch (error) {
+          const batchItemCount = batch.name === "summary_only"
+            ? 1 + (Array.isArray(batch.payload?.groups) ? batch.payload.groups.length : 0)
+            : batch.payload.length;
+          console.error(`[REPORT] ${batchName} AI enhancement error:`, error.message);
+          llmFailureCount += batchItemCount;
+          warnings.push(`${batchName} AI enhancement threw an error: ${error.message}`);
+          if (!exactErrorStr) exactErrorStr = error.message;
+          
+          let attempts = [];
+          if (Array.isArray(error?.providerAttempts) && error.providerAttempts.length) {
+            attempts = error.providerAttempts.map((attempt) => ({
+              ...attempt,
+              batch: batchName,
+              componentId: batch.componentId,
+              componentTitle: batch.name === "summary_only"
+                ? "Summary narrative enhancement"
+                : `Batched narrative enhancement (${batchName})`,
+            }));
+            providerAttempts.push(...attempts);
+          }
+          
+          const isQuotaExceeded = error.isQuotaExceeded || attempts.some((a) => a.isQuotaExceeded);
+          if (isQuotaExceeded) {
+            quotaExceededRetry = error.retryAfterSeconds || attempts.find((a) => a.retryAfterSeconds)?.retryAfterSeconds || 60;
+            aiFailureReason = `Gemini quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
+            if (stopOnRateLimit) {
+              break;
+            }
+          }
+        }
+      }
+      console.timeEnd("[REPORT] ai_attempts");
+      console.log("[AI ENHANCE RESULT]", {
+        enhancementMode,
+        maxAiCalls,
+        batchesCreated: batches.length,
+        actualGeminiCallsMade: aiCallsUsed,
+        providerAttemptsCount: providerAttempts.length,
+      });
+
+      if (llmSuccessCount > 0) {
+        report = await withTimeout(
+          Promise.resolve().then(() => {
+            return finalizeCommercialAuditReport({
+              report,
+              componentPayloads,
+              extractedExcelData,
+              llmSuccessCount,
+              llmFailureCount,
+              aiEnhanced: true,
+              useAiDuringGeneration,
+            });
+          }),
+          aiFinalizationTimeoutMs,
+          "AI finalization"
+        );
+      } else {
+        aiEnhancementFailed = true;
+        exactErrorStr = exactErrorStr || "All AI enhancement batches failed";
+        report = deterministicReport;
+      }
     }
   }
 
@@ -767,12 +1614,21 @@ async function generateCommercialAuditComponentReport({
   } else if (llmSuccessCount === 0 || aiEnhancementFailed) {
     providerUsed = "deterministic";
     providerStatus = "success";
+  } else {
+    providerUsed = lastSuccessProvider || "openrouter";
+    providerStatus = llmFailureCount > 0 ? "partial_success" : "success";
+    modelUsed = lastSuccessModel || null;
   }
 
   const aiEnhanced = llmSuccessCount > 0;
   const providerWarning = aiEnhanced
-    ? null
+    ? (llmFailureCount > 0 ? "Some AI enhancement batches failed. Using deterministic fallbacks for failed batches." : null)
     : (warnings.find((warning) => /AI enhancement/i.test(warning)) || null);
+  const aiEnhancementStatus = quotaExceededRetry
+    ? "quota_exceeded"
+    : aiEnhanced
+      ? (allAiDroppedFields.length > 0 ? "partial_success" : "success")
+      : (allAiDroppedFields.length > 0 ? "no_fields_changed" : "failed");
 
   return {
     report: aiEnhanced ? report : deterministicReport,
@@ -784,7 +1640,20 @@ async function generateCommercialAuditComponentReport({
     warnings,
     providerWarning,
     aiEnhanced,
+    aiEnhancementStatus,
+    aiFailureReason: aiFailureReason || exactErrorStr,
+    retryAfterSeconds: quotaExceededRetry,
     componentPayloads,
+    aiEnhancedFields: allAiEnhancedFields,
+    aiDroppedFields: allAiDroppedFields,
+    debug: {
+      enhancementMode,
+      maxAiCalls,
+      batchesCreated: useAiDuringGeneration ? batches.length : 0,
+      actualGeminiCallsMade: aiCallsUsed,
+      providerAttemptsCount: providerAttempts.length,
+    },
+    error: exactErrorStr,
   };
 }
 
@@ -1304,33 +2173,6 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
   return report;
 }
 
-async function runAIEnhancementStage(reportData, templateConfig) {
-  const narrativePayload = {
-    executiveSummary: {
-      purposeText: reportData.executiveSummary?.purposeText || "",
-      keyObservations: reportData.executiveSummary?.keyObservations || [],
-      conclusionAndWayForward: reportData.executiveSummary?.conclusionAndWayForward || ""
-    },
-    projects: (reportData.projects || []).map(p => ({
-      projectNo: p.projectNo,
-      existingSystemDescription: p.existingSystemDescription || "",
-      proposedProjectDescription: p.proposedProjectDescription || "",
-      rationaleForEnergySaving: p.rationaleForEnergySaving || "",
-      problemGapIdentified: p.problemGapIdentified || "",
-      scopeOfWork: p.scopeOfWork || "",
-      keyActivities: p.keyActivities || [],
-      measurementVerificationPlan: p.measurementVerificationPlan || "",
-      benefitsOtherThanEnergySaving: p.benefitsOtherThanEnergySaving || [],
-      conclusion: p.conclusion || ""
-    }))
-  };
-
-  const systemPrompt = `You are a professional energy auditor. Enhance the narrative descriptions provided in the JSON payload to sound professional, persuasive, and technically sound. Do NOT change any numerical truth values. Return ONLY valid JSON matching the exact structure of the input payload.`;
-  const userPrompt = JSON.stringify(narrativePayload);
-
-  return runPromptStage(systemPrompt, userPrompt, templateConfig);
-}
-
 module.exports = {
   REPORT_COMPONENTS,
   runStage1Extraction,
@@ -1345,5 +2187,4 @@ module.exports = {
   buildDeterministicCommercialAuditFallback,
   buildComponentPayloads,
   generateCommercialAuditComponentReport,
-  runAIEnhancementStage,
 };

@@ -9,7 +9,7 @@ const { getLLMProvider } = require("../utils/helpers");
 const { getModelTag } = require("./utils");
 const fs = require("fs");
 const path = require("path");
-const { directUploadsPath, hotdirPath } = require("../utils/files");
+const { hotdirPath } = require("../utils/files");
 const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
 const multer = require("multer");
@@ -30,7 +30,6 @@ const {
   stripDebugMetadata,
 } = require("../services/llmProviderService");
 const {
-  runStage1Extraction,
   buildDeterministicCommercialAuditFallback,
   generateCommercialAuditComponentReport,
 } = require("../services/reportPipeline");
@@ -120,6 +119,28 @@ function buildCommercialAuditArtifacts({
     accuracyResult: calculateReportAccuracyScore(finalData),
     finalReportContent: JSON.stringify(finalData),
   };
+}
+
+function parseStoredJson(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function buildImageMetadataFromUploads(uploadedFiles = []) {
+  return uploadedFiles
+    .filter((file) => {
+      const ext = path.extname(file?.filename || "").toLowerCase();
+      return [".png", ".jpg", ".jpeg"].includes(ext);
+    })
+    .map((file) => ({
+      filename: file.filename,
+      originalPath: file.location,
+      suggestedCaption: "Data required",
+    }));
 }
 
 /**
@@ -214,7 +235,10 @@ function normaliseGenerateBody(body) {
   };
 }
 
-const excelUpload = multer({ storage: multer.memoryStorage() }).array("files");
+const excelUpload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024, files: 20 }
+}).array("files");
 
 const EXCEL_FIELD_SYNONYMS = {
   rowNumber: ["sr", "srno", "sr no", "ecm no", "ecmno"],
@@ -648,7 +672,7 @@ function buildStructuredList(text, primaryKey, secondaryKeys = []) {
 
   const segments = cleaned
     .split(/\n+|(?<=\.)\s+(?=\d+\.)/g)
-    .map((segment) => segment.replace(/^\d+[\).\s-]*/, "").trim())
+    .map((segment) => segment.replace(/^\d+[).\s-]*/, "").trim())
     .filter(Boolean);
 
   const rows = (segments.length ? segments : [cleaned]).map((segment, index) => {
@@ -1070,10 +1094,83 @@ function generateRecommendations(mappedColumns) {
   return recommendations;
 }
 
+function classifyUploadedFile(detectedColumns = []) {
+  const headers = detectedColumns.map(h => String(h).toLowerCase());
+
+  const hasAny = (keywords) => keywords.some(keyword =>
+    headers.some(header => header.includes(keyword))
+  );
+
+  const hasProjectHeaders = hasAny([
+    "project name",
+    "energy saving project",
+    "ecm",
+    "measure",
+    "recommendation",
+    "proposal"
+  ]);
+
+  const hasFinancialHeaders = hasAny([
+    "investment",
+    "saving",
+    "annual saving",
+    "payback",
+    "cost saving",
+    "kwh saving"
+  ]);
+
+  if (hasProjectHeaders && hasFinancialHeaders) {
+    return "ecm_project_sheet";
+  }
+
+  if (hasAny([
+    "name of equipment",
+    "m/c no",
+    "make",
+    "type/model",
+    "capacity",
+    "connected load",
+    "rpm",
+    "section",
+    "location",
+    "equipment"
+  ])) {
+    return "equipment_master";
+  }
+
+  if (hasAny([
+    "machine units",
+    "chiller units",
+    "cooling tower units",
+    "ahu units",
+    "total units",
+    "m/c u/kg",
+    "utility u/kg",
+    "production kg",
+    "month"
+  ])) {
+    return "energy_consumption_data";
+  }
+
+  if (hasAny([
+    "load",
+    "kw",
+    "tr",
+    "phase",
+    "voltage",
+    "specification"
+  ])) {
+    return "specification_data";
+  }
+
+  return "unknown_supporting_file";
+}
+
 async function validateExcelBuffer(file) {
   const result = {
     filename: file.originalname,
     fileType: "excel",
+    role: "unknown_supporting_file",
     status: "error",
     canGenerate: false,
     readinessScore: 0,
@@ -1119,27 +1216,52 @@ async function validateExcelBuffer(file) {
         const values = row.values || [];
         const mapping = mappedColumnsFromRow(values);
         const score = Object.keys(mapping.mappedColumns).length;
-        if (score > (localBest?.score || 0)) {
+        if (score > (localBest?.score || 0) || (mapping.detectedColumns.length > (localBest?.detectedColumns?.length || 0))) {
           localBest = { worksheet, rowNumber, score, ...mapping };
         }
       });
 
-      if (!localBest || localBest.score === 0) return;
+      if (!localBest) return;
       sheetHeaders.push(localBest);
-      if (!bestHeader || localBest.score > bestHeader.score) bestHeader = localBest;
+      if (!bestHeader || localBest.score > bestHeader.score || (!bestHeader.score && localBest.detectedColumns.length > bestHeader.detectedColumns.length)) {
+        bestHeader = localBest;
+      }
     });
 
-    if (!bestHeader) {
+    if (!bestHeader || bestHeader.detectedColumns.length === 0) {
       result.errors.push("No usable header row was detected.");
       result.criticalIssues.push("No usable header row was detected.");
       result.status = "error";
-      result.professionalSummary = "Excel validation failed. The file does not contain enough project/ECM data for report generation.";
+      result.professionalSummary = "Excel validation failed. The file could not be parsed.";
       return result;
     }
 
     result.headerRow = bestHeader.rowNumber;
     result.detectedColumns = bestHeader.detectedColumns;
     result.mappedColumns = { ...result.mappedColumns, ...bestHeader.mappedColumns };
+    result.role = classifyUploadedFile(result.detectedColumns);
+
+    if (result.role !== "ecm_project_sheet") {
+      result.status = "accepted_supporting_file";
+      result.canGenerate = false;
+      
+      switch(result.role) {
+        case "equipment_master":
+          result.professionalSummary = "Equipment master detected. Used as supporting context.";
+          break;
+        case "energy_consumption_data":
+          result.professionalSummary = "Energy consumption data detected. Used for energy profile and supporting analysis.";
+          break;
+        case "specification_data":
+          result.professionalSummary = "Technical specification data detected. Used as supporting context.";
+          break;
+        default:
+          result.professionalSummary = "Supporting file detected. Used as narrative context only.";
+      }
+      return result;
+    }
+
+    result.status = "accepted_project_file";
 
     for (const header of sheetHeaders) {
       if (!header.mappedColumns.projectTitle) continue;
@@ -1213,9 +1335,9 @@ async function validateExcelBuffer(file) {
       result.canGenerate = true;
       result.professionalSummary = `Your Excel file is usable for report generation. ${result.projectRowsDetected} project/ECM rows were detected. However, adding the missing recommended fields below will improve the quality of the Executive Summary, Project Grouping and Project Chapter sections.`;
     } else {
-      result.status = "valid";
+      result.status = "accepted_project_file";
       result.canGenerate = true;
-      result.professionalSummary = `Excel validation passed. The file contains sufficient project data for report generation. ${result.projectRowsDetected} project/ECM rows detected.`;
+      result.professionalSummary = `ECM/project sheet detected. ${result.projectRowsDetected} project/ECM rows detected.`;
     }
 
     return result;
@@ -1438,6 +1560,14 @@ function reportEndpoints(app) {
     [validatedRequest, flexUserRoleValid([ROLES.all]), handleFileUpload],
     async function (request, response) {
       try {
+        console.log("[UPLOAD] request received");
+        console.log("[UPLOAD] content-type:", request.headers["content-type"]);
+        console.log("[UPLOAD] files:", request.file ? [{
+          originalname: request.file.originalname,
+          mimetype: request.file.mimetype,
+          size: request.file.size
+        }] : "no files");
+
         const { originalname, path: uploadedPath, size, mimetype } = request.file;
         const ext = path.extname(originalname).toLowerCase();
 
@@ -1521,8 +1651,9 @@ function reportEndpoints(app) {
               if (![".xlsx", ".xls"].includes(ext)) {
                 return {
                   filename: file.originalname,
-                  fileType: "other",
-                  status: "valid",
+                  fileType: ext.slice(1),
+                  role: "supporting_document",
+                  status: "accepted_supporting_file",
                   sheets: [],
                   headerRow: 0,
                   detectedColumns: [],
@@ -1532,13 +1663,24 @@ function reportEndpoints(app) {
                   missingRecommendedColumns: [],
                   warnings: [],
                   errors: [],
+                  professionalSummary: "Supporting file detected. Used as narrative context only."
                 };
               }
               return await validateExcelBuffer(file);
             })
           );
 
-          return response.status(200).json({ success: true, files: validations });
+          const projectFileFound = validations.some(v => v.status === "accepted_project_file" || v.status === "warning" || v.status === "valid");
+          const supportingFilesCount = validations.filter(v => v.status === "accepted_supporting_file").length;
+          const canGenerateReport = projectFileFound || supportingFilesCount > 0;
+
+          return response.status(200).json({ 
+            success: true, 
+            files: validations,
+            projectFileFound,
+            supportingFilesCount,
+            canGenerateReport
+          });
         } catch (e) {
           console.error(e.message, e);
           return response.status(500).json({
@@ -1562,6 +1704,19 @@ function reportEndpoints(app) {
     [validatedRequest, flexUserRoleValid([ROLES.all])],
     async (request, response) => {
       const body = reqBody(request);
+
+      const useAiDuringGeneration =
+        String(process.env.USE_AI_DURING_GENERATION || "false").toLowerCase() === "true";
+
+      const skipLlmForDev =
+        String(process.env.SKIP_LLM_FOR_DEV || "false").toLowerCase() === "true";
+
+      console.log("[REPORT GENERATE CONFIG]", {
+        useAiDuringGeneration,
+        skipLlmForDev,
+        openRouterKeyPresent: Boolean(process.env.OPENROUTER_API_KEY)
+      });
+
       const { templateId, inputDetails, uploadedFiles, generationMode, publicForm, status } =
         normaliseGenerateBody(body);
 
@@ -1597,7 +1752,6 @@ function reportEndpoints(app) {
         });
 
         // ── 1. Data Parsing & Consolidation ───────────────────────────────────
-        let consolidatedText = "";
         let extractedExcelData = { projects: [] };
         let imageMetadata = [];
         let fileTypesDetected = [];
@@ -1605,20 +1759,6 @@ function reportEndpoints(app) {
         for (const file of uploadedFiles) {
           const ext = path.extname(file.filename).toLowerCase();
           if (!fileTypesDetected.includes(ext)) fileTypesDetected.push(ext);
-
-          // PDF/DOCX/PPT text extraction (already handled by CollectorApi -> .json in directUploadsPath)
-          const sourceFile = path.join(directUploadsPath, path.basename(file.location));
-          if (fs.existsSync(sourceFile)) {
-            try {
-              const fileContent = fs.readFileSync(sourceFile, "utf-8");
-              const parsedJSON = JSON.parse(fileContent);
-              if (parsedJSON.pageContent) {
-                consolidatedText += `\n--- Document Text (${file.filename}) ---\n${parsedJSON.pageContent}\n`;
-              }
-            } catch (err) {
-              console.error(`Failed to read parsed file from direct uploads: ${file.filename}`, err);
-            }
-          }
 
           // Image Metadata Collection
           if (['.png', '.jpg', '.jpeg'].includes(ext)) {
@@ -1631,6 +1771,8 @@ function reportEndpoints(app) {
 
           // Stage 1: Excel Extraction
           if (template.slug === "commercial-building-energy-audit" && (ext === ".xlsx" || ext === ".xls")) {
+            const role = file.validation?.role;
+            if ((role === "ecm_project_sheet" || !role) && extractedExcelData.projects.length === 0) {
             const originalFilePath = path.join(hotdirPath, file.filename);
             if (fs.existsSync(originalFilePath)) {
               try {
@@ -1668,6 +1810,7 @@ function reportEndpoints(app) {
               } catch (err) {
                 console.error(`Failed to read Excel file: ${file.filename}`, err);
               }
+              }
             }
           }
         }
@@ -1691,18 +1834,7 @@ function reportEndpoints(app) {
         let providerStatus = "success";
         let providerWarning = null;
         let aiEnhanced = false;
-        const useAiDuringGeneration = String(process.env.USE_AI_DURING_GENERATION || "true").toLowerCase() === "true";
-        const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 30000);
         let deterministicArtifacts = null;
-
-        const collectProviderAttempts = (...stageResults) => {
-          for (const stageResult of stageResults) {
-            const attempts = stageResult?.providerAttempts || stageResult?.attempts || [];
-            if (Array.isArray(attempts) && attempts.length) {
-              providerAttempts.push(...attempts);
-            }
-          }
-        };
         
         try {
           if (template.slug === "commercial-building-energy-audit") {
@@ -1712,11 +1844,11 @@ function reportEndpoints(app) {
                 formData: inputDetails,
                 excelTruth: extractedExcelData,
                 extractedExcelData,
-              }),
-              inputDetails,
-              extractedExcelData,
-              providerUsed: "deterministic",
-            });
+                }),
+                inputDetails,
+                extractedExcelData,
+                providerUsed: "deterministic",
+              });
             console.timeEnd("[REPORT] deterministic_build");
 
             console.log("[REPORT] before deterministic DB save");
@@ -1744,103 +1876,19 @@ function reportEndpoints(app) {
                   accuracyResult: deterministicArtifacts.accuracyResult,
                 }),
                 missingData: JSON.stringify([]),
-                status: useAiDuringGeneration ? "enhancing_ai" : "completed",
+                status: "completed",
               },
             });
             console.log("[REPORT] after deterministic DB save");
-
-            let stage1 = { result: {}, providerUsed: "deterministic", providerStatus: "success", modelUsed: null };
-            if (useAiDuringGeneration) {
-              try {
-                console.log("Running Stage 1: Document Extraction...");
-                stage1 = await runStage1Extraction({
-                  retrievedChunks: consolidatedText,
-                  imageMetadata,
-                  formData: inputDetails,
-                  excelTruth: extractedExcelData,
-                  templateConfig: template
-                });
-                collectProviderAttempts(stage1);
-              } catch (stage1Error) {
-                if (Array.isArray(stage1Error?.providerAttempts) && stage1Error.providerAttempts.length) {
-                  providerAttempts.push(...stage1Error.providerAttempts);
-                }
-                fallbackReason = [fallbackReason, `Document extraction skipped: ${stage1Error.message}`].filter(Boolean).join(" | ");
-                console.warn(`[DOCUMENT EXTRACTION FALLBACK] ${stage1Error.message}`);
-              }
-            }
-
-            let componentResult = null;
-            if (useAiDuringGeneration) {
-              console.log("Running Component-Based Narrative Pipeline...");
-              componentResult = await generateCommercialAuditComponentReport({
-                formData: inputDetails,
-                extractedExcelData,
-                extractedInfo: stage1.result || {},
-                imageMetadata,
-                uploadedFiles,
-                templateConfig: template,
-              });
-              collectProviderAttempts(componentResult);
-            }
-
-            if (componentResult?.aiEnhanced === true && componentResult?.report) {
-              try {
-                console.log("[REPORT] before AI finalization");
-                const enhancedArtifacts = await withTimeout(
-                  Promise.resolve().then(() =>
-                    buildCommercialAuditArtifacts({
-                      reportData: componentResult.report,
-                      inputDetails,
-                      extractedExcelData,
-                      providerUsed: componentResult.providerUsed || "openrouter",
-                    })
-                  ),
-                  aiFinalizationTimeoutMs,
-                  "AI finalization"
-                );
-                console.log("[REPORT] after AI finalization");
-                schemaValidation = enhancedArtifacts.schemaValidation;
-                qcResult = enhancedArtifacts.qcResult;
-                accuracyResult = enhancedArtifacts.accuracyResult;
-                finalReportContent = enhancedArtifacts.finalReportContent;
-                providerUsed = componentResult.providerUsed || "openrouter";
-                providerStatus = "success";
-                modelUsed = componentResult.modelUsed || stage1.modelUsed || null;
-                aiEnhanced = true;
-                providerWarning = null;
-                if (Array.isArray(componentResult.warnings) && componentResult.warnings.length) {
-                  fallbackReason = componentResult.warnings.join(" | ");
-                }
-              } catch (finalizationError) {
-                console.warn(`[AI FINALIZATION] Failed, returning deterministic report: ${finalizationError.message}`);
-                fallbackReason = [fallbackReason, finalizationError.message].filter(Boolean).join(" | ");
-                schemaValidation = deterministicArtifacts.schemaValidation;
-                qcResult = deterministicArtifacts.qcResult;
-                accuracyResult = deterministicArtifacts.accuracyResult;
-                finalReportContent = deterministicArtifacts.finalReportContent;
-                providerUsed = "deterministic";
-                providerStatus = "success";
-                modelUsed = null;
-                providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
-                aiEnhanced = false;
-              }
-            } else {
-              schemaValidation = deterministicArtifacts.schemaValidation;
-              qcResult = deterministicArtifacts.qcResult;
-              accuracyResult = deterministicArtifacts.accuracyResult;
-              finalReportContent = deterministicArtifacts.finalReportContent;
-              providerUsed = "deterministic";
-              providerStatus = "success";
-              modelUsed = null;
-              providerWarning = useAiDuringGeneration
-                ? (componentResult?.providerWarning || "AI enhancement failed after all model attempts. Deterministic report used.")
-                : "AI enhancement disabled. Deterministic report generated successfully.";
-              aiEnhanced = false;
-              if (Array.isArray(componentResult?.warnings) && componentResult.warnings.length) {
-                fallbackReason = componentResult.warnings.join(" | ");
-              }
-            }
+            schemaValidation = deterministicArtifacts.schemaValidation;
+            qcResult = deterministicArtifacts.qcResult;
+            accuracyResult = deterministicArtifacts.accuracyResult;
+            finalReportContent = deterministicArtifacts.finalReportContent;
+            providerUsed = "deterministic";
+            providerStatus = "success";
+            modelUsed = null;
+            providerWarning = null;
+            aiEnhanced = false;
           } else {
              // Fallback for non-audit reports
              const res = await generateWithProvider({
@@ -1895,6 +1943,7 @@ function reportEndpoints(app) {
 
         if (
           useAiDuringGeneration &&
+          !skipLlmForDev &&
           process.env.OPENROUTER_API_KEY &&
           process.env.OPENROUTER_MODELS &&
           providerAttempts.length === 0 &&
@@ -2145,6 +2194,246 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
   );
 
   // ── PUBLIC / ADMIN: Re-run QC and Cleanup ──────────────────────────────────
+  app.post(
+    "/reports/:id/enhance-ai",
+    [validatedRequest, flexUserRoleValid([ROLES.all])],
+    async (request, response) => {
+      try {
+        const id = parseInt(request.params.id, 10);
+        const user = await userFromSession(request, response);
+        
+        console.log("[AI ENHANCE] Provider:", process.env.AI_PROVIDER);
+        console.log("[AI ENHANCE] Gemini key present:", Boolean(process.env.GEMINI_API_KEY));
+        console.log("[AI ENHANCE] OpenRouter key present:", Boolean(process.env.OPENROUTER_API_KEY));
+        console.log("[AI ENHANCE] Model:", process.env.GEMINI_MODEL || process.env.OPENROUTER_MODELS);
+
+        const maxAiGenerationTotalMs = Number(process.env.MAX_AI_GENERATION_TOTAL_MS || 120000);
+        const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 15000);
+
+        const report = await prisma.generated_reports.findFirst({
+          where: { id },
+          include: { template: { select: { id: true, slug: true, name: true } } },
+        });
+
+        if (!report) return response.sendStatus(404).end();
+        if (user && user.role === "default" && report.userId !== user.id) {
+          return response.sendStatus(403).end();
+        }
+        if (report.template?.slug !== "commercial-building-energy-audit") {
+          return response.status(400).json({ error: "AI enhancement is only supported for this template." });
+        }
+
+        const inputDetails = parseStoredJson(report.inputDetails, {});
+        const uploadedFiles = parseStoredJson(report.uploadedFiles, []);
+        const priorMetadata = parseStoredJson(report.extractedData, {});
+        const existingReportData = parseStoredJson(report.outputContent, null);
+
+        if (!existingReportData) {
+          return response.status(400).json({ error: "Report content is not valid JSON." });
+        }
+
+        const deterministicArtifacts = buildCommercialAuditArtifacts({
+          reportData: existingReportData,
+          inputDetails,
+          extractedExcelData: {},
+          providerUsed: "deterministic",
+        });
+
+        await prisma.generated_reports.update({
+          where: { id },
+          data: { status: "enhancing_ai" },
+        });
+
+        let finalReportContent = report.outputContent;
+        let providerUsed = "deterministic";
+        let providerStatus = "success";
+        let modelUsed = null;
+        let providerAttempts = [];
+        let providerWarning = "AI enhancement failed. Deterministic report used.";
+        let aiEnhanced = false;
+        let exactFailureReason = null;
+        let aiEnhancementStatus = "failed";
+        let retryAfterSeconds = null;
+        let aiEnhanceDebug = null;
+        let aiEnhancedFields = [];
+        let aiDroppedFields = [];
+        let schemaValidation = deterministicArtifacts.schemaValidation;
+        let qcResult = deterministicArtifacts.qcResult;
+        let accuracyResult = deterministicArtifacts.accuracyResult;
+
+        // removed duplicate providerAttempts
+        const attempt = {
+          provider: "gemini",
+          model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
+          status: "started",
+          startedAt: new Date().toISOString(),
+          componentId: "batch_narrative_enhancement",
+          componentTitle: "Batched narrative enhancement"
+        };
+        providerAttempts.push(attempt);
+
+        console.log("[AI ENHANCE GEMINI ATTEMPT]", attempt);
+
+        try {
+          const componentResult = await withTimeout(
+            generateCommercialAuditComponentReport({
+              formData: inputDetails,
+              extractedExcelData: {},
+              extractedInfo: {},
+              imageMetadata: buildImageMetadataFromUploads(uploadedFiles),
+              uploadedFiles,
+              templateConfig: report.template,
+              baseReportOverride: existingReportData,
+              useAiOverride: true,
+            }),
+            maxAiGenerationTotalMs,
+            "AI enhancement total budget"
+          );
+
+          if (componentResult?.providerAttempts?.length > 0) {
+            const genericIdx = providerAttempts.indexOf(attempt);
+            if (genericIdx > -1) {
+              providerAttempts.splice(genericIdx, 1);
+            }
+            providerAttempts.push(
+              ...componentResult.providerAttempts.filter((a) => a.status !== "started")
+            );
+          }
+
+          if (componentResult?.aiEnhanced === true && componentResult?.report) {
+            attempt.status = "success";
+            attempt.finishedAt = new Date().toISOString();
+            
+            aiEnhancementStatus = componentResult.aiEnhancementStatus || "success";
+            retryAfterSeconds = componentResult.retryAfterSeconds || null;
+            aiEnhanceDebug = componentResult.debug || null;
+            aiEnhancedFields = componentResult.aiEnhancedFields || [];
+            aiDroppedFields = componentResult.aiDroppedFields || [];
+            if (componentResult.aiFailureReason) {
+               exactFailureReason = componentResult.aiFailureReason;
+            }
+
+            const enhancedArtifacts = await withTimeout(
+              Promise.resolve().then(() =>
+                buildCommercialAuditArtifacts({
+                  reportData: componentResult.report,
+                  inputDetails,
+                  extractedExcelData: {},
+                  providerUsed: componentResult.providerUsed || "openrouter",
+                })
+              ),
+              aiFinalizationTimeoutMs,
+              "AI finalization"
+            );
+
+            finalReportContent = enhancedArtifacts.finalReportContent;
+            providerUsed = componentResult.providerUsed || "openrouter";
+            providerStatus = componentResult.providerStatus || "success";
+            modelUsed = componentResult.modelUsed || null;
+            providerWarning = componentResult.providerWarning || null;
+            aiEnhanced = true;
+            schemaValidation = enhancedArtifacts.schemaValidation;
+            qcResult = enhancedArtifacts.qcResult;
+            accuracyResult = enhancedArtifacts.accuracyResult;
+          } else {
+            exactFailureReason =
+              componentResult?.aiFailureReason ||
+              componentResult?.error ||
+              componentResult?.providerAttempts?.[0]?.reason ||
+              "Gemini enhancement failed without provider error details";
+            
+            aiEnhancementStatus = componentResult?.aiEnhancementStatus || "failed";
+            retryAfterSeconds = componentResult?.retryAfterSeconds || null;
+            aiEnhanceDebug = componentResult?.debug || null;
+            aiEnhancedFields = componentResult?.aiEnhancedFields || [];
+            aiDroppedFields = componentResult?.aiDroppedFields || [];
+            
+            attempt.status = "failed";
+            attempt.reason = exactFailureReason;
+            attempt.error = exactFailureReason;
+            attempt.finishedAt = new Date().toISOString();
+
+            providerWarning = "AI enhancement failed. Deterministic report used.";
+          }
+        } catch (error) {
+          exactFailureReason =
+            error?.message ||
+            "Gemini enhancement failed without provider error details";
+
+          attempt.status = "failed";
+          attempt.reason = exactFailureReason;
+          attempt.error = exactFailureReason;
+          attempt.finishedAt = new Date().toISOString();
+
+          providerWarning = "AI enhancement failed. Deterministic report used.";
+          console.log("[AI ENHANCE GEMINI ERROR]", exactFailureReason);
+        }
+
+        console.log("[AI ENHANCE EXACT FAILURE]", exactFailureReason);
+
+        const nextMetadata = {
+          ...priorMetadata,
+          providerUsed,
+          providerStatus,
+          modelUsed,
+          providerAttempts,
+          aiEnhanceDebug,
+          aiEnhancedFields,
+          aiDroppedFields,
+          providerWarning,
+          aiEnhanced,
+          schemaValidation,
+          qcResult,
+          accuracyResult,
+        };
+
+        const updatedReport = await prisma.generated_reports.update({
+          where: { id },
+          data: {
+            outputContent: finalReportContent,
+            extractedData: JSON.stringify(nextMetadata),
+            missingData: JSON.stringify([]),
+            status: "completed",
+            error: null,
+          },
+          include: { template: { select: { name: true, slug: true } } },
+        });
+
+        const isDev = process.env.NODE_ENV === "development";
+        const aiFailureReason = !aiEnhanced ? exactFailureReason : null;
+
+        console.log("[AI ENHANCE EXACT FAILURE RETURNED]", {
+          aiFailureReason,
+          providerAttempts
+        });
+
+        response.status(200).json({
+          success: true,
+          report: {
+            ...updatedReport,
+            providerUsed,
+            providerStatus,
+            modelUsed,
+            providerAttempts,
+            aiEnhanced,
+            aiEnhancementStatus,
+            retryAfterSeconds,
+            aiEnhanceDebug,
+            aiEnhancedFields,
+            aiDroppedFields,
+            providerWarning: providerWarning || undefined,
+            warnings: providerWarning ? [providerWarning] : [],
+            aiProviderAttempted: process.env.AI_PROVIDER || "openrouter",
+            aiFailureReason
+          },
+        });
+      } catch (e) {
+        console.error(e.message, e);
+        response.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   app.post(
     "/reports/:id/qc/recheck",
     [validatedRequest, flexUserRoleValid([ROLES.all])],

@@ -1,0 +1,36 @@
+{
+  "reportId": 60,
+  "aiEnhanced": true,
+  "aiEnhancementStatus": "success",
+  "providerUsed": "gemini",
+  "modelUsed": "gemini-2.5-flash-lite",
+  "providerAttemptsCount": 1,
+  "narrativeQuality": false,
+  "numbersUnchanged": true,
+  "wordExportClean": true,
+  "pdfExportClean": null,
+  "beforeSnapshot": {
+    "expectedEnergySaving": "32127.6",
+    "expectedAnnualCostSaving": "230354.892",
+    "estimatedInvestment": "350000",
+    "simplePaybackPeriod": "1.519394691",
+    "totalEnergySavingPotential": 0,
+    "totalAnnualCostSavingPotential": 0
+  },
+  "afterSnapshot": {
+    "expectedEnergySaving": "32127.6",
+    "expectedAnnualCostSaving": "230354.892",
+    "estimatedInvestment": "350000",
+    "simplePaybackPeriod": "1.519394691",
+    "totalEnergySavingPotential": 0,
+    "totalAnnualCostSavingPotential": 0
+  },
+  "executiveSummaryBefore": "The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects.",
+  "executiveSummaryAfter": "The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects.",
+  "keyObservationsAfter": [],
+  "firstGroupAfter": {
+    "groupTitle": "Cooling System Performance Improvement",
+    "summaryParagraph": "This group focuses on enhancing the efficiency of the cooling systems. The projects aim to optimize chiller operations, improve water flow management, and leverage ambient conditions for cooling."
+  },
+  "docxOk": true
+}

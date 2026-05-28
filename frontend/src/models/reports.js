@@ -140,17 +140,17 @@ const Reports = {
     const payload = {
       template_id: templateId,
       public_form: {
-        client_name:    publicForm.clientName    || "",
-        facility_name:  publicForm.facilityName  || "",
-        location:       publicForm.location      || "",
-        audit_period:   publicForm.auditPeriod   || "",
-        report_date:    publicForm.reportDate    || "",
+        client_name: publicForm.clientName || "",
+        facility_name: publicForm.facilityName || "",
+        location: publicForm.location || "",
+        audit_period: publicForm.auditPeriod || "",
+        report_date: publicForm.reportDate || "",
         contact_person: publicForm.contactPerson || "",
-        output_format:  publicForm.outputFormat  || "pdf",
+        output_format: publicForm.outputFormat || "pdf",
       },
-      uploaded_files:  uploadedFiles,
+      uploaded_files: uploadedFiles,
       generation_mode: "public",
-      status:          "submitted",
+      status: "submitted",
     };
 
     const controller = new AbortController();
@@ -169,6 +169,28 @@ const Reports = {
           error:
             e.name === "AbortError"
               ? "Generation is taking too long. Please check backend logs or retry."
+              : e.message,
+        };
+      })
+      .finally(() => clearTimeout(timeoutId));
+  },
+
+  enhanceReportWithAi: async (id) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), GENERATION_MAX_WAIT_MS);
+
+    return await fetch(`${API_BASE}/reports/${id}/enhance-ai`, {
+      method: "POST",
+      headers: baseHeaders(),
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .catch((e) => {
+        console.error(e);
+        return {
+          error:
+            e.name === "AbortError"
+              ? "AI enhancement is taking too long. Your deterministic report is still available."
               : e.message,
         };
       })
@@ -208,7 +230,7 @@ const Reports = {
             if (!text) {
               try {
                 text = await res.text();
-              } catch (_) {}
+              } catch (_) { }
             }
             return { success: false, error: text || "Export failed." };
           }

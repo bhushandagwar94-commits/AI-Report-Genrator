@@ -1452,19 +1452,22 @@ function safeParseAiJson(content) {
     throw new Error("AI returned empty content");
   }
 
-  if (content.length > 2_000_000) {
-    throw new Error("AI response too large");
+  const cleaned = content
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error("No JSON object found in AI response");
   }
 
-  let cleaned = stripMarkdownFences(content);
-  const startIndex = cleaned.indexOf("{");
-  const lastIndex = cleaned.lastIndexOf("}");
-  if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-    cleaned = cleaned.substring(startIndex, lastIndex + 1);
-  }
+  const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
 
   try {
-    return JSON.parse(cleaned);
+    return JSON.parse(jsonText);
   } catch (error) {
     throw new Error(`AI JSON parse failed: ${error.message}`);
   }
@@ -1570,7 +1573,7 @@ async function generateWithOpenRouterFallback(messages, options = {}) {
     };
   }
 
-  if (skipLlmForDev) {
+  if (skipLlmForDev && !options?.isManualEnhancement) {
     return {
       success: false,
       providerUsed: "deterministic-fallback",
