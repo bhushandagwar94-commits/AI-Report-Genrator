@@ -167,6 +167,22 @@ if (process.env.NODE_ENV !== "development") {
   });
 }
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "backend",
+    time: new Date().toISOString()
+  });
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] uncaughtException:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] unhandledRejection:", reason);
+});
+
 app.use((err, req, res, next) => {
   console.error("[SERVER ERROR]", err);
   res.status(500).json({

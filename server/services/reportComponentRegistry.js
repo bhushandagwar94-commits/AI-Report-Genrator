@@ -83,6 +83,7 @@ const REPORT_COMPONENTS = [
       "keyActivities",
       "measurementVerificationPlan",
       "benefitsOtherThanEnergySaving",
+      "aspectsToBeTakenCareOf",
       "finalConclusion",
     ],
     lockedFields: [

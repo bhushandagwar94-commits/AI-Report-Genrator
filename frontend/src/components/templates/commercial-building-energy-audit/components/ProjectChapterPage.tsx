@@ -175,7 +175,7 @@ export default function ProjectChapterPage({
       <FlexibleTable data={project.implementationDurationTable} />
 
       <SectionHeader number={n(14)} title="Precautions / Aspects to be Taken Care Of" />
-      {renderList(project.precautions)}
+      {renderList(project.aspectsToBeTakenCareOf || project.precautions)}
 
       <SectionHeader number={n(15)} title="Measurement and Verification Plan" />
       {renderList(project.measurementVerificationPlan)}

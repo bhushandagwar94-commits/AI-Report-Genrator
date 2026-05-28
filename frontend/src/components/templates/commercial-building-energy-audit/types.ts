@@ -180,6 +180,7 @@ export interface CommercialBuildingProject {
   schematicFramework: PrimitiveValue;
   implementationDurationTable: FlexibleTableData;
   precautions: PrimitiveValue[] | PrimitiveValue;
+  aspectsToBeTakenCareOf?: PrimitiveValue[] | PrimitiveValue;
   measurementVerificationPlan: PrimitiveValue[] | PrimitiveValue;
   benefitsOtherThanEnergySaving: PrimitiveValue[] | PrimitiveValue;
   projectConclusion: PrimitiveValue;

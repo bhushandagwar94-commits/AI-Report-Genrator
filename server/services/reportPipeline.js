@@ -33,8 +33,10 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
   let jsonResult = null;
   let modelUsed = null;
   let providerAttempts = [];
+  let retryAfterSeconds = null;
 
   const provider = (process.env.AI_PROVIDER || process.env.LLM_PROVIDER || "openrouter").toLowerCase();
+  const useProviderFallbackChain = provider === "fallback_chain";
 
   console.log("[runPromptStage] Selected provider:", provider);
 
@@ -62,7 +64,7 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
   }
 
   // B0. Try Gemini
-  if (!jsonResult && provider === "gemini") {
+  if (!jsonResult && (provider === "gemini" || useProviderFallbackChain)) {
     console.log("[REPORT PIPELINE] About to call generateWithGemini");
     const promptText = `System:\n${systemPrompt}\n\nUser:\n${userPrompt}`;
     const geminiResult = await generateWithGemini(promptText);
@@ -91,7 +93,8 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
           providerStatus,
           fallbackReason,
           modelUsed,
-          providerAttempts
+          providerAttempts,
+          retryAfterSeconds: null,
         };
       } catch (parseError) {
         console.warn(`[runPromptStage] Initial Gemini JSON parse failed, attempting repair...`);
@@ -118,7 +121,8 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
               providerStatus,
               fallbackReason,
               modelUsed,
-              providerAttempts
+              providerAttempts,
+              retryAfterSeconds: null,
             };
           } catch (repairParseError) {
              geminiResult.success = false;
@@ -133,19 +137,31 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
     
     if (!geminiResult.success) {
       console.warn(`[runPromptStage] Gemini failed: ${geminiResult.error}`);
-      return {
-        success: false,
-        result: null,
-        providerUsed: "gemini",
-        providerStatus: "failed",
-        error: geminiResult.error,
-        providerAttempts
-      };
+      const geminiQuotaExceeded =
+        geminiResult.isQuotaExceeded ||
+        geminiResult.providerStatus === "quota_exceeded" ||
+        providerAttempts.some((attempt) => attempt.status === "quota_exceeded");
+      retryAfterSeconds = geminiResult.retryAfterSeconds || null;
+
+      if (!useProviderFallbackChain || !geminiQuotaExceeded || !process.env.OPENROUTER_API_KEY) {
+        return {
+          success: false,
+          result: null,
+          providerUsed: "gemini",
+          providerStatus: geminiQuotaExceeded ? "quota_exceeded" : "failed",
+          error: geminiResult.error,
+          providerAttempts,
+          retryAfterSeconds,
+          isQuotaExceeded: geminiQuotaExceeded,
+        };
+      }
+
+      console.log("[AI FALLBACK] Gemini quota exhausted. Trying OpenRouter...");
     }
   }
 
   // B. Try OpenRouter
-  if (!jsonResult && provider === "openrouter" && process.env.OPENROUTER_API_KEY) {
+  if (!jsonResult && (provider === "openrouter" || useProviderFallbackChain) && process.env.OPENROUTER_API_KEY) {
     const messages = [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -156,7 +172,8 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
     console.log("[REPORT GENERATE] OPENROUTER_MODELS:", process.env.OPENROUTER_MODELS);
     
     const openRouterResult = await generateWithOpenRouterFallback(messages, options);
-    providerAttempts = openRouterResult?.providerAttempts || openRouterResult?.attempts || [];
+    const openRouterAttempts = openRouterResult?.providerAttempts || openRouterResult?.attempts || [];
+    providerAttempts = [...providerAttempts, ...openRouterAttempts];
     console.log("[REPORT PIPELINE] LLM result:", {
       success: openRouterResult?.success,
       providerUsed: openRouterResult?.providerUsed,
@@ -177,12 +194,25 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
         providerStatus,
         fallbackReason,
         modelUsed,
-        providerAttempts
+        providerAttempts,
+        retryAfterSeconds: null,
       };
     } else {
       console.warn(`[runPromptStage] OpenRouter failed: ${openRouterResult.error}`);
       providerStatus = openRouterResult.providerStatus || "fallback";
       fallbackReason += `OpenRouter: ${openRouterResult.error}; `;
+      if (useProviderFallbackChain) {
+        return {
+          success: false,
+          result: null,
+          providerUsed: "deterministic",
+          providerStatus: "success",
+          error: "All AI providers failed or quota exhausted. Deterministic report used.",
+          providerAttempts,
+          retryAfterSeconds: null,
+          aiEnhancementStatus: "ai_unavailable",
+        };
+      }
       // Can't return immediately, might try OpenAI
     }
   }
@@ -551,10 +581,82 @@ function buildSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageM
   return observationLines.join(" | ") || "Data required";
 }
 
+function buildUploadedFileRoleSummary(uploadedFiles = []) {
+  return (uploadedFiles || [])
+    .map((file) => {
+      const name = normalizeWhitespace(file?.originalname || file?.filename || "");
+      const role = normalizeWhitespace(file?.role || file?.classification || file?.documentRole || "");
+      if (!name) return "";
+      return role ? `${name} (${role})` : name;
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function buildCompactSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageMetadata = [] }) {
+  const fileSummary = buildUploadedFileRoleSummary(uploadedFiles);
+  const context = {
+    uploadedFiles: fileSummary,
+    facilityObservations: (Array.isArray(extractedInfo?.facilityObservations) ? extractedInfo.facilityObservations : []).slice(0, 5),
+    utilityObservations: (Array.isArray(extractedInfo?.utilityObservations) ? extractedInfo.utilityObservations : []).slice(0, 5),
+    projectNotes: (Array.isArray(extractedInfo?.projectSupportingNotes) ? extractedInfo.projectSupportingNotes : [])
+      .slice(0, 8)
+      .map((note) => ({
+        projectNo: note?.projectNo || undefined,
+        projectTitle: note?.projectTitle || undefined,
+        existingConditionNotes: normalizeWhitespace(note?.existingConditionNotes),
+        implementationNotes: normalizeWhitespace(note?.implementationNotes),
+      })),
+    imageEvidence: (Array.isArray(imageMetadata) ? imageMetadata : [])
+      .slice(0, 6)
+      .map((image) => normalizeWhitespace(image?.caption || image?.placementSection))
+      .filter(Boolean),
+  };
+
+  return context;
+}
+
+function buildProjectSpecificSupportingContext(project, extractedInfo = {}, uploadedFiles = [], imageMetadata = []) {
+  const projectText = `${safeReportValue(project?.projectNo)} ${safeReportValue(project?.projectTitle)} ${safeReportValue(project?.equipmentCovered)} ${safeReportValue(project?.system)}`.toLowerCase();
+  const relatedProjectNotes = (Array.isArray(extractedInfo?.projectSupportingNotes) ? extractedInfo.projectSupportingNotes : [])
+    .filter((note) => {
+      const noteText = `${note?.projectNo || ""} ${note?.projectTitle || ""} ${note?.existingConditionNotes || ""} ${note?.implementationNotes || ""}`.toLowerCase();
+      return noteText && (
+        noteText.includes(String(project?.projectNo || "").toLowerCase()) ||
+        noteText.includes(String(project?.projectTitle || "").toLowerCase()) ||
+        noteText.includes(String(project?.equipmentCovered || "").toLowerCase()) ||
+        noteText.includes(String(project?.system || "").toLowerCase())
+      );
+    })
+    .slice(0, 4)
+    .map((note) => ({
+      projectNo: note?.projectNo || undefined,
+      projectTitle: note?.projectTitle || undefined,
+      existingConditionNotes: normalizeWhitespace(note?.existingConditionNotes),
+      implementationNotes: normalizeWhitespace(note?.implementationNotes),
+    }));
+
+  const relatedFileSummary = buildUploadedFileRoleSummary(uploadedFiles).filter((entry) => {
+    const entryText = String(entry || "").toLowerCase();
+    return !projectText || entryText.includes(String(project?.system || "").toLowerCase()) || entryText.includes(String(project?.equipmentCovered || "").toLowerCase());
+  });
+
+  const genericCompactContext = buildCompactSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
+
+  return {
+    relatedProjectNotes,
+    relatedUploadedFiles: relatedFileSummary.length ? relatedFileSummary : genericCompactContext.uploadedFiles.slice(0, 6),
+    facilityObservations: genericCompactContext.facilityObservations,
+    utilityObservations: genericCompactContext.utilityObservations,
+    imageEvidence: genericCompactContext.imageEvidence,
+  };
+}
+
 function buildSummaryOnlyBatch({ report, formData = {}, extractedInfo = {}, uploadedFiles = [], imageMetadata = [] }) {
   const executiveSummaryDefinition = getReportComponentDefinition("executive_summary") || {};
   const groupedProjects = Array.isArray(report?.groupedProjects) ? report.groupedProjects : [];
   const supportingContext = buildSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
+  const compactSupportingContext = buildCompactSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
   const groupSummariesOnly = groupedProjects.map((group) => ({
     groupTitle: group.groupTitle,
     groupIntroduction: group.summaryParagraph || "Data required",
@@ -570,6 +672,7 @@ function buildSummaryOnlyBatch({ report, formData = {}, extractedInfo = {}, uplo
         clientName: formData.clientName || "Data required",
         facilityType: formData.buildingType || report?.buildingProfile?.typeOfBuilding || "Data required",
         supportingContext,
+        compactSupportingContext,
         executiveSummary: {
           purposeText: report?.executiveSummary?.purposeText || "Data required",
           keyObservations: report?.executiveSummary?.keyObservations || [],
@@ -582,6 +685,12 @@ function buildSummaryOnlyBatch({ report, formData = {}, extractedInfo = {}, uplo
             : [],
         })),
         groups: groupSummariesOnly,
+        plantProfileContext: {
+          facilityName: formData.facilityName || report?.buildingProfile?.facilityName || "Data required",
+          location: formData.location || report?.buildingProfile?.address || "Data required",
+          facilityDescription: report?.buildingProfile?.facilityDescription || "Data required",
+          utilityDescription: report?.buildingProfile?.utilityDescription || "Data required",
+        },
         allowedOutputFields: [
           "executiveSummary.purposeText",
           "executiveSummary.keyObservations",
@@ -612,66 +721,51 @@ function buildStandardNarrativeBatches(llmEligiblePayloads = [], batchSize = 4) 
 }
 
 async function runSummaryOnlyNarrativeStage(batch, templateConfig, options = {}) {
-  const systemPrompt = `You are a senior energy audit report writer.
+  const systemPrompt = `You are a senior energy audit engineer and detailed technical report writer.
 
-Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+Your task is to expand explanations in a professional Detailed Energy Audit Report.
 
-Important rules:
-1. Do not generate any numerical values.
-2. Do not modify any numerical values.
-3. Do not estimate missing values.
-4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
-5. Do not change project names, equipment names, group names, project numbers, or priorities.
-6. Use only the provided context.
-7. If information is not available, write "Data required".
-8. Return valid JSON only.
-9. Return only the allowed fields.
-10. Do not include markdown.
-11. Do not include tables.
-12. Do not repeat the same sentence across groups or summary sections.
+Do not generate, estimate, modify, or calculate any numbers.
+Do not change any project titles, equipment names, group names, tables, savings, investment, payback, quantities, kWh, ₹, %, kW, TR, kVAr, or calculated values.
 
-Writing expectations:
-- Use professional energy audit language.
-- Improve clarity, explainability, and client-readiness.
-- Explain opportunity areas, implementation intent, and operational value in words only.
-- Keep text concise but meaningful.
-- Do not create per-project outputs in summary-only mode.`;
+Use uploaded file context and deterministic report context only.
+
+Write detailed, client-ready, engineering explanation.
+Return only allowed narrative fields.`;
 
   const userPrompt = `Enhance only the executive summary and group-level summary narratives.
-Use the audit purpose, project groups, supporting file context, and implementation roadmap to make the wording more professional and explainable.
-Do not add any new numbers.
+Use the audit purpose, facility details, grouped project titles, deterministic narrative, and uploaded supporting-file context.
 
 ${JSON.stringify(batch.payload, null, 2)}
 
 Return valid JSON only using exactly this schema:
-
 {
   "executiveSummary": {
-    "purposeText": "Write 80 to 120 words explaining the purpose of this detailed energy audit in professional language.",
+    "purposeText": "Write minimum 3 paragraphs. Paragraph 1: objective of audit and review of uploaded data. Paragraph 2: how ECMs are identified and converted into actionable projects. Paragraph 3: how management can use report for prioritization, implementation, monitoring, and savings verification.",
     "keyObservations": [
-      "Observation 1 in 20 to 35 words.",
-      "Observation 2 in 20 to 35 words.",
-      "Observation 3 in 20 to 35 words.",
-      "Observation 4 in 20 to 35 words."
+      "Observation 1: 40 to 70 words explaining quick-win opportunities, high-impact projects, or system controls.",
+      "Observation 2: 40 to 70 words explaining monitoring gaps or utility optimization.",
+      "Observation 3: 40 to 70 words explaining production-machine energy saving potential.",
+      "Observation 4: 40 to 70 words explaining phased implementation or automation.",
+      "Observation 5: 40 to 70 words explaining maintenance and reliability benefits."
     ],
-    "conclusionAndWayForward": "Write 80 to 120 words explaining recommended next steps and implementation approach."
+    "conclusionAndWayForward": "Write minimum 2 to 3 paragraphs on implementation roadmap, detailed engineering, procurement, measurement and verification, post-implementation monitoring, and savings delivery approach."
   },
   "groups": [
     {
       "groupTitle": "Must exactly match one provided group title",
-      "groupIntroduction": "Write 40 to 70 words explaining this opportunity area.",
-      "groupObservation": "Write 30 to 60 words explaining why this group is important."
+      "groupIntroduction": "Write 80 to 140 words on what systems are included and inefficiencies addressed.",
+      "groupObservation": "Write 60 to 100 words on quick wins and overall findings.",
+      "implementationFocus": "Write 60 to 100 words on implementation importance.",
+      "measurementVerificationFocus": "Write 60 to 100 words on M&V focus."
     }
   ]
 }
 
 Rules:
 - Do not generate or modify numbers.
-- Prefer wording without numeric figures.
-- Do not use Data required unless context is missing.
-- Do not add unsupported claims.
-- Do not include markdown.
-- Do not include extra keys.`;
+- If data is missing, write "Data required".
+- Do not include markdown.`;
 
   return runPromptStage(systemPrompt, userPrompt, templateConfig, options);
 }
@@ -964,6 +1058,7 @@ function buildComponentPayloads({
   const groupedProjects = Array.isArray(baseReport?.groupedProjects) ? baseReport.groupedProjects : [];
   const projects = Array.isArray(baseReport?.projects) ? baseReport.projects : [];
   const supportingContext = buildSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
+  const compactSupportingContext = buildCompactSupportingContext({ extractedInfo, uploadedFiles, imageMetadata });
 
   payloads.push({
     ...getReportComponentDefinition("cover_page"),
@@ -1011,6 +1106,7 @@ function buildComponentPayloads({
         projectTitles: (group.projects || []).map((project) => project.projectTitle),
       })),
       supportingContext,
+      compactSupportingContext,
     },
     mergeTarget: { type: "executive_summary" },
     forbiddenFields: getReportComponentDefinition("executive_summary")?.lockedFields || [],
@@ -1041,6 +1137,7 @@ function buildComponentPayloads({
         location: formData.location || "Data required",
         contactPerson: formData.contactPerson || "Data required",
       },
+      compactSupportingContext,
     },
     mergeTarget: { type: "plant_profile" },
     forbiddenFields: getReportComponentDefinition("plant_profile")?.lockedFields || [],
@@ -1069,6 +1166,17 @@ function buildComponentPayloads({
         reportType: "Detailed Energy Audit Report",
         groupTitle: group.groupTitle || "Data required",
         projectTitles: (group.projects || []).map((project) => project.projectTitle),
+        groupProjectContext: (group.projects || []).map((project) => ({
+          projectNo: project.projectNo || "Data required",
+          projectTitle: project.projectTitle || "Data required",
+          equipmentCovered: project.equipmentCovered || "Data required",
+          system: project.system || "Data required",
+          currentNarrative: {
+            existingSystemDescription: project.existingSystemDescription || "Data required",
+            proposedProjectDescription: project.proposedProjectDescription || "Data required",
+            rationaleForEnergySaving: project.rationaleForEnergySaving || "Data required",
+          },
+        })),
         currentNarrative: {
           summaryParagraph: group.summaryParagraph || "Data required",
           technicalObservation: group.technicalObservation || "Data required",
@@ -1076,6 +1184,7 @@ function buildComponentPayloads({
           groupConclusion: group.groupConclusion || "Data required",
         },
         supportingContext,
+        compactSupportingContext,
       },
       mergeTarget: { type: "project_group", groupIndex },
       forbiddenFields: getReportComponentDefinition("project_group")?.lockedFields || [],
@@ -1087,6 +1196,7 @@ function buildComponentPayloads({
       String(note?.projectNo || "").trim() === String(project.projectNo || "").trim() ||
       String(note?.projectTitle || "").trim().toLowerCase() === String(project.projectTitle || "").trim().toLowerCase()
     ) || {};
+    const projectSpecificSupportingContext = buildProjectSpecificSupportingContext(project, extractedInfo, uploadedFiles, imageMetadata);
 
     payloads.push({
       ...getReportComponentDefinition("project_detail"),
@@ -1101,6 +1211,7 @@ function buildComponentPayloads({
         keyActivities: supportingNotes.implementationNotes || project.proposedIntervention,
         measurementVerificationPlan: supportingNotes.existingConditionNotes || project.system,
         benefitsOtherThanEnergySaving: project.system || project.equipmentCovered,
+        aspectsToBeTakenCareOf: supportingNotes.implementationNotes || project.system || project.equipmentCovered,
         finalConclusion: project.system || project.projectTitle,
       },
       narrativeInputs: {
@@ -1112,6 +1223,7 @@ function buildComponentPayloads({
         baselineContext: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition || "Data required",
         proposedContext: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention || "Data required",
         supportingContext,
+        compactSupportingContext: projectSpecificSupportingContext,
         currentNarrative: {
           existingSystemDescription: project.existingSystemDescription || "Data required",
           proposedProjectDescription: project.proposedProjectDescription || "Data required",
@@ -1121,7 +1233,15 @@ function buildComponentPayloads({
           keyActivities: project.keyActivities || "Data required",
           measurementVerificationPlan: project.measurementVerificationPlan || "Data required",
           benefitsOtherThanEnergySaving: project.benefitsOtherThanEnergySaving || "Data required",
+          aspectsToBeTakenCareOf: project.aspectsToBeTakenCareOf || project.precautions || "Data required",
           finalConclusion: project.finalConclusion || "Data required",
+        },
+        deterministicProjectData: {
+          groupTitle: project.groupTitle || "Data required",
+          projectActivitiesText: project.projectActivitiesText || "Data required",
+          baselineDetails: project.baselineDetails || project.existingOperatingCondition || "Data required",
+          proposedIntervention: project.proposedIntervention || "Data required",
+          existingOperatingCondition: project.existingOperatingCondition || "Data required",
         },
       },
       mergeTarget: { type: "project_detail", projectIndex },
@@ -1139,33 +1259,28 @@ function buildComponentPayloads({
 }
 
 async function runComponentNarrativeStage(payload, templateConfig, options = {}) {
-  const systemPrompt = `You are a senior energy audit report writer.
+  const systemPrompt = `You are a senior energy audit engineer and professional technical report writer for SEE-Tech Solutions.
 
-Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+Your role is explanation enhancement only.
 
-Important rules:
-1. Do not generate any numerical values.
-2. Do not modify any numerical values.
-3. Do not estimate missing values.
-4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
-5. Do not change project names, equipment names, group names, project numbers, or priorities.
-6. Use only the provided context.
-7. If information is not available, write "Data required".
+Absolute accuracy rules:
+1. Do not change any number.
+2. Do not create any new number.
+3. Do not estimate any missing number.
+4. Do not calculate savings, payback, investment, tariff, CO2, quantities, operating hours, efficiency, kWh, kW, TR, kVAr, or currency values.
+5. Do not change project titles, project numbers, equipment names, group names, priorities, or extracted table values.
+6. Use only provided context from deterministic report data and uploaded supporting files.
+7. If information is missing, write "Data required" or explain generally without inventing facts.
 8. Return valid JSON only.
-9. Return only the allowed fields.
-10. Do not include markdown.
-11. Do not include tables.
-12. Do not repeat the same sentence across projects.
+9. Return only allowed narrative fields.
+10. Do not include markdown or tables.
+11. Do not use generic filler, sales language, or repeated paragraphs.
 
-Writing expectations:
-- Explain the existing system condition in practical engineering terms.
-- Explain the proposed measure clearly.
-- Explain the energy-saving principle without creating numbers.
-- Explain the scope of implementation.
-- Explain key activities required for implementation.
-- Explain how savings should be verified after implementation.
-- Mention operational, reliability, maintenance, safety, or monitoring benefits where relevant.
-- Use formal client-ready language suitable for a Detailed Energy Audit Report.`;
+Writing objective:
+- Write like a professional Detailed Energy Audit Report.
+- Explain the existing system, the proposed measure, the engineering rationale, the execution scope, the implementation steps, the verification method, the non-energy benefits, and the aspects to be taken care of.
+- Use practical engineering language and implementation-oriented wording.
+- Interpret the meaning of the available data in words without changing it.`;
 
   const userPrompt = `Improve the report explanation for this component.
 AI is a report writer, not a calculator.
@@ -1185,37 +1300,38 @@ Return JSON now:`;
 }
 
 async function runBatchComponentNarrativeStage(payloads, templateConfig, options = {}) {
-  const systemPrompt = `You are a senior energy audit report writer.
+  const systemPrompt = `You are a senior energy audit engineer and professional technical report writer for SEE-Tech Solutions.
 
-Your task is to improve the explanation quality of an already generated deterministic energy audit report.
+Your role is explanation enhancement only for a Detailed Energy Audit Report.
 
-Important rules:
-1. Do not generate any numerical values.
-2. Do not modify any numerical values.
-3. Do not estimate missing values.
-4. Do not calculate savings, investment, payback, CO2, tariff, operating hours, or quantities.
-5. Do not change project names, equipment names, group names, project numbers, or priorities.
+Absolute accuracy rules:
+1. Do not change any number.
+2. Do not create any new number.
+3. Do not estimate any missing number.
+4. Do not calculate savings, payback, investment, tariff, CO2, quantities, operating hours, efficiency, kWh, kW, TR, kVAr, or currency values.
+5. Do not change project titles, project numbers, equipment names, group names, priorities, or extracted table values.
 6. Use only the provided context.
-7. If information is not available, write "Data required".
+7. If information is missing, write "Data required" or keep the explanation general without inventing facts.
 8. Return valid JSON only.
-9. Return only the allowed fields.
-10. Do not include markdown.
-11. Do not include tables.
-12. Do not repeat the same sentence across projects.
+9. Return only allowed narrative fields.
+10. Do not include markdown or tables.
+11. Do not use generic filler, sales language, exaggerated claims, or repeated text.
 
-Writing expectations:
-- Explain the existing system condition in practical engineering terms.
-- Explain the proposed measure clearly.
-- Explain the energy-saving principle without creating numbers.
-- Explain the scope of implementation.
-- Explain key activities required for implementation.
-- Explain how savings should be verified after implementation.
-- Mention operational, reliability, maintenance, safety, or monitoring benefits where relevant.
-- Use formal client-ready language suitable for a Detailed Energy Audit Report.
-- Keep text concise but meaningful.
-- For scopeOfWork and keyActivities, return 3 to 5 concise bullets.
-- For measurementVerificationPlan and benefitsOtherThanEnergySaving, return 3 to 4 concise bullets.
-- For conclusion fields, write a short client-ready conclusion.`;
+Writing objective:
+- Write like a professional Detailed Energy Audit Report.
+- Explain what the current system does, what inefficiency exists, what is proposed, why it reduces energy use, how implementation should be executed, how results should be verified, and what non-energy benefits or care points are relevant.
+- Use system-specific engineering logic for cooling systems, production machines, compressed air systems, auxiliary systems, motors, heat-loss reduction, heaters, and electrical power-quality measures.
+- Interpret available uploaded-file context and deterministic narrative without changing locked values.
+- existingSystemDescription: 80 to 140 words.
+- proposedProjectDescription: 80 to 140 words.
+- rationaleForEnergySaving: 80 to 140 words.
+- problemGapIdentified: 60 to 100 words.
+- scopeOfWork: 4 to 6 practical bullets.
+- keyActivities: 4 to 6 execution bullets.
+- measurementVerificationPlan: 3 to 5 bullets.
+- benefitsOtherThanEnergySaving: 3 to 5 bullets.
+- aspectsToBeTakenCareOf: 3 to 5 bullets.
+- finalConclusion: 60 to 100 words.`;
 
   const userPrompt = `Improve the report explanation for these components.
 AI is a report writer, not a calculator.
@@ -1299,13 +1415,21 @@ function applyComponentNarrative(report, payload, narrativeOutput, approvedToken
       normalizedNarrativeOutput.finalConclusion = normalizedNarrativeOutput.conclusion;
       delete normalizedNarrativeOutput.conclusion;
     }
+    if (normalizedNarrativeOutput.aspectsToBeTakenCareOf !== undefined && normalizedNarrativeOutput.precautions === undefined) {
+      normalizedNarrativeOutput.precautions = normalizedNarrativeOutput.aspectsToBeTakenCareOf;
+    }
     const effectiveAllowedFields = allowedOutputFields.includes("finalConclusion")
       ? allowedOutputFields
-      : [...allowedOutputFields, "finalConclusion"];
+      : [...allowedOutputFields, "finalConclusion", "precautions"];
     const merged = mergeNarrativeOnly(before, normalizedNarrativeOutput, effectiveAllowedFields);
     assertLockedFieldsUnchanged(before, merged, lockedFields, payload.id);
     if (Array.isArray(report.projects) && report.projects[idx]) {
       report.projects[idx] = merged;
+      report.projects[idx].aspectsToBeTakenCareOf =
+        normalizedNarrativeOutput.aspectsToBeTakenCareOf ||
+        normalizedNarrativeOutput.precautions ||
+        report.projects[idx].aspectsToBeTakenCareOf ||
+        report.projects[idx].precautions;
     }
     return report;
   }
@@ -1479,7 +1603,7 @@ async function generateCommercialAuditComponentReport({
             const isQuotaExceeded = result?.isQuotaExceeded || attempts.some((a) => a.isQuotaExceeded);
             if (isQuotaExceeded) {
               quotaExceededRetry = result?.retryAfterSeconds || attempts.find((a) => a.retryAfterSeconds)?.retryAfterSeconds || 60;
-              aiFailureReason = `Gemini quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
+              aiFailureReason = `Gemini free quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
               if (stopOnRateLimit) {
                 break;
               }
@@ -1568,7 +1692,7 @@ async function generateCommercialAuditComponentReport({
           const isQuotaExceeded = error.isQuotaExceeded || attempts.some((a) => a.isQuotaExceeded);
           if (isQuotaExceeded) {
             quotaExceededRetry = error.retryAfterSeconds || attempts.find((a) => a.retryAfterSeconds)?.retryAfterSeconds || 60;
-            aiFailureReason = `Gemini quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
+            aiFailureReason = `Gemini free quota exceeded. Retry after ${quotaExceededRetry} seconds.`;
             if (stopOnRateLimit) {
               break;
             }
@@ -1621,14 +1745,24 @@ async function generateCommercialAuditComponentReport({
   }
 
   const aiEnhanced = llmSuccessCount > 0;
-  const providerWarning = aiEnhanced
-    ? (llmFailureCount > 0 ? "Some AI enhancement batches failed. Using deterministic fallbacks for failed batches." : null)
-    : (warnings.find((warning) => /AI enhancement/i.test(warning)) || null);
-  const aiEnhancementStatus = quotaExceededRetry
-    ? "quota_exceeded"
-    : aiEnhanced
-      ? (allAiDroppedFields.length > 0 ? "partial_success" : "success")
-      : (allAiDroppedFields.length > 0 ? "no_fields_changed" : "failed");
+  const allAiUnavailable =
+    !aiEnhanced &&
+    providerAttempts.some((attempt) => attempt.provider === "openrouter") &&
+    exactErrorStr === "All AI providers failed or quota exhausted. Deterministic report used.";
+  const providerWarning = quotaExceededRetry && !aiEnhanced && !providerAttempts.some((attempt) => attempt.provider === "openrouter")
+    ? "Gemini free quota exceeded. Your report is still ready."
+    : allAiUnavailable
+      ? "AI enhancement is unavailable right now. Your report is still ready."
+      : aiEnhanced
+        ? (llmFailureCount > 0 ? "Some AI enhancement batches failed. Using deterministic fallbacks for failed batches." : null)
+        : (warnings.find((warning) => /AI enhancement/i.test(warning)) || null);
+  const aiEnhancementStatus = allAiUnavailable
+    ? "ai_unavailable"
+    : quotaExceededRetry && !aiEnhanced && !providerAttempts.some((attempt) => attempt.provider === "openrouter")
+      ? "quota_exceeded"
+      : aiEnhanced
+        ? (allAiDroppedFields.length > 0 ? "partial_success" : "success")
+        : (allAiDroppedFields.length > 0 ? "no_fields_changed" : "failed");
 
   return {
     report: aiEnhanced ? report : deterministicReport,
@@ -2025,13 +2159,12 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
       facilityName: formData.facilityName || "Data required",
       location: formData.location || "Data required",
       auditPeriod: formData.auditPeriod || "Data required",
-      reportDate: formData.reportDate || "Data required",
       preparedBy: formData.preparedBy || "SEE-Tech Solutions",
       documentVersion: formData.documentVersion || "1.0",
       reportTitle: "Detailed Energy Audit Report"
     },
     executiveSummary: {
-      purposeText: "The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects.",
+      purposeText: `The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization. The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus. The intent is not only to highlight saving potential, but also to organize the recommended measures into a structured roadmap covering control improvements, equipment efficiency upgrades, and system optimization initiatives that can be taken forward through detailed engineering, commissioning, and post-implementation verification.`,
       totalAnnualElectricityConsumption: extractedExcelData?.annualElectricityConsumption || "Data required",
       annualElectricityCost: extractedExcelData?.annualElectricityCost || "Data required",
       averageTariff: extractedExcelData?.averageTariff || "Data required",
@@ -2049,13 +2182,20 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
         energySaving: g.totalEnergySaving,
         simplePaybackPeriod: g.averagePayback
       })),
+      keyObservations: [
+        "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
+        "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
+        "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap.",
+        "Measures requiring integration with production, utilities, or electrical controls should be planned with clear shutdown coordination, engineering review, and commissioning responsibility so the realized performance aligns with the intended audit recommendation.",
+        "Baseline recording, post-implementation monitoring, and operating-condition normalization should be treated as part of the implementation scope so verified energy performance can be demonstrated and sustained after project closure."
+      ],
       conclusionAndWayForward: [
-        { step: 1, action: "Client review of identified projects" },
-        { step: 2, action: "Joint selection of projects for implementation" },
-        { step: 3, action: "Detailed engineering and vendor finalization" },
-        { step: 4, action: "Submission of final techno-commercial proposal" },
-        { step: 5, action: "Implementation, commissioning and performance monitoring" },
-        { step: 6, action: "Savings validation and handover" }
+        { step: 1, action: "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures." },
+        { step: 2, action: "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins." },
+        { step: 3, action: "Develop detailed engineering, technical specifications, and integration requirements for the shortlisted measures, including instrumentation, controls, and safety interfaces." },
+        { step: 4, action: "Finalize procurement strategy, vendor alignment, and shutdown planning so implementation can proceed without avoidable disruption to plant operation." },
+        { step: 5, action: "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks." },
+        { step: 6, action: "Sustain the achieved performance through monitoring, operator familiarization, and formal measurement-and-verification review after stabilization." }
       ]
     },
     buildingProfile: {
@@ -2072,60 +2212,53 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
   const getFallbackNarrative = (title, system) => {
     const txt = (String(title) + " " + String(system)).toLowerCase();
     
-    if (txt.includes("chiller") || txt.includes("cooling tower") || txt.includes("ct")) {
+    if (txt.includes("chiller") || txt.includes("cooling tower") || txt.includes("ct") || txt.includes("pump") || txt.includes("vfd") || txt.includes("cooling") || txt.includes("chw")) {
       return {
-        existingSystemDescription: "The existing cooling system operates with suboptimal control logic and fixed-speed components, leading to energy wastage during part-load conditions.",
+        existingSystemDescription: "The existing cooling system operates with suboptimal control logic and fixed-speed components, leading to energy wastage during part-load conditions. Explain cooling tower approach, chilled water flow, condenser water temperature, pump control, VFD, delta T/delta P, kW/TR, free cooling if applicable.",
         proposedProjectDescription: "It is proposed to optimize the cooling system by implementing advanced controls or variable frequency drives to match the cooling load demand.",
         rationaleForEnergySaving: "Energy saving is achieved by dynamically adjusting the cooling capacity and flow rates to match the actual building load, reducing unnecessary power consumption."
       };
     }
-    if (txt.includes("pump") || txt.includes("vfd")) {
+    if (txt.includes("servo") || txt.includes("asb") || txt.includes("ebm") || txt.includes("hydraulic") || txt.includes("production machine")) {
       return {
-        existingSystemDescription: "The existing pumping system operates at a constant speed, using mechanical throttling (valves) to control flow, which is highly inefficient.",
-        proposedProjectDescription: "It is proposed to install Variable Frequency Drives (VFDs) on the pumps and integrate them with pressure/flow sensors for automatic speed control.",
-        rationaleForEnergySaving: "According to the pump affinity laws, power consumption is proportional to the cube of the pump speed. Reducing speed via VFD drastically reduces power consumption compared to valve throttling."
+        existingSystemDescription: "The production machine utilizes a conventional fixed-speed motor and variable displacement pump, running continuously even during idle cycles. Explain hydraulic motor loading, idle losses, servo control, process stability, machine response, reduced energy during partial load.",
+        proposedProjectDescription: "It is proposed to retrofit the machine with a servo-hydraulic system or advanced controls, replacing the fixed-speed motor with a servo motor.",
+        rationaleForEnergySaving: "The servo motor varies its speed precisely according to the pressure and flow requirements of the cycle, almost eliminating idle running losses."
       };
     }
-    if (txt.includes("ie5") || txt.includes("motor")) {
+    if (txt.includes("compress") || txt.includes("air") || txt.includes("booster")) {
       return {
-        existingSystemDescription: "The existing equipment is driven by standard efficiency (IE2/IE3) induction motors or older rewound motors with high inherent electrical losses.",
-        proposedProjectDescription: "It is proposed to replace the existing inefficient motors with ultra-premium efficiency (IE5) synchronous reluctance or permanent magnet motors.",
-        rationaleForEnergySaving: "IE5 motors operate with significantly lower electrical and magnetic losses, and maintain high efficiency even at partial loads, directly reducing kWh consumption."
-      };
-    }
-    if (txt.includes("apfc") || txt.includes("power factor")) {
-      return {
-        existingSystemDescription: "The electrical system exhibits a lower power factor, resulting in higher apparent power (kVA) demand and potential utility penalties.",
-        proposedProjectDescription: "It is proposed to install or upgrade the Automatic Power Factor Correction (APFC) panel with intelligent controllers and detuned reactors.",
-        rationaleForEnergySaving: "Improving the power factor reduces the kVA demand from the utility grid, lowering demand charges and reducing I²R losses in the internal distribution network."
-      };
-    }
-    if (txt.includes("compress") || txt.includes("air")) {
-      return {
-        existingSystemDescription: "The compressed air system operates with poor load/unload control, higher than required generation pressure, or significant leakage losses.",
+        existingSystemDescription: "The compressed air system operates with poor load/unload control, higher than required generation pressure, or significant leakage losses. Explain compressed air monitoring, CFM/kW, leakage, pressure control, compressor loading/unloading, booster automation.",
         proposedProjectDescription: "It is proposed to optimize the compressed air system by installing a master controller, reducing generation pressure, and rectifying air leaks.",
         rationaleForEnergySaving: "Reducing the compressor discharge pressure and minimizing unloaded running hours drastically reduces the specific power consumption (kW/CFM) of the system."
       };
     }
-    if (txt.includes("insulation") || txt.includes("heat")) {
+    if (txt.includes("ie5") || txt.includes("motor") || txt.includes("pmsm") || txt.includes("direct mount")) {
       return {
-        existingSystemDescription: "The existing hot/cold surfaces lack proper insulation, leading to significant thermal energy losses to the ambient environment.",
-        proposedProjectDescription: "It is proposed to apply high-density thermal insulation (such as rockwool, glasswool, or specialized foam) on the exposed surfaces and valves.",
-        rationaleForEnergySaving: "Proper insulation creates a thermal barrier that reduces heat transfer, lowering the energy required to maintain the desired process temperature."
+        existingSystemDescription: "The existing equipment is driven by standard efficiency (IE2/IE3) induction motors or older rewound motors with high inherent electrical losses. Explain motor efficiency class, reduced electrical losses, belt loss reduction, direct drive reliability, VFD compatibility.",
+        proposedProjectDescription: "It is proposed to replace the existing inefficient motors with ultra-premium efficiency (IE5) synchronous reluctance or permanent magnet motors.",
+        rationaleForEnergySaving: "IE5 motors operate with significantly lower electrical and magnetic losses, and maintain high efficiency even at partial loads, directly reducing kWh consumption."
       };
     }
-    if (txt.includes("recovery")) {
+    if (txt.includes("insulation") || txt.includes("hot duct") || txt.includes("dryer") || txt.includes("recovery") || txt.includes("heat")) {
       return {
-        existingSystemDescription: "High-temperature exhaust gases or hot water is currently being discharged into the environment, wasting valuable thermal energy.",
-        proposedProjectDescription: "It is proposed to install a heat recovery system (such as an economizer or heat exchanger) to capture the waste heat and pre-heat incoming fluid.",
-        rationaleForEnergySaving: "Recovering waste heat directly offsets the fuel or electricity required by the primary heating equipment, resulting in significant energy savings."
+        existingSystemDescription: "The existing thermal surfaces lack proper insulation or exhaust heat is discharged into the environment, leading to significant thermal energy losses. Explain thermal losses, exhaust heat reuse, surface heat loss reduction, preheating, improved thermal efficiency.",
+        proposedProjectDescription: "It is proposed to apply high-density thermal insulation or install a heat recovery system to capture waste heat.",
+        rationaleForEnergySaving: "Proper insulation or heat recovery creates a thermal barrier that reduces heat transfer and offsets fuel/electricity required by primary heating equipment."
       };
     }
-    if (txt.includes("servo") || txt.includes("hydraulic")) {
+    if (txt.includes("ir heater") || txt.includes("band heater") || txt.includes("heater")) {
       return {
-        existingSystemDescription: "The hydraulic machine utilizes a conventional fixed-speed motor and variable displacement pump, running continuously even during idle cycles.",
-        proposedProjectDescription: "It is proposed to retrofit the machine with a servo-hydraulic system, replacing the fixed-speed motor with a servo motor.",
-        rationaleForEnergySaving: "The servo motor varies its speed precisely according to the pressure and flow requirements of the cycle, almost eliminating idle running losses."
+        existingSystemDescription: "The existing heating system uses conventional elements with high ambient heat loss and slow response times. Explain heating efficiency, targeted heat transfer, reduced warm-up loss, better temperature control.",
+        proposedProjectDescription: "It is proposed to upgrade the heating elements to IR heaters or insulated band heaters.",
+        rationaleForEnergySaving: "Advanced heaters provide targeted radiant or conductive heat transfer with minimal convection losses, lowering the power required to maintain process temperatures."
+      };
+    }
+    if (txt.includes("apfc") || txt.includes("kvar") || txt.includes("power factor")) {
+      return {
+        existingSystemDescription: "The electrical system exhibits a lower power factor, resulting in higher apparent power (kVA) demand and potential utility penalties. Explain power factor correction, reactive power management, relay control, capacitor health, electrical stability.",
+        proposedProjectDescription: "It is proposed to install or upgrade the Automatic Power Factor Correction (APFC) panel with intelligent controllers and detuned reactors.",
+        rationaleForEnergySaving: "Improving the power factor reduces the kVA demand from the utility grid, lowering demand charges and reducing I²R losses in the internal distribution network."
       };
     }
     
@@ -2144,31 +2277,57 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
       existingSystemDescription: narrative.existingSystemDescription,
       proposedProjectDescription: narrative.proposedProjectDescription,
       rationaleForEnergySaving: narrative.rationaleForEnergySaving,
-      problemGapIdentified: "The audit identified opportunities to improve energy efficiency and reduce operational costs in this area.",
+      problemGapIdentified: "The audit identified an operating gap in this area where the present arrangement continues to meet the process requirement, but not with the most disciplined use of energy, controls, or utility support. The observed condition indicates that avoidable losses, conservative operating logic, or limited demand matching are allowing energy use to remain higher than necessary during normal operation.",
       scopeOfWork: [
-        { srNo: 1, scopeItem: "Detailed site measurement and final engineering" },
-        { srNo: 2, scopeItem: "Supply of required equipment and accessories" },
-        { srNo: 3, scopeItem: "Installation and integration with existing system" },
-        { srNo: 4, scopeItem: "Testing, commissioning, and performance validation" }
+        { srNo: 1, scopeItem: "Carry out detailed site verification, engineering review, and implementation planning for the identified measure." },
+        { srNo: 2, scopeItem: "Finalize technical scope, equipment selection, controls interface, and required field modifications." },
+        { srNo: 3, scopeItem: "Arrange supply, installation, and integration of the approved components and associated accessories." },
+        { srNo: 4, scopeItem: "Complete testing, commissioning, and operating-sequence validation under representative site conditions." },
+        { srNo: 5, scopeItem: "Document the implemented arrangement and hand over the monitoring and verification approach to the site team." }
       ],
       keyActivities: [
-        { activity: "Site verification", details: "Confirm equipment rating, location and operating condition", responsibility: "SEE-Tech + Client" },
-        { activity: "Design finalization", details: "Finalize technical specifications and control logic", responsibility: "SEE-Tech" },
-        { activity: "Procurement", details: "Arrange equipment and accessories", responsibility: "SEE-Tech / Vendor" },
-        { activity: "Installation", details: "Install system with minimum disturbance", responsibility: "SEE-Tech" }
+        { activity: "Baseline review", details: "Confirm existing operating condition, control approach, and implementation boundary for the identified ECM.", responsibility: "SEE-Tech + Client" },
+        { activity: "Engineering finalization", details: "Freeze the detailed technical approach, controls logic, and integration requirement before execution.", responsibility: "SEE-Tech" },
+        { activity: "Execution planning", details: "Coordinate materials, shutdown needs, field access, and installation sequence with the client team.", responsibility: "SEE-Tech / Client" },
+        { activity: "Installation and commissioning", details: "Implement the selected measure, verify correct operation, and tune the arrangement where required.", responsibility: "SEE-Tech / Vendor" },
+        { activity: "Post-implementation follow-up", details: "Review stabilized operation and confirm the measurement and verification approach for sustained performance tracking.", responsibility: "SEE-Tech + Client" }
       ],
       measurementVerificationPlan: [
-        { parameter: "Power consumption", baselineMeasurement: "kW before project", postImplementationMeasurement: "kW after project" },
-        { parameter: "Operating hours", baselineMeasurement: "Existing operating schedule", postImplementationMeasurement: "Revised operating schedule" },
-        { parameter: "Energy consumption", baselineMeasurement: "kWh/year baseline", postImplementationMeasurement: "kWh/year after project" }
+        { parameter: "Existing operating condition", baselineMeasurement: "Record the present operating logic, loading pattern, and site observations before implementation.", postImplementationMeasurement: "Confirm the revised operating arrangement after commissioning and stabilization." },
+        { parameter: "Representative performance trend", baselineMeasurement: "Document pre-implementation system behavior under normal operating conditions.", postImplementationMeasurement: "Compare post-implementation behavior under similar operating conditions." },
+        { parameter: "Normalized review", baselineMeasurement: "Establish baseline records with relevant operating references for later comparison.", postImplementationMeasurement: "Review the improved condition after normalizing for comparable production, load, or seasonal influence." },
+        { parameter: "Sustained verification", baselineMeasurement: "Identify existing monitoring practice before execution.", postImplementationMeasurement: "Confirm that the site team has a practical follow-up method to sustain the achieved improvement." }
       ],
       benefitsOtherThanEnergySaving: [
-        { benefit: "Reduced operating cost", description: "Lower utility bills directly improving profitability" },
-        { benefit: "Improved reliability", description: "Better control reduces mechanical and thermal stress on equipment" }
+        { benefit: "Improved reliability", description: "Better control and stronger operating discipline can reduce avoidable stress on the affected equipment or utility system." },
+        { benefit: "Reduced manual intervention", description: "A clearer operating approach reduces repeated operator adjustment and improves implementation consistency." },
+        { benefit: "Better monitoring visibility", description: "The measure supports stronger understanding of system behavior and easier post-implementation follow-up." },
+        { benefit: "Improved maintenance readiness", description: "Documented engineering changes and a more stable operating condition support cleaner maintenance planning." }
       ],
+      aspectsToBeTakenCareOf: [
+        { aspect: "Field compatibility", careRequired: "Verify compatibility of the proposed modification with the existing equipment, controls, and utility interfaces before execution." },
+        { aspect: "Shutdown and access planning", careRequired: "Plan implementation windows, access arrangements, and coordination with operations so execution does not create avoidable disruption." },
+        { aspect: "Safety and commissioning discipline", careRequired: "Complete required isolation, safety checks, and commissioning review before the system is returned to service." },
+        { aspect: "Post-implementation follow-up", careRequired: "Confirm operator orientation, monitoring responsibility, and early-stage performance review after implementation." }
+      ],
+      precautions: [
+        { aspect: "Field compatibility", careRequired: "Verify compatibility of the proposed modification with the existing equipment, controls, and utility interfaces before execution." },
+        { aspect: "Shutdown and access planning", careRequired: "Plan implementation windows, access arrangements, and coordination with operations so execution does not create avoidable disruption." },
+        { aspect: "Safety and commissioning discipline", careRequired: "Complete required isolation, safety checks, and commissioning review before the system is returned to service." },
+        { aspect: "Post-implementation follow-up", careRequired: "Confirm operator orientation, monitoring responsibility, and early-stage performance review after implementation." }
+      ],
+      finalConclusion: "This project is technically suitable for implementation because it addresses an observed operating inefficiency through a practical and implementation-ready corrective measure. The recommendation supports the facility's broader energy-performance roadmap and can be executed through structured engineering, commissioning, and verification follow-through.",
       conclusion: `This project is technically feasible and financially attractive. With an estimated investment of ₹${p.estimatedInvestment || '0'}, it will yield an annual saving of ₹${p.expectedAnnualCostSaving || '0'} with a simple payback of ${p.simplePaybackPeriod || 'N/A'}. It is recommended for implementation.`
     };
   });
+
+  report.groupedProjects = buildProjectGroups(report.projects).map((group) => ({
+    ...group,
+    summaryParagraph: `This group covers ${Array.isArray(group.projects) ? group.projects.length : 0} energy conservation measure${Array.isArray(group.projects) && group.projects.length === 1 ? "" : "s"} under the ${group.groupTitle} opportunity area. The grouped view helps management review related projects together, understand the common inefficiencies being addressed, and plan implementation in a more structured manner across the same functional system.`,
+    technicalObservation: "The measures in this category focus on improving how the system operates in practice by strengthening control discipline, reducing avoidable losses, and improving the alignment between utility supply and actual process demand. This makes the group important from both an implementation-planning and sustained-performance perspective.",
+    implementationStrategy: "Implementation should combine site verification, detailed engineering, shutdown coordination where required, and post-commissioning performance review so the group-level outcomes remain stable after execution.",
+    groupConclusion: `The ${group.groupTitle} category remains relevant because it translates related site observations into implementable engineering actions that support the facility's wider energy-management roadmap.`
+  }));
 
   return report;
 }

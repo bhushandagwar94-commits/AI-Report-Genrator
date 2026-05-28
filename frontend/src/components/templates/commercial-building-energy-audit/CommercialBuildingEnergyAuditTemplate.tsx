@@ -807,9 +807,17 @@ function ProjectChapterPage({ project }: { project: CommercialBuildingProject })
         { parameter: "Energy consumption", baselineMeasurement: "kWh/year baseline", postImplementationMeasurement: "kWh/year after project" },
       ]} />
 
+      <SectionHeader level={3} title="Aspects to be Taken Care Of" />
+      <ReportTable columns={[{ key: "aspect", label: "Aspect" }, { key: "careRequired", label: "Care Required" }]} rows={project.aspectsToBeTakenCareOf || project.precautions || [
+        { aspect: "Implementation planning", careRequired: "Plan shutdown windows, access requirements, and coordination with production or utility operations before execution." },
+        { aspect: "Safety and compatibility", careRequired: "Verify mechanical, electrical, and control compatibility and complete all isolation and safety checks before commissioning." },
+        { aspect: "Operator readiness", careRequired: "Provide operator orientation on revised controls, alarm conditions, and routine checks required to sustain performance." },
+        { aspect: "Performance verification", careRequired: "Confirm sensor health, calibration status, and post-implementation monitoring arrangements before project closure." },
+      ]} />
+
       <SectionHeader level={3} title="Conclusion" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        {safeValue(project.finalConclusion || project.projectConclusion || `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeValue(project.expectedEnergySaving)}, resulting in annual cost saving of ${formatINR(project.expectedAnnualCostSaving)}/year.`)}
+        {safeValue(project.finalConclusion || project.projectConclusion || "This project is technically suitable for implementation because it addresses a clearly observed operating inefficiency, aligns with the facility's energy performance improvement roadmap, and can be integrated through disciplined engineering, commissioning, and post-implementation verification.")}
       </p>
     </section>
   );
@@ -944,7 +952,24 @@ export default function CommercialBuildingEnergyAuditTemplate({
           <section className="report-page" style={pageStyle}>
             <SectionHeader level={2} title={formatGroupHeading(group, index)} />
             <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-              This section covers {asArray(group.projects).length} energy conservation measures under the {displayText(group.groupTitle) || displayText(group.groupNo) || "selected"} category.
+              {safeValue(
+                (group as any).summaryParagraph ||
+                `This section covers ${asArray(group.projects).length} energy conservation measures under the ${displayText(group.groupTitle) || displayText(group.groupNo) || "selected"} category.`
+              )}
+            </p>
+            <SectionHeader level={3} title="Group Observation" />
+            <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+              {safeValue(
+                (group as any).technicalObservation ||
+                "The measures in this group are intended to improve system control discipline, reduce avoidable losses, and support a more structured implementation roadmap."
+              )}
+            </p>
+            <SectionHeader level={3} title="Implementation Focus" />
+            <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+              {safeValue(
+                (group as any).implementationStrategy ||
+                "Implementation should combine site verification, detailed engineering, coordinated execution, and post-commissioning performance review."
+              )}
             </p>
             <SectionHeader level={3} title="Group Summary Table" />
             <ReportTable compact columns={[

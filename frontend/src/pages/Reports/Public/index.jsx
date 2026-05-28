@@ -151,9 +151,24 @@ function cleanAiFailureMessage(reason) {
   if (!reason) return "AI enhancement failed";
   return reason
     .replace(/AI enhancement failed:?/gi, "")
+    .replace(/Gemini \d+:/gi, "")
     .replace(/Deterministic report used\.?/gi, "")
     .replace(/Your report is still ready\.?/gi, "")
     .trim();
+}
+
+function formatGeminiQuotaMessage(seconds) {
+  return `Gemini free quota is temporarily exhausted. Retry in ${seconds} seconds. Your report is still ready.`;
+}
+
+function formatProviderAttemptLabel(attempt, index) {
+  if (attempt.provider === "gemini" && attempt.keyIndex) {
+    return `Gemini Key ${attempt.keyIndex}`;
+  }
+  if (attempt.provider === "openrouter") {
+    return `OpenRouter Model ${attempt.order || index + 1}`;
+  }
+  return `Model ${attempt.order || index + 1}`;
 }
 
 const getAiModels = () =>
@@ -1119,7 +1134,7 @@ function Step5({
   aiEnhancing,
   aiProgress,
   canEnhanceWithAi,
-  retryCooldown,
+  geminiCooldownSeconds,
 }) {
   const [copied, setCopied] = useState(false);
   const [qcResult, setQcResult] = useState(null);
@@ -1161,57 +1176,42 @@ function Step5({
   const runFrontendQC = () => {
     let failed = false;
     let errors = [];
+    let hardErrors = 0;
+    
     try {
       const rd = JSON.parse(report.outputContent);
-      if (!rd.groupedProjects || rd.groupedProjects.length === 0) {
-        failed = true;
-        errors.push({ message: "Report has no grouped projects." });
-      }
-      (rd.groupedProjects || []).forEach((group, groupIndex) => {
-        if (!group?.groupTitle) {
-          failed = true;
-          errors.push({ message: "Group title is missing.", path: `groupedProjects[${groupIndex}].groupTitle` });
-        }
-        if (!Array.isArray(group?.projects) || group.projects.length === 0) {
-          failed = true;
-          errors.push({ message: "Group has no ECMs.", path: `groupedProjects[${groupIndex}].projects` });
-        }
-      });
-
+      const groups = rd.groupedProjects || [];
       const projectsForQC = getProjectsForQC(rd);
-      const seenTitles = new Set();
-      projectsForQC.forEach((p, idx) => {
+      const validEcms = projectsForQC.filter(p => {
         const title = p?.projectTitle || p?.ecmName || p?.title;
         const normalized = String(title || "").toLowerCase().trim();
-        const path = Number.isInteger(p.__groupIndex)
-          ? `groupedProjects[${p.__groupIndex}].projects[${p.__projectIndex}].projectTitle`
-          : `projects[${idx}].projectTitle`;
+        return title && normalized !== "data required" && normalized !== "[object object]" && !normalized.includes("project project");
+      }).length;
 
-        if (!title) {
-          failed = true;
-          errors.push({ message: "Project title is missing or invalid.", path });
-        } else if (normalized === "data required") {
-          failed = true;
-          errors.push({ message: "Project title is missing or invalid.", path });
-        } else if (normalized === "[object object]") {
-          failed = true;
-          errors.push({ message: "Project title is missing or invalid.", path });
-        } else if (normalized.includes("project project")) {
-          failed = true;
-          errors.push({ message: "Project title is missing or invalid.", path });
-        } else if (seenTitles.has(normalized)) {
-          failed = true;
-          errors.push({ message: "Duplicate project title found.", path });
-        } else {
-          seenTitles.add(normalized);
-        }
-      });
-
-      if (projectsForQC.length === 0) {
-        failed = true;
-        errors.push({ message: "No valid ECMs found.", path: "projects" });
+      if (groups.length === 0) {
+        errors.push({ message: "Report has no grouped projects.", path: "groupedProjects" });
+        hardErrors++;
       }
-    } catch(e) {}
+      
+      if (validEcms === 0 || projectsForQC.length === 0) {
+        errors.push({ message: "No valid ECMs found.", path: "projects" });
+        hardErrors++;
+      }
+
+      const shouldBlockExport = 
+        hardErrors > 0 ||
+        validEcms === 0 ||
+        groups.length === 0 ||
+        !rd ||
+        !projectsForQC.length;
+
+      failed = shouldBlockExport;
+
+    } catch(e) {
+      failed = true;
+      errors.push({ message: "Invalid report data", path: "report" });
+    }
+    
     return { failed, errors };
   };
 
@@ -1427,41 +1427,25 @@ function Step5({
                 <button
                   type="button"
                   onClick={onEnhanceWithAi}
-                  disabled={!canEnhanceWithAi || aiEnhancing || retryCooldown > 0}
+                  disabled={!canEnhanceWithAi || aiEnhancing || geminiCooldownSeconds > 0}
                   className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Sparkle size={18} weight="fill" />
-                  {retryCooldown > 0
-                    ? `Retry Gemini in ${retryCooldown}s`
+                  {geminiCooldownSeconds > 0
+                    ? `Retry Gemini in ${geminiCooldownSeconds}s`
                     : aiEnhancing
-                      ? AI_PROVIDER === "gemini"
-                        ? "Gemini is enhancing report explanations..."
-                        : "Enhancing..."
-                      : AI_PROVIDER === "gemini"
-                        ? "Enhance with Gemini AI"
-                        : "Enhance with AI"}
+                      ? "Enhancing..."
+                      : "Enhance with AI"}
                 </button>
-                {isDev && (
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadWord(true)}
-                    title="Download Draft Word"
-                    disabled={isWordExporting}
-                    className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
-                  >
-                    <FileDoc size={18} weight="fill" />
-                    {isWordExporting && wordExportMode === "draft" ? "Generating Draft..." : "Download Draft Word"}
-                  </button>
-                )}
                 <button
                   type="button"
-                  onClick={() => handleDownloadWord(false)}
-                  title="Download as Word"
+                  onClick={() => handleDownloadWord(true)}
+                  title="Download Word"
                   disabled={isWordExporting}
-                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-500/20 transition-all"
+                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
                 >
                   <FileDoc size={18} weight="fill" />
-                  {isWordExporting && wordExportMode === "final" ? "Generating Word..." : "Download Word"}
+                  {isWordExporting && wordExportMode === "draft" ? "Generating Word..." : "Download Word"}
                 </button>
                 <button
                   type="button"
@@ -1494,6 +1478,9 @@ function Step5({
                 <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus || 'unknown'}</div>
                 <div><span className="font-bold opacity-80 text-white">Provider Attempted:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
                 <div><span className="font-bold opacity-80 text-white">Model Used:</span> {report?.modelUsed || report?.providerAttempts?.[0]?.model || 'none'}</div>
+                {typeof report?.retryAfterSeconds === "number" && report.retryAfterSeconds > 0 && (
+                  <div><span className="font-bold opacity-80 text-white">Retry After:</span> {report.retryAfterSeconds}s</div>
+                )}
                 
                 {report?.aiFailureReason && (
                   <div className="text-red-400"><span className="font-bold opacity-80">Failure Reason:</span> {report.aiFailureReason}</div>
@@ -1744,13 +1731,20 @@ function Step5({
                     <li key={`attempt-${idx}`} className="flex flex-col text-xs bg-white/5 p-2 rounded">
                       <div className="flex items-center gap-2">
                         <span className="text-white/50 font-medium">
-                          Model {attempt.order || idx + 1}:
+                          {formatProviderAttemptLabel(attempt, idx)}:
                         </span>
-                        <span className={attempt.status === "success" ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                        <span className={attempt.status === "success"
+                          ? "text-green-400 font-bold"
+                          : attempt.status === "quota_exceeded"
+                            ? "text-yellow-300 font-bold"
+                            : "text-red-400 font-bold"}>
                           {attempt.status.toUpperCase()}
                         </span>
                         <span className="text-white/80 font-mono">{attempt.model}</span>
                       </div>
+                      {typeof attempt.retryAfterSeconds === "number" && attempt.retryAfterSeconds > 0 && (
+                        <span className="text-white/50 text-[11px] mt-1">Retry after: {attempt.retryAfterSeconds}s</span>
+                      )}
                       {attempt.reason && (
                         <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
                       )}
@@ -1814,17 +1808,17 @@ export default function PublicReports() {
   const [generatedReportData, setGeneratedReportData] = useState(null);
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
   const [allowGenerateWithSupportingFilesOnly, setAllowGenerateWithSupportingFilesOnly] = useState(false);
-  const [retryCooldown, setRetryCooldown] = useState(0);
+  const [geminiCooldownSeconds, setGeminiCooldownSeconds] = useState(0);
 
   useEffect(() => {
-    let interval;
-    if (retryCooldown > 0) {
-      interval = setInterval(() => {
-        setRetryCooldown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [retryCooldown]);
+    if (geminiCooldownSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setGeminiCooldownSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [geminiCooldownSeconds]);
 
   const aiTimerRef = useRef(null);
   const aiStartedAtRef = useRef(null);
@@ -2060,7 +2054,7 @@ export default function PublicReports() {
   };
 
   const handleEnhanceWithAi = async () => {
-    if (!generatedReport?.id || aiEnhancing || retryCooldown > 0) return;
+    if (!generatedReport?.id || aiEnhancing || geminiCooldownSeconds > 0) return;
 
     setAiEnhancing(true);
     startAiCountdown();
@@ -2083,12 +2077,18 @@ export default function PublicReports() {
         }
       }
 
-      if (res.report?.aiEnhancementStatus === "quota_exceeded") {
-        const seconds = res.report.retryAfterSeconds || 60;
-        setRetryCooldown(seconds);
-        showToast(`Gemini free quota exceeded. Please retry after ${seconds} seconds.`, "warning");
+      if (res.report?.aiEnhancementStatus === "quota_exceeded" || res.report?.retryAfterSeconds) {
+        const seconds = res.report?.retryAfterSeconds || 60;
+        setGeminiCooldownSeconds(seconds);
+        toast.info(formatGeminiQuotaMessage(seconds));
       } else if (res.report?.aiEnhanced) {
-        showToast("AI enhancement applied successfully.", "success");
+        if (res.report?.providerUsed === "openrouter" && (res.report?.providerAttempts || []).some((attempt) => attempt.provider === "gemini")) {
+          showToast("AI enhancement completed using fallback provider.", "success");
+        } else {
+          showToast("AI enhancement applied successfully.", "success");
+        }
+      } else if (res.report?.aiEnhancementStatus === "ai_unavailable") {
+        toast.info("AI enhancement is unavailable right now. Your report is still ready.");
       } else {
         const reason = res.report?.aiFailureReason || res.report?.providerWarning || "AI enhancement failed";
         const cleanReason = cleanAiFailureMessage(reason);
@@ -2100,6 +2100,16 @@ export default function PublicReports() {
         );
       }
     } catch (err) {
+      if (err?.response?.data?.report?.aiEnhancementStatus === "quota_exceeded" || err?.response?.data?.report?.retryAfterSeconds) {
+        const seconds = err?.response?.data?.report?.retryAfterSeconds || 60;
+        setGeminiCooldownSeconds(seconds);
+        toast.info(formatGeminiQuotaMessage(seconds));
+        return;
+      }
+      if (err?.response?.data?.report?.aiEnhancementStatus === "ai_unavailable") {
+        toast.info("AI enhancement is unavailable right now. Your report is still ready.");
+        return;
+      }
       const cleanReason = cleanAiFailureMessage(err.message);
       toast.warning(
         cleanReason
@@ -2130,6 +2140,7 @@ export default function PublicReports() {
     setAiEnhancing(false);
     setAiProgress(createAiProgressState());
     setAllowGenerateWithSupportingFilesOnly(false);
+    setGeminiCooldownSeconds(0);
   };
 
   // Navigation guards
@@ -2260,7 +2271,7 @@ export default function PublicReports() {
                   OPENROUTER_MODELS.length > 0 &&
                   !!generatedReport?.id
                 }
-                retryCooldown={retryCooldown}
+                geminiCooldownSeconds={geminiCooldownSeconds}
               />
             )}
           </div>

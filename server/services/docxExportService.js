@@ -81,7 +81,7 @@ function formatEcmTitle(project) {
   const title = displayText(project.projectTitle);
   if (!title) return "";
   const number = displayText(project.projectNo);
-  return number ? `ECM ${number} – ${title}` : title;
+  return number ? `ECM ${number} Â– ${title}` : title;
 }
 
 function formatEcmNumber(project) {
@@ -393,7 +393,24 @@ function generateProjectChapter(project) {
       { particular: "Estimated investment", details: formatINR(project.estimatedInvestment) },
       { particular: "Simple payback period", details: project.simplePaybackPeriod },
     ]),
+    heading3("Existing System / Baseline Condition"),
     paragraph(project.existingSystemDescription || project.problemGapIdentified || "The audit team observed an energy-saving opportunity in the current operating condition."),
+    heading3("Problem / Gap Identified"),
+    paragraph(project.problemGapIdentified || "The present operating arrangement indicates avoidable losses, conservative control, or limited demand matching that make this ECM relevant."),
+    heading3("Proposed Energy Conservation Measure"),
+    paragraph(project.proposedProjectDescription || project.proposedIntervention || "The proposed measure improves the identified system through practical engineering intervention and implementation-focused controls refinement."),
+    heading3("Scope of Work"),
+    createTable(
+      [{ key: "srNo", label: "Sr. No." }, { key: "scopeItem", label: "Scope Item" }],
+      project.scopeOfWork || []
+    ),
+    heading3("Key Activities"),
+    createTable(
+      [{ key: "activity", label: "Activity" }, { key: "details", label: "Details" }, { key: "responsibility", label: "Responsibility" }],
+      project.keyActivities || []
+    ),
+    heading3("Rationale for Energy Saving"),
+    paragraph(project.rationaleForEnergySaving || "The recommendation reduces avoidable losses and improves alignment between system demand and energy input."),
     createTable(
       [{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }],
       project.energySavingCalculation || [
@@ -403,6 +420,23 @@ function generateProjectChapter(project) {
         { parameter: "Simple payback", unit: "years", value: project.simplePaybackPeriod },
       ]
     ),
+    heading3("Measurement and Verification Plan"),
+    createTable(
+      [{ key: "parameter", label: "Parameter" }, { key: "baselineMeasurement", label: "Baseline Measurement" }, { key: "postImplementationMeasurement", label: "Post-Implementation Measurement" }],
+      project.measurementVerificationPlan || []
+    ),
+    heading3("Benefits Other Than Energy Saving"),
+    createTable(
+      [{ key: "benefit", label: "Benefit" }, { key: "description", label: "Description" }],
+      project.benefitsOtherThanEnergySaving || []
+    ),
+    heading3("Aspects to be Taken Care Of"),
+    createTable(
+      [{ key: "aspect", label: "Aspect" }, { key: "careRequired", label: "Care Required" }],
+      project.aspectsToBeTakenCareOf || project.precautions || []
+    ),
+    heading3("Conclusion"),
+    paragraph(project.finalConclusion || project.projectConclusion || "This ECM is technically suitable for implementation because it addresses an observed operating inefficiency through a practical and implementation-ready corrective measure."),
     pageBreak(),
   ];
 }
@@ -453,6 +487,11 @@ async function buildCommercialBuildingEnergyAuditDocx(reportData) {
   groupedProjects.forEach((group, index) => {
     const groupProjects = asArray(group.projects);
     children.push(heading2(formatGroupHeading(group, index)));
+    children.push(paragraph(group.summaryParagraph || `This section covers ${groupProjects.length} energy conservation measures under the ${safeText(group.groupTitle)} category.`));
+    children.push(heading3("Group Observation"));
+    children.push(paragraph(group.technicalObservation || "The measures in this group focus on improving system control discipline, reducing avoidable losses, and supporting a more structured implementation roadmap."));
+    children.push(heading3("Implementation Focus"));
+    children.push(paragraph(group.implementationStrategy || "Implementation should combine site verification, detailed engineering, coordinated execution, and post-commissioning performance review."));
     children.push(
       createTable(
         [

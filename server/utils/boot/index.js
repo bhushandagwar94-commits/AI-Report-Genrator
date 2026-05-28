@@ -44,6 +44,10 @@ function bootSSL(app, port = 3001) {
         await PushNotifications.setupPushNotificationService();
         await TelegramBotService.bootIfActive();
         console.log(`Primary server in HTTPS mode listening on port ${port}`);
+        console.log("[SERVER] Backend starting...");
+        console.log("[SERVER] NODE_ENV:", process.env.NODE_ENV);
+        console.log("[SERVER] PORT:", port);
+        console.log("[SERVER] Health endpoint: /api/health");
       })
       .on("error", catchSigTerms);
 
@@ -77,6 +81,10 @@ function bootHTTP(app, port = 3001) {
       await PushNotifications.setupPushNotificationService();
       await TelegramBotService.bootIfActive();
       console.log(`Primary server in HTTP mode listening on port ${port}`);
+      console.log("[SERVER] Backend starting...");
+      console.log("[SERVER] NODE_ENV:", process.env.NODE_ENV);
+      console.log("[SERVER] PORT:", port);
+      console.log("[SERVER] Health endpoint: /api/health");
     })
     .on("error", catchSigTerms);
 

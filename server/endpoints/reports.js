@@ -33,6 +33,7 @@ const {
   buildDeterministicCommercialAuditFallback,
   generateCommercialAuditComponentReport,
 } = require("../services/reportPipeline");
+const { getGeminiApiKeys } = require("../services/geminiProviderService");
 
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
@@ -2202,10 +2203,13 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
         const id = parseInt(request.params.id, 10);
         const user = await userFromSession(request, response);
         
-        console.log("[AI ENHANCE] Provider:", process.env.AI_PROVIDER);
-        console.log("[AI ENHANCE] Gemini key present:", Boolean(process.env.GEMINI_API_KEY));
-        console.log("[AI ENHANCE] OpenRouter key present:", Boolean(process.env.OPENROUTER_API_KEY));
-        console.log("[AI ENHANCE] Model:", process.env.GEMINI_MODEL || process.env.OPENROUTER_MODELS);
+        console.log("[AI PROVIDER CONFIG]", {
+          aiProvider: process.env.AI_PROVIDER,
+          geminiKeyCount: getGeminiApiKeys().length,
+          geminiModel: process.env.GEMINI_MODEL,
+          openRouterKeyPresent: Boolean(process.env.OPENROUTER_API_KEY),
+          openRouterModels: process.env.OPENROUTER_MODELS,
+        });
 
         const maxAiGenerationTotalMs = Number(process.env.MAX_AI_GENERATION_TOTAL_MS || 120000);
         const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 15000);
@@ -2262,6 +2266,7 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
         let accuracyResult = deterministicArtifacts.accuracyResult;
 
         // removed duplicate providerAttempts
+        const aiProviderAttempted = "gemini";
         const attempt = {
           provider: "gemini",
           model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
@@ -2348,24 +2353,35 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
             aiEnhancedFields = componentResult?.aiEnhancedFields || [];
             aiDroppedFields = componentResult?.aiDroppedFields || [];
             
-            attempt.status = "failed";
+            attempt.status = componentResult?.aiEnhancementStatus === "quota_exceeded" ? "quota_exceeded" : "failed";
             attempt.reason = exactFailureReason;
             attempt.error = exactFailureReason;
+            attempt.retryAfterSeconds = retryAfterSeconds || undefined;
             attempt.finishedAt = new Date().toISOString();
 
-            providerWarning = "AI enhancement failed. Deterministic report used.";
+            providerWarning = componentResult?.aiEnhancementStatus === "quota_exceeded"
+              ? "Gemini free quota exceeded. Your report is still ready."
+              : "AI enhancement failed. Deterministic report used.";
           }
         } catch (error) {
           exactFailureReason =
             error?.message ||
             "Gemini enhancement failed without provider error details";
 
-          attempt.status = "failed";
+          attempt.status = error?.isQuotaExceeded ? "quota_exceeded" : "failed";
           attempt.reason = exactFailureReason;
           attempt.error = exactFailureReason;
+          attempt.retryAfterSeconds = error?.retryAfterSeconds || undefined;
           attempt.finishedAt = new Date().toISOString();
 
-          providerWarning = "AI enhancement failed. Deterministic report used.";
+          if (error?.isQuotaExceeded) {
+            aiEnhancementStatus = "quota_exceeded";
+            retryAfterSeconds = error?.retryAfterSeconds || 60;
+            exactFailureReason = `Gemini free quota exceeded. Retry after ${retryAfterSeconds} seconds.`;
+            providerWarning = "Gemini free quota exceeded. Your report is still ready.";
+          } else {
+            providerWarning = "AI enhancement failed. Deterministic report used.";
+          }
           console.log("[AI ENHANCE GEMINI ERROR]", exactFailureReason);
         }
 
@@ -2423,7 +2439,7 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
             aiDroppedFields,
             providerWarning: providerWarning || undefined,
             warnings: providerWarning ? [providerWarning] : [],
-            aiProviderAttempted: process.env.AI_PROVIDER || "openrouter",
+            aiProviderAttempted,
             aiFailureReason
           },
         });
@@ -2530,6 +2546,17 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
         const accuracyResult = calculateReportAccuracyScore(reportData);
         const allowDraft = request.query.allowDraft === "true";
         const isDev = process.env.NODE_ENV === "development" || process.env.VITE_ALLOW_DRAFT_EXPORT === "true";
+
+        console.log("[EXPORT QC CHECK]", {
+          validEcms: qcResult.summary.validEcmCount ?? qcResult.summary.projectCount,
+          groups: qcResult.summary.groupCount,
+          duplicateTitles: qcResult.summary.duplicateTitleCount,
+          invalidTitles: qcResult.summary.invalidTitleCount,
+          hardErrors: qcResult.summary.hardErrorCount,
+          warnings: qcResult.summary.warningCount,
+          requiredReview: !qcResult.qcPassed,
+          shouldBlockExport: !qcResult.qcPassed
+        });
 
         if (!qcResult.qcPassed || !accuracyResult.passed) {
           console.error(`[QC FAILED] Report ID: ${id}`, JSON.stringify({ qcResult, accuracyResult }, null, 2));

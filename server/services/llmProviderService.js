@@ -628,7 +628,16 @@ function runReportQC(reportData) {
     });
   }
 
-  const qcPassed = qcErrors.length === 0;
+  const hardErrorCount = qcErrors.length;
+  
+  const shouldBlockExport = 
+    hardErrorCount > 0 || 
+    validTitleCount === 0 || 
+    groupedProjects.length === 0 || 
+    !reportData || 
+    !reportData.projects?.length;
+
+  const qcPassed = !shouldBlockExport;
 
   return {
     qcPassed,
@@ -1076,6 +1085,14 @@ function buildDeterministicProject(project, index = 0) {
             "Ensure safe shutdown and isolation before modification work.",
             "Verify mechanical and electrical compatibility before commissioning.",
           ],
+      aspectsToBeTakenCareOf: asArray(project.aspectsToBeTakenCareOf).length
+        ? asArray(project.aspectsToBeTakenCareOf)
+        : (asArray(project.precautions).length
+            ? asArray(project.precautions)
+            : [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning.",
+              ]),
       measurementVerificationPlan: asArray(project.measurementVerificationPlan).length
         ? asArray(project.measurementVerificationPlan)
         : [{ step: 1, action: narrative.mv }],
@@ -1106,7 +1123,7 @@ function buildDeterministicProject(project, index = 0) {
           ],
       finalConclusion: safeReportValue(project.finalConclusion) !== "Data required"
         ? safeReportValue(project.finalConclusion)
-        : `This ECM is recommended for implementation based on the expected annual energy saving of ${safeReportValue(project.expectedEnergySaving)} and estimated payback of ${safeReportValue(project.simplePaybackPeriod)}.`,
+        : "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
       carbonFootprint: {
         ...(project.carbonFootprint && typeof project.carbonFootprint === "object" ? project.carbonFootprint : {}),
         annualEnergySaving: safeReportValue(project.expectedEnergySaving),
