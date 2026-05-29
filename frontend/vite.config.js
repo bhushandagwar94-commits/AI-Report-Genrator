@@ -19,7 +19,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: "localhost",
+    host: "0.0.0.0",
     proxy: {
       "/api": {
         target: "http://localhost:3001",
@@ -49,12 +49,12 @@ export default defineConfig({
         find: "@",
         replacement: fileURLToPath(new URL("./src", import.meta.url))
       },
+      { find: "process", replacement: "process/browser" },
+      { find: "stream", replacement: "stream-browserify" },
+      { find: "zlib", replacement: "browserify-zlib" },
+      { find: "util", replacement: "util" },
       {
-        process: "process/browser",
-        stream: "stream-browserify",
-        zlib: "browserify-zlib",
-        util: "util",
-        find: /^~.+/,
+        find: /^~(.+)/,
         replacement: (val) => {
           return val.replace(/^~/, "")
         }

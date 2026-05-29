@@ -102,6 +102,24 @@ export interface CommercialBuildingProject {
   }[];
   finalConclusion?: ReportValue;
   images?: { src?: ReportValue; caption?: ReportValue }[];
+
+  // 16 Detailed Consultant-Grade Sections
+  existingCondition?: ReportValue;
+  systemDescription?: ReportValue;
+  engineeringAssessment?: ReportValue;
+  rootCauseAnalysis?: ReportValue;
+  recommendedMeasure?: ReportValue;
+  technicalMethodology?: ReportValue;
+  detailedKeyActivities?: Record<string, ReportValue>[];
+  rationaleForSavings?: ReportValue;
+  energyImpact?: Record<string, ReportValue>[];
+  financialImpact?: Record<string, ReportValue>[];
+  risksAndMitigation?: Record<string, ReportValue>[];
+  implementationConsiderations?: ReportValue;
+  monitoringAndVerificationPlan?: Record<string, ReportValue>[];
+  oAndMRequirements?: ReportValue;
+  implementationTimeline?: Record<string, ReportValue>[];
+  conclusion?: ReportValue;
 }
 
 export interface CommercialBuildingEnergyAuditData {
@@ -268,8 +286,10 @@ function removeDuplicateGroupNo(title: ReportValue, groupNo: string) {
 }
 
 const showFieldFlags =
-  import.meta.env.DEV &&
-  import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
+  // @ts-ignore
+  (import.meta as any).env?.DEV &&
+  // @ts-ignore
+  (import.meta as any).env?.VITE_SHOW_FIELD_FLAGS === "true";
 
 function getFieldFlag(data: CommercialBuildingEnergyAuditData, path: string) {
   return data?.fieldFlags?.[path] || null;
@@ -486,8 +506,8 @@ function ExecutiveSummaryPage({ data }: { data: CommercialBuildingEnergyAuditDat
     totalInvestment: inv,
     totalAnnualSaving: sav,
     totalEnergySaving: energy,
-    weightedPayback: es.simplePaybackPeriod || weightedPayback(projects),
-  }]).map((group, index) => ({
+    weightedPayback: String(es.simplePaybackPeriod || weightedPayback(projects)),
+  } as CommercialBuildingProjectGroup]).map((group, index) => ({
     category: formatGroupHeading(group, index).replace(/^3\.\d+\s*/, ""),
     count: asArray(group.projects).length,
     investment: formatINR(group.totalInvestment || totalInvestment(asArray(group.projects))),
@@ -720,104 +740,90 @@ function ProjectChapterPage({ project }: { project: CommercialBuildingProject })
     <section className="report-page" style={pageStyle}>
       <SectionHeader level={2} title={ecmTitle} />
 
-      <SectionHeader level={3} title="Project Summary" />
-      <ReportTable columns={[{ key: "particular", label: "Particular" }, { key: "details", label: "Details" }]} rows={[
-        { particular: "Project title", details: project.projectTitle },
-        { particular: "Project number", details: formatEcmNumber(project) || project.projectNo },
-        { particular: "System", details: project.system },
-        { particular: "Location", details: project.location },
-        { particular: "Equipment covered", details: project.equipmentCovered },
-        { particular: "Existing operating condition", details: project.existingOperatingCondition },
-        { particular: "Proposed intervention", details: project.proposedIntervention },
-        { particular: "Expected energy saving", details: project.expectedEnergySaving },
-        { particular: "Expected annual cost saving", details: formatINR(project.expectedAnnualCostSaving) },
-        { particular: "Estimated investment", details: formatINR(project.estimatedInvestment) },
-        { particular: "Simple payback period", details: project.simplePaybackPeriod },
-        { particular: "Implementation duration", details: project.implementationDuration },
-        { particular: "Implementation priority", details: project.implementationPriority },
+      <SectionHeader level={3} title="1. Existing Condition" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.existingCondition || project.existingSystemDescription || "Data required for Existing Condition.")}
+      </p>
+
+      <SectionHeader level={3} title="2. System Description" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.systemDescription || "Data required for System Description.")}
+      </p>
+
+      <SectionHeader level={3} title="3. Engineering Assessment" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.engineeringAssessment || project.problemGapIdentified || "Data required for Engineering Assessment.")}
+      </p>
+
+      <SectionHeader level={3} title="4. Root Cause Analysis" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.rootCauseAnalysis || "Data required for Root Cause Analysis.")}
+      </p>
+
+      <SectionHeader level={3} title="5. Recommended Measure" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.recommendedMeasure || project.proposedProjectDescription || "Data required for Recommended Measure.")}
+      </p>
+
+      <SectionHeader level={3} title="6. Technical Methodology" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.technicalMethodology || "Data required for Technical Methodology.")}
+      </p>
+
+      <SectionHeader level={3} title="7. Detailed Key Activities" />
+      <ReportTable columns={[{ key: "activity", label: "Activity" }, { key: "description", label: "Description" }, { key: "responsibility", label: "Responsibility" }]} rows={project.detailedKeyActivities || project.keyActivities || [
+        { activity: "Site Verification", description: "Confirm constraints", responsibility: "Client / Consultant" },
+        { activity: "Engineering", description: "Design finalization", responsibility: "Contractor" },
+        { activity: "Execution", description: "Installation & testing", responsibility: "Contractor" }
       ]} />
 
-      <SectionHeader level={3} title="Existing System Description" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.existingSystemDescription || `The existing system consists of ${safeValue(project.equipmentCovered)}. The system is presently operated through ${safeValue(project.existingOperatingCondition)}. During the audit, it was observed that the present operation does not fully match the actual load variation, resulting in avoidable energy consumption.`)}</p>
+      <SectionHeader level={3} title="8. Rationale for Savings" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.rationaleForSavings || project.rationaleForEnergySaving || "Data required for Rationale for Savings.")}
+      </p>
 
-      <SectionHeader level={3} title="Baseline Data and Measurements" />
-      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.baselineData || [
-        { parameter: "Equipment rating", unit: "kW / TR / HP" },
-        { parameter: "Quantity", unit: "Nos." },
-        { parameter: "Operating hours", unit: "hours/day" },
-        { parameter: "Baseline annual consumption", unit: "kWh/year" },
-      ]} />
-      <ReportTable columns={[{ key: "measurement", label: "Measurement" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.measurementData || [
-        { measurement: "Voltage", unit: "V" },
-        { measurement: "Current", unit: "A" },
-        { measurement: "Measured power", unit: "kW" },
-      ]} />
-
-      <SectionHeader level={3} title="Problem / Gap Identified" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.problemGapIdentified || "The audit team observed that the existing system has potential for energy saving due to fixed-speed operation, over-capacity, higher operating hours, poor control, inefficient equipment, or absence of automation.")}</p>
-      <ReportTable columns={[{ key: "system", label: "System" }, { key: "typicalGap", label: "Typical Gap" }]} rows={project.typicalGapTable || [
-        { system: "System under review", typicalGap: "Control and efficiency improvement opportunity identified" },
-      ]} />
-
-      <SectionHeader level={3} title="Proposed Project" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.proposedProjectDescription || `It is proposed to implement ${safeValue(project.proposedIntervention)} for ${safeValue(project.equipmentCovered)}. The project includes supply, installation, testing and commissioning of major components and controls.`)}</p>
-      <ReportTable columns={[{ key: "srNo", label: "Sr. No." }, { key: "scopeItem", label: "Scope Item" }]} rows={project.scopeOfWork || [
-        { srNo: 1, scopeItem: "Detailed site measurement and final engineering" },
-        { srNo: 2, scopeItem: "Supply of equipment / controller / motor / accessories" },
-        { srNo: 3, scopeItem: "Installation and integration with existing system" },
-        { srNo: 4, scopeItem: "Testing and commissioning" },
-      ]} />
-
-      <SectionHeader level={3} title="Key Activities for Implementation" />
-      <ReportTable columns={[{ key: "activity", label: "Activity" }, { key: "details", label: "Details" }, { key: "responsibility", label: "Responsibility" }]} rows={project.keyActivities || [
-        { activity: "Site verification", details: "Confirm equipment rating, location and operating condition", responsibility: "SEE-Tech + Client" },
-        { activity: "Design finalization", details: "Finalize technical specifications and control logic", responsibility: "SEE-Tech" },
-        { activity: "Installation", details: "Install system with minimum disturbance", responsibility: "SEE-Tech" },
-        { activity: "Measurement", details: "Record before and after performance", responsibility: "SEE-Tech" },
-      ]} />
-
-      <SectionHeader level={3} title="Rationale for Energy Saving" />
-      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>{safeValue(project.rationaleForEnergySaving || "Energy will reduce through improved controls, reduced losses, and higher equipment efficiency.")}</p>
-
-      <SectionHeader level={3} title="Energy Saving Calculation" />
-      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.energySavingCalculation || [
+      <SectionHeader level={3} title="9. Energy Impact" />
+      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.energyImpact || project.energySavingCalculation || [
         { parameter: "Annual energy saving", unit: "kWh/year", value: project.expectedEnergySaving },
-        { parameter: "Annual cost saving", unit: "INR/year", value: project.expectedAnnualCostSaving },
+      ]} />
+
+      <SectionHeader level={3} title="10. Financial Impact" />
+      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={project.financialImpact || [
+        { parameter: "Expected annual cost saving", unit: "INR/year", value: project.expectedAnnualCostSaving },
         { parameter: "Estimated investment", unit: "INR", value: project.estimatedInvestment },
         { parameter: "Simple payback", unit: "years", value: project.simplePaybackPeriod },
       ]} />
 
-      <SectionHeader level={3} title="Carbon Footprint" />
-      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "value", label: "Value" }]} rows={[
-        { parameter: "Annual energy saving", value: project.carbonFootprint?.annualEnergySaving || project.expectedEnergySaving },
-        { parameter: "Grid emission factor", value: project.carbonFootprint?.emissionFactor || "Data required" },
-        { parameter: "Estimated CO2 reduction", value: project.carbonFootprint?.estimatedCO2Reduction || "Data required" },
+      <SectionHeader level={3} title="11. Risks & Mitigation" />
+      <ReportTable columns={[{ key: "risk", label: "Risk" }, { key: "mitigation", label: "Mitigation Strategy" }]} rows={project.risksAndMitigation || [
+        { risk: "Operational downtime", mitigation: "Plan execution during scheduled shutdowns." },
+        { risk: "Performance shortfall", mitigation: "Establish strict M&V guidelines post-commissioning." }
       ]} />
 
-      <SectionHeader level={3} title="Technical Specifications" />
-      <ReportTable columns={[{ key: "item", label: "Item" }, { key: "specification", label: "Specification" }]} rows={project.technicalSpecifications || [
-        { item: "Equipment / technology" },
-        { item: "Capacity" },
-        { item: "Quantity" },
-      ]} />
-
-      <SectionHeader level={3} title="Measurement and Verification Plan" />
-      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "baselineMeasurement", label: "Baseline Measurement" }, { key: "postImplementationMeasurement", label: "Post-Implementation Measurement" }]} rows={project.measurementVerificationPlan || [
-        { parameter: "Power consumption", baselineMeasurement: "kW before project", postImplementationMeasurement: "kW after project" },
-        { parameter: "Energy consumption", baselineMeasurement: "kWh/year baseline", postImplementationMeasurement: "kWh/year after project" },
-      ]} />
-
-      <SectionHeader level={3} title="Aspects to be Taken Care Of" />
-      <ReportTable columns={[{ key: "aspect", label: "Aspect" }, { key: "careRequired", label: "Care Required" }]} rows={project.aspectsToBeTakenCareOf || project.precautions || [
-        { aspect: "Implementation planning", careRequired: "Plan shutdown windows, access requirements, and coordination with production or utility operations before execution." },
-        { aspect: "Safety and compatibility", careRequired: "Verify mechanical, electrical, and control compatibility and complete all isolation and safety checks before commissioning." },
-        { aspect: "Operator readiness", careRequired: "Provide operator orientation on revised controls, alarm conditions, and routine checks required to sustain performance." },
-        { aspect: "Performance verification", careRequired: "Confirm sensor health, calibration status, and post-implementation monitoring arrangements before project closure." },
-      ]} />
-
-      <SectionHeader level={3} title="Conclusion" />
+      <SectionHeader level={3} title="12. Implementation Considerations" />
       <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
-        {safeValue(project.finalConclusion || project.projectConclusion || "This project is technically suitable for implementation because it addresses a clearly observed operating inefficiency, aligns with the facility's energy performance improvement roadmap, and can be integrated through disciplined engineering, commissioning, and post-implementation verification.")}
+        {safeValue(project.implementationConsiderations || "Data required for Implementation Considerations.")}
+      </p>
+
+      <SectionHeader level={3} title="13. Monitoring & Verification Plan" />
+      <ReportTable columns={[{ key: "parameter", label: "Parameter" }, { key: "baseline", label: "Baseline" }, { key: "postImplementation", label: "Post-Implementation" }]} rows={project.monitoringAndVerificationPlan || project.measurementVerificationPlan || [
+        { parameter: "Energy consumption", baseline: "Historical data", postImplementation: "Continuous monitoring" },
+      ]} />
+
+      <SectionHeader level={3} title="14. O&M Requirements" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.oAndMRequirements || "Data required for O&M Requirements.")}
+      </p>
+
+      <SectionHeader level={3} title="15. Implementation Timeline" />
+      <ReportTable columns={[{ key: "phase", label: "Phase" }, { key: "duration", label: "Duration" }]} rows={project.implementationTimeline || project.implementationDurationTable || [
+        { phase: "Engineering and Procurement", duration: "TBD" },
+        { phase: "Installation and Commissioning", duration: "TBD" },
+      ]} />
+
+      <SectionHeader level={3} title="16. Conclusion" />
+      <p style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+        {safeValue(project.conclusion || project.finalConclusion || project.projectConclusion || "Data required for Conclusion.")}
       </p>
     </section>
   );

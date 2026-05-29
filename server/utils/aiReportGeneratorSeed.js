@@ -5,15 +5,23 @@ const WORKSPACE_SLUG = "commercial-building-energy-audit";
 
 const DEFAULT_EXTRACTION_PROMPT = `Extract usable energy audit data from uploaded Excel sheets and supporting documents.
 Focus on ECM/project rows, project title, system, investment, annual cost saving, energy saving, payback, implementation duration, and CO2/carbon reduction fields.
-Return only structured facts found in the source files. Use "Data required" for missing values.`;
+CRITICAL RULES:
+1. Do NOT modify, estimate, infer, extrapolate, calculate, round, or replace any numerical values provided in the input.
+2. All numerical values must be reproduced exactly as supplied.
+3. Return only structured facts found in the source files. Use "Data required" for missing values.`;
 
 const DEFAULT_JSON_GENERATION_PROMPT = `Generate JSON for the CommercialBuildingEnergyAuditTemplate.tsx React report.
 Use the Detailed Energy Audit Report structure and create one project chapter for each ECM/project.
-Each project chapter must include sections 1 through 18: Project Summary, Existing System Description, Baseline Data and Measurements, Problem / Gap Identified, Proposed Project, Key Activities for Implementation, Rationale for Energy Saving, Energy Saving Calculation, Carbon Footprint, Key Metrics, Technical Specifications, Schematic / Conceptual Framework, Implementation Duration, Precautions / Aspects to be Taken Care Of, Measurement and Verification Plan, Benefits Other Than Energy Saving, Case Studies, and Conclusion.
-Do not fabricate values. Use "Data required" for missing values.`;
+Each project chapter must contain exactly these 16 sections: Existing Condition, System Description, Engineering Assessment, Root Cause Analysis, Recommended Measure, Technical Methodology, Detailed Key Activities, Rationale for Savings, Energy Impact, Financial Impact, Risks & Mitigation, Implementation Considerations, Monitoring & Verification Plan, O&M Requirements, Implementation Timeline, Conclusion.
+
+CRITICAL RULES FOR GENERATION:
+1. Consultant-Grade Writing: Generate narrative text using professional consulting language. Read like a professional energy audit report prepared by an experienced energy consultant rather than a machine-generated summary. Add richer chapter introductions and transitions.
+2. High Detail: Increase explanation depth by 3-5x compared to standard summaries. Add category-level summaries before ECM details, and management-level interpretation of findings. Report length should increase substantially while remaining factually grounded in uploaded data.
+3. Strict Numerical Fidelity: Do NOT modify, estimate, infer, extrapolate, calculate, round, or replace any numerical values provided in the input. All numerical values must be reproduced exactly as supplied. Never fabricate: energy savings, investment, payback, production, baseline consumption, operating hours, tariffs.
+4. Missing Data: If a section cannot be populated because data is missing, clearly state the limitation (e.g., "Data required for this assessment") and do not invent information. Use information available in audit data, equipment data, utility data, and recommendation sheets.`;
 
 const DEFAULT_VALIDATION_PROMPT = `Validate that generated report JSON has reportInfo, executiveSummary, buildingProfile, and projects.
-Each project should include enough ECM data to render the TSX template, including carbonFootprint, caseStudies, and finalConclusion when available.
+Each project must include the 16 mandatory ECM sections to render the TSX template.
 Missing optional values must remain renderable as "Data required".`;
 
 function anythingLlmConfigured() {
@@ -43,23 +51,21 @@ function commercialTemplateData() {
       missingValueRule: "Use Data required for unavailable values.",
       templateRule: "Render with the Commercial Building Energy Audit TSX template. Do not use LaTeX.",
       projectChapterSections: [
-        "Project Summary",
-        "Existing System Description",
-        "Baseline Data and Measurements",
-        "Problem / Gap Identified",
-        "Proposed Project",
-        "Key Activities for Implementation",
-        "Rationale for Energy Saving",
-        "Energy Saving Calculation",
-        "Carbon Footprint",
-        "Key Metrics",
-        "Technical Specifications",
-        "Schematic / Conceptual Framework",
-        "Implementation Duration",
-        "Precautions / Aspects to be Taken Care Of",
-        "Measurement and Verification Plan",
-        "Benefits Other Than Energy Saving",
-        "Case Studies",
+        "Existing Condition",
+        "System Description",
+        "Engineering Assessment",
+        "Root Cause Analysis",
+        "Recommended Measure",
+        "Technical Methodology",
+        "Detailed Key Activities",
+        "Rationale for Savings",
+        "Energy Impact",
+        "Financial Impact",
+        "Risks & Mitigation",
+        "Implementation Considerations",
+        "Monitoring & Verification Plan",
+        "O&M Requirements",
+        "Implementation Timeline",
         "Conclusion",
       ],
     }),
@@ -76,10 +82,29 @@ function commercialTemplateData() {
             type: "object",
             properties: {
               projectTitle: { type: ["string", "number", "boolean", "null"] },
+              projectNo: { type: ["string", "number", "boolean", "null"] },
               system: { type: ["string", "number", "boolean", "null"] },
               expectedEnergySaving: { type: ["string", "number", "boolean", "null"] },
               expectedAnnualCostSaving: { type: ["string", "number", "boolean", "null"] },
               estimatedInvestment: { type: ["string", "number", "boolean", "null"] },
+              simplePaybackPeriod: { type: ["string", "number", "boolean", "null"] },
+              implementationPriority: { type: ["string", "number", "boolean", "null"] },
+              existingCondition: { type: ["string", "number", "boolean", "null"] },
+              systemDescription: { type: ["string", "number", "boolean", "null"] },
+              engineeringAssessment: { type: ["string", "number", "boolean", "null"] },
+              rootCauseAnalysis: { type: ["string", "number", "boolean", "null"] },
+              recommendedMeasure: { type: ["string", "number", "boolean", "null"] },
+              technicalMethodology: { type: ["string", "number", "boolean", "null"] },
+              detailedKeyActivities: { type: "array", items: { type: "object" } },
+              rationaleForSavings: { type: ["string", "number", "boolean", "null"] },
+              energyImpact: { type: "array", items: { type: "object" } },
+              financialImpact: { type: "array", items: { type: "object" } },
+              risksAndMitigation: { type: "array", items: { type: "object" } },
+              implementationConsiderations: { type: ["string", "number", "boolean", "null"] },
+              monitoringAndVerificationPlan: { type: "array", items: { type: "object" } },
+              oAndMRequirements: { type: ["string", "number", "boolean", "null"] },
+              implementationTimeline: { type: "array", items: { type: "object" } },
+              conclusion: { type: ["string", "number", "boolean", "null"] },
               carbonFootprint: {
                 type: "object",
                 properties: {
@@ -153,6 +178,24 @@ Project chapters use dynamic chapter numbering. Project 1 renders 3.1 to 3.18, P
           expectedEnergySaving: "Data required",
           expectedAnnualCostSaving: "Data required",
           estimatedInvestment: "Data required",
+          simplePaybackPeriod: "Data required",
+          implementationPriority: "Data required",
+          existingCondition: "Data required",
+          systemDescription: "Data required",
+          engineeringAssessment: "Data required",
+          rootCauseAnalysis: "Data required",
+          recommendedMeasure: "Data required",
+          technicalMethodology: "Data required",
+          detailedKeyActivities: [],
+          rationaleForSavings: "Data required",
+          energyImpact: [],
+          financialImpact: [],
+          risksAndMitigation: [],
+          implementationConsiderations: "Data required",
+          monitoringAndVerificationPlan: [],
+          oAndMRequirements: "Data required",
+          implementationTimeline: [],
+          conclusion: "Data required",
           carbonFootprint: {
             annualEnergySaving: "Data required",
             emissionFactor: "Data required",
