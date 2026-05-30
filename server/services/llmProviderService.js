@@ -135,12 +135,25 @@ function normalizeReportForExport(reportData) {
     .filter((project) => project && typeof project === "object" && !Array.isArray(project.projects))
     .map((project, index) => normalizeProjectForExport(project, index));
 
+  const projectMap = new Map();
+  cleanedProjects.forEach((p) => {
+    if (p && p.projectNo) {
+      projectMap.set(p.projectNo, p);
+    }
+  });
+
   const normalizedGroups = groupedProjects.length
     ? groupedProjects.map((group) => ({
         ...(group && typeof group === "object" ? group : {}),
         groupTitle: safeReportValue(group?.groupTitle || group?.title),
         groupNo: safeReportValue(group?.groupNo || group?.no),
-        projects: asArray(group?.projects).map((project, index) => normalizeProjectForExport(project, index)),
+        projects: asArray(group?.projects).map((project, index) => {
+          const normProj = normalizeProjectForExport(project, index);
+          if (normProj.projectNo && projectMap.has(normProj.projectNo)) {
+            return { ...normProj, ...projectMap.get(normProj.projectNo) };
+          }
+          return normProj;
+        }),
       }))
     : buildProjectGroups(cleanedProjects);
 

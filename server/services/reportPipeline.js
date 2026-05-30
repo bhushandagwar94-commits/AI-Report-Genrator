@@ -378,6 +378,14 @@ function findUnapprovedNumbers(text, approvedTokens) {
 
   return matches.filter((m) => {
     const clean = m.replace(/[₹,\s%]/g, "");
+    
+    // Ignore small integers (<=12) and valid years (1990-2100)
+    const num = Number(clean);
+    if (!Number.isNaN(num) && Number.isInteger(num)) {
+      if (num <= 12) return false;
+      if (num >= 1990 && num <= 2100) return false;
+    }
+
     return !approvedTokens.has(clean) && !approvedTokens.has(m.trim());
   });
 }
@@ -571,7 +579,7 @@ function buildSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageM
         ])
       : []),
     ...(Array.isArray(imageMetadata) ? imageMetadata.map((image) => image?.caption || image?.placementSection) : []),
-    ...(Array.isArray(uploadedFiles) ? uploadedFiles.map((file) => file?.originalname || file?.filename) : []),
+    // Filenames are explicitly excluded to prevent AI from mentioning specific files like .xlsx in the report
   ]
     .map((item) => normalizeWhitespace(item))
     .filter(Boolean)
@@ -582,15 +590,12 @@ function buildSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageM
 }
 
 function buildUploadedFileRoleSummary(uploadedFiles = []) {
-  return (uploadedFiles || [])
-    .map((file) => {
-      const name = normalizeWhitespace(file?.originalname || file?.filename || "");
-      const role = normalizeWhitespace(file?.role || file?.classification || file?.documentRole || "");
-      if (!name) return "";
-      return role ? `${name} (${role})` : name;
-    })
-    .filter(Boolean)
-    .slice(0, 12);
+  return [
+    "Energy consumption records",
+    "Equipment information",
+    "Operational data",
+    "ECM calculations"
+  ];
 }
 
 function buildCompactSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageMetadata = [] }) {
@@ -1022,28 +1027,176 @@ function buildExcelCalculationContext(baseReport, extractedExcelData = {}) {
   const groupedProjects = Array.isArray(baseReport?.groupedProjects) ? baseReport.groupedProjects : [];
   const projects = Array.isArray(baseReport?.projects) ? baseReport.projects : [];
 
+  const calcFallback = "[Calculation pending due to missing input data]";
+
   return {
     projects,
     groupedProjects,
     portfolioTotals: {
-      totalEnergySaving: baseReport?.executiveSummary?.totalEnergySavingPotential ?? 0,
-      totalAnnualCostSaving: baseReport?.executiveSummary?.totalAnnualCostSavingPotential ?? 0,
-      totalEstimatedInvestment: baseReport?.executiveSummary?.totalEstimatedInvestment ?? 0,
-      averagePaybackPeriod: baseReport?.executiveSummary?.simplePaybackPeriod ?? "Data required",
-      totalCO2Reduction: baseReport?.executiveSummary?.co2ReductionPotential ?? "Data required",
+      totalEnergySaving: baseReport?.executiveSummary?.totalEnergySavingPotential ?? calcFallback,
+      totalAnnualCostSaving: baseReport?.executiveSummary?.totalAnnualCostSavingPotential ?? calcFallback,
+      totalEstimatedInvestment: baseReport?.executiveSummary?.totalEstimatedInvestment ?? calcFallback,
+      averagePaybackPeriod: baseReport?.executiveSummary?.simplePaybackPeriod ?? calcFallback,
+      totalCO2Reduction: baseReport?.executiveSummary?.co2ReductionPotential ?? calcFallback,
     },
     groupTotals: groupedProjects.map((group) => ({
       groupNo: group.groupNo,
       groupTitle: group.groupTitle,
       projectCount: Array.isArray(group.projects) ? group.projects.length : 0,
-      totalInvestment: group.totalInvestment,
-      totalSaving: group.totalAnnualSaving,
-      totalEnergySaving: group.totalEnergySaving,
-      averagePayback: group.weightedPayback,
+      totalInvestment: group.totalInvestment ?? calcFallback,
+      totalSaving: group.totalAnnualSaving ?? calcFallback,
+      totalEnergySaving: group.totalEnergySaving ?? calcFallback,
+      averagePayback: group.weightedPayback ?? calcFallback,
     })),
-    annualElectricityConsumption: extractedExcelData?.annualElectricityConsumption || "Data required",
-    annualElectricityCost: extractedExcelData?.annualElectricityCost || "Data required",
-    averageTariff: extractedExcelData?.averageTariff || "Data required",
+    annualElectricityConsumption: extractedExcelData?.annualElectricityConsumption || calcFallback,
+    annualElectricityCost: extractedExcelData?.annualElectricityCost || calcFallback,
+    averageTariff: extractedExcelData?.averageTariff || calcFallback,
+  };
+}
+
+function classifyEcmType(project) {
+  const text = `${project?.projectTitle || ""} ${project?.equipmentCovered || ""} ${project?.projectActivitiesText || ""} ${project?.system || ""}`.toLowerCase();
+
+  // Strict priority based on user requirements
+  if (text.includes("exhaust heat recovery") || text.includes("heat recovery") || text.includes("waste heat")) return "heat_recovery";
+  if (text.includes("insulation") && (text.includes("hot") || text.includes("duct") || text.includes("pipe") || text.includes("thermal"))) return "thermal_insulation";
+  if (text.includes("band heater") || text.includes("ir heater")) return "ir_heater_or_band_heater_replacement";
+  if (text.includes("servo") || text.includes("hydraulic")) return "servo_hydraulic_retrofit";
+  if (text.includes("apfc") || text.includes("power factor")) return "apfc_power_factor_correction";
+  if (text.includes("booster compressor")) return "booster_compressor_automation";
+  if (text.includes("compressed air")) return "compressed_air_management";
+  if (text.includes("ct fan") || text.includes("cooling tower fan") || (text.includes("ct no.") && text.includes("fan"))) return "cooling_tower_fan_upgrade";
+  if (text.includes("ahu") && text.includes("plug fan")) return "ahu_plug_fan_optimization";
+  if (text.includes("free cooling") || text.includes("chiller bypass")) return "free_cooling_chiller_bypass";
+  if (text.includes("chiller") && text.includes("kw/tr")) return "chiller_kw_tr_optimization";
+  if (text.includes("ie5") || text.includes("pmsm") || text.includes("motor retrofit")) return "motor_retrofit_ie5_pmsm";
+  if (text.includes("cooling system") || text.includes("cooling tower") || text.includes("chiller") || text.includes("ct segregation")) return "cooling_system_optimization";
+  if (text.includes("pump") || text.includes("vfd") || text.includes("flow optimization")) return "pump_flow_optimization";
+  if (text.includes("ahu") || text.includes("fan")) return "ahu_plug_fan_optimization";
+  if (text.includes("blower") || text.includes("direct drive")) return "blower_direct_drive_retrofit";
+  if (text.includes("grinder")) return "grinder_motor_retrofit";
+  if (text.includes("lighting") || text.includes("led")) return "lighting_efficiency";
+  if (text.includes("boiler") || text.includes("steam boiler")) return "boiler_thermal_efficiency";
+  if (text.includes("condensate") || text.includes("steam trap") || text.includes("steam")) return "steam_condensate_recovery";
+  if (text.includes("process heating") || text.includes("heating")) return "process_heating_optimization";
+
+  return "general_ecm";
+}
+
+function buildIndustrialEcmDeterministicTemplate(project, ecmType, supportingNotes, fallbackText) {
+  const equip = project.equipmentCovered || project.system || "the associated equipment";
+  const title = project.projectTitle || "this energy conservation measure";
+  const system = project.system || "the industrial system";
+
+  const isGeneric = (val) => {
+    if (!val) return true;
+    const lower = val.toLowerCase();
+    return lower.includes("present operating approach results in avoidable energy losses") ||
+           lower.includes("engineering gap in optimal energy performance") ||
+           lower.includes("the existing system operates under current process conditions") ||
+           lower.includes("opportunities for measurable energy-performance improvement") ||
+           lower.includes("this project involves upgrading") ||
+           lower.includes("the audit identified an operating gap") ||
+           lower.includes("data required") ||
+           lower.includes("to be updated after site data verification");
+  };
+
+  const getStr = (val) => (val && typeof val === "string" && val.trim().length > 0 && !isGeneric(val)) ? val.trim() : null;
+
+  // Input data mapping
+  const inputExisting = getStr(supportingNotes.existingConditionNotes) || getStr(project.baselineDetails) || getStr(project.existingOperatingCondition) || getStr(project.existingSystemDescription);
+  const inputProposed = getStr(supportingNotes.implementationNotes) || getStr(project.projectActivitiesText) || getStr(project.proposedIntervention) || getStr(project.proposedProjectDescription);
+  const inputRationale = getStr(project.rationaleForEnergySaving) || getStr(supportingNotes.implementationNotes);
+  const inputProblem = getStr(project.problemGapIdentified) || getStr(supportingNotes.existingConditionNotes);
+  const inputScope = getStr(project.scopeOfWork) || getStr(supportingNotes.implementationNotes);
+  const inputActivities = getStr(project.keyActivities) || getStr(project.projectActivitiesText);
+  const inputMV = getStr(project.measurementVerificationPlan) || getStr(supportingNotes.existingConditionNotes);
+  const inputBenefits = getStr(project.benefitsOtherThanEnergySaving);
+  const inputAspects = getStr(project.aspectsToBeTakenCareOf) || getStr(project.precautions);
+  const inputConclusion = getStr(project.finalConclusion) || getStr(project.conclusion);
+
+  // Template generation
+  let existing, problem, proposed, scope, activities, rationale, mv, benefits, aspects, conclusion;
+
+  switch(ecmType) {
+    case "heat_recovery":
+      existing = inputExisting || `The existing process exhausts thermal energy to the atmosphere without any recovery mechanism for ${equip}.`;
+      problem = inputProblem || `A significant gap exists in thermal efficiency as high-grade waste heat is continually lost, increasing the primary heating load on ${system}.`;
+      proposed = inputProposed || `The proposed measure involves installing a heat recovery system to capture waste heat and pre-heat the incoming fluid for ${equip}.`;
+      rationale = inputRationale || `Energy savings will be achieved by recovering waste heat from the exhaust stream to pre-heat incoming process fluid, thereby reducing the primary thermal energy requirement of the heater/boiler.`;
+      break;
+    case "thermal_insulation":
+      existing = inputExisting || `The current thermal distribution network, including ${equip}, has exposed or inadequately insulated hot surfaces.`;
+      problem = inputProblem || `Radiation and convection losses from uninsulated hot surfaces lead to continuous thermal energy wastage.`;
+      proposed = inputProposed || `The proposed intervention is to install industrial-grade thermal insulation on ${equip} to minimize surface heat losses.`;
+      rationale = inputRationale || `Insulating hot surfaces drastically reduces radiant heat loss, ensuring the process temperature is maintained with lower continuous thermal input.`;
+      break;
+    case "servo_hydraulic_retrofit":
+      existing = inputExisting || `The existing ${equip} operates with a continuously running standard induction motor driving a fixed displacement hydraulic pump.`;
+      problem = inputProblem || `During idle, cooling, and part-load phases of the machine cycle, the hydraulic pump continuously bypasses fluid, wasting significant electrical energy.`;
+      proposed = inputProposed || `The proposed energy conservation measure is to retrofit the machine with a servo-driven hydraulic pump system.`;
+      rationale = inputRationale || `A servo motor will precisely modulate pump speed according to the instantaneous hydraulic demand of the machine cycle, virtually eliminating bypass losses during idle and holding phases.`;
+      break;
+    case "compressed_air_management":
+      existing = inputExisting || `The compressed air network supplying ${equip} currently lacks precise sectional monitoring and leak management.`;
+      problem = inputProblem || `Undetected compressed air leaks, inappropriate pressure settings, and artificial demand result in high specific power consumption.`;
+      proposed = inputProposed || `The proposed measure involves deploying a comprehensive measurement and management system for the compressed air network.`;
+      rationale = inputRationale || `Identifying and sealing leaks while optimizing generation pressure will directly reduce the compressor's load and specific power consumption.`;
+      break;
+    case "apfc_power_factor_correction":
+      existing = inputExisting || `The electrical distribution network serving ${system} is currently operating at a sub-optimal power factor.`;
+      problem = inputProblem || `Low power factor leads to increased I²R losses in the distribution network and potentially attracts utility penalties or higher kVA demand charges.`;
+      proposed = inputProposed || `The proposed measure is to install or upgrade an Automatic Power Factor Correction (APFC) relay and capacitor banks.`;
+      rationale = inputRationale || `Compensating reactive power locally improves the overall power factor, reduces the apparent power (kVA) demand, and minimizes distribution losses.`;
+      break;
+    case "cooling_system_optimization":
+    case "chiller_kw_tr_optimization":
+    case "cooling_tower_fan_upgrade":
+    case "free_cooling_chiller_bypass":
+      existing = inputExisting || `The existing cooling system (${equip}) operates with fixed setpoints and lacks dynamic load-matching controls.`;
+      problem = inputProblem || `Operating the cooling tower and chillers without optimized approach temperatures and condenser water control leads to elevated compressor lift and higher kW/TR.`;
+      proposed = inputProposed || `The proposed intervention optimizes the cooling system by implementing advanced control logic and upgrading ${equip}.`;
+      rationale = inputRationale || `Lowering the condenser water temperature and optimizing the cooling tower approach reduces the compressor lift, thereby improving the overall chiller kW/TR efficiency.`;
+      break;
+    case "pump_flow_optimization":
+    case "ahu_plug_fan_optimization":
+      existing = inputExisting || `The existing fluid/air handling system (${equip}) utilizes fixed-speed drives with mechanical throttling (valves/dampers) to control flow.`;
+      problem = inputProblem || `Mechanical throttling creates artificial pressure drops, forcing the motor to consume excess power to deliver the required flow rate.`;
+      proposed = inputProposed || `The proposed measure is to implement Variable Frequency Drives (VFDs) or plug fan retrofits to electronically match flow with process demand.`;
+      rationale = inputRationale || `According to affinity laws, reducing motor speed electronically rather than throttling mechanically yields cubic reductions in power consumption for centrifugal loads.`;
+      break;
+    case "motor_retrofit_ie5_pmsm":
+      existing = inputExisting || `The ${system} is currently driven by an older, lower-efficiency induction motor.`;
+      problem = inputProblem || `Standard induction motors exhibit higher inherent stator and rotor I²R losses, especially at partial loads, resulting in sub-optimal overall drive efficiency.`;
+      proposed = inputProposed || `The proposed measure is to retrofit the existing drive with an IE5-class Permanent Magnet Synchronous Motor (PMSM).`;
+      rationale = inputRationale || `IE5 PMSM motors eliminate rotor I²R losses by utilizing permanent magnets, maintaining exceptionally high efficiency across a wide range of operating speeds and loads.`;
+      break;
+    default:
+      existing = inputExisting || `Baseline operational data for ${equip} was recorded and analyzed during the site assessment.`;
+      problem = inputProblem || `The recorded data indicates an opportunity to optimize the specific energy performance of ${system}.`;
+      proposed = inputProposed || `The proposed measure involves upgrading ${equip} based on the observed operational parameters.`;
+      rationale = inputRationale || `Optimization will reduce the specific energy consumption and improve the overall efficiency of the system.`;
+      break;
+  }
+
+  scope = inputScope || `Implementation of ${title} adhering to industrial standards.`;
+  activities = inputActivities || `1. Technical sizing and specification.\\n2. Procurement of equipment.\\n3. Mechanical/Electrical installation.\\n4. Commissioning and parameter tuning.\\n5. Performance validation.`;
+  mv = inputMV || `1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings.`;
+  benefits = inputBenefits || `1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control.`;
+  aspects = inputAspects || `1. Ensure compatibility with existing control systems.\\n2. Plan execution during scheduled maintenance windows to avoid process downtime.\\n3. Verify equipment sizing before procurement.`;
+  conclusion = inputConclusion || `Implementing ${title} is a technically sound and financially viable measure to significantly reduce the energy intensity of ${system}.`;
+
+  return {
+    existingSystemDescription: existing,
+    proposedProjectDescription: proposed,
+    rationaleForEnergySaving: rationale,
+    problemGapIdentified: problem,
+    scopeOfWork: scope,
+    keyActivities: activities,
+    measurementVerificationPlan: mv,
+    benefitsOtherThanEnergySaving: benefits,
+    aspectsToBeTakenCareOf: aspects,
+    finalConclusion: conclusion
   };
 }
 
@@ -1198,52 +1351,57 @@ function buildComponentPayloads({
     ) || {};
     const projectSpecificSupportingContext = buildProjectSpecificSupportingContext(project, extractedInfo, uploadedFiles, imageMetadata);
 
-    payloads.push({
-      ...getReportComponentDefinition("project_detail"),
-      componentTitle: safeReportValue(project.projectTitle),
-      lockedData: getComponentLockedSnapshot(project, getReportComponentDefinition("project_detail")?.lockedFields),
-      qualityContext: {
-        existingSystemDescription: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition,
-        proposedProjectDescription: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention,
-        rationaleForEnergySaving: supportingNotes.implementationNotes || project.proposedIntervention || project.system,
-        problemGapIdentified: supportingNotes.existingConditionNotes || project.existingOperatingCondition || project.system,
-        scopeOfWork: supportingNotes.implementationNotes || project.proposedIntervention,
-        keyActivities: supportingNotes.implementationNotes || project.proposedIntervention,
-        measurementVerificationPlan: supportingNotes.existingConditionNotes || project.system,
-        benefitsOtherThanEnergySaving: project.system || project.equipmentCovered,
-        aspectsToBeTakenCareOf: supportingNotes.implementationNotes || project.system || project.equipmentCovered,
-        finalConclusion: project.system || project.projectTitle,
-      },
-      narrativeInputs: {
-        reportType: "Detailed Energy Audit Report",
-        projectNo: project.projectNo || "Data required",
-        projectTitle: project.projectTitle || "Data required",
-        equipmentCovered: project.equipmentCovered || "Data required",
-        system: project.system || project.groupTitle || "Data required",
-        baselineContext: supportingNotes.existingConditionNotes || project.baselineDetails || project.existingOperatingCondition || "Data required",
-        proposedContext: supportingNotes.implementationNotes || project.projectActivitiesText || project.proposedIntervention || "Data required",
-        supportingContext,
-        compactSupportingContext: projectSpecificSupportingContext,
-        currentNarrative: {
-          existingSystemDescription: project.existingSystemDescription || "Data required",
-          proposedProjectDescription: project.proposedProjectDescription || "Data required",
-          rationaleForEnergySaving: project.rationaleForEnergySaving || "Data required",
-          problemGapIdentified: project.problemGapIdentified || "Data required",
-          scopeOfWork: project.scopeOfWork || "Data required",
-          keyActivities: project.keyActivities || "Data required",
-          measurementVerificationPlan: project.measurementVerificationPlan || "Data required",
-          benefitsOtherThanEnergySaving: project.benefitsOtherThanEnergySaving || "Data required",
-          aspectsToBeTakenCareOf: project.aspectsToBeTakenCareOf || project.precautions || "Data required",
-          finalConclusion: project.finalConclusion || "Data required",
+      const fallbackText = "[To be updated after site data verification]";
+      const ecmType = classifyEcmType(project);
+      const detTmpl = buildIndustrialEcmDeterministicTemplate(project, ecmType, supportingNotes, fallbackText);
+
+      payloads.push({
+        ...getReportComponentDefinition("project_detail"),
+        componentTitle: safeReportValue(project.projectTitle),
+        lockedData: getComponentLockedSnapshot(project, getReportComponentDefinition("project_detail")?.lockedFields),
+        qualityContext: {
+          existingSystemDescription: detTmpl.existingSystemDescription,
+          proposedProjectDescription: detTmpl.proposedProjectDescription,
+          rationaleForEnergySaving: detTmpl.rationaleForEnergySaving,
+          problemGapIdentified: detTmpl.problemGapIdentified,
+          scopeOfWork: detTmpl.scopeOfWork,
+          keyActivities: detTmpl.keyActivities,
+          measurementVerificationPlan: detTmpl.measurementVerificationPlan,
+          benefitsOtherThanEnergySaving: detTmpl.benefitsOtherThanEnergySaving,
+          aspectsToBeTakenCareOf: detTmpl.aspectsToBeTakenCareOf,
+          finalConclusion: detTmpl.finalConclusion,
         },
-        deterministicProjectData: {
-          groupTitle: project.groupTitle || "Data required",
-          projectActivitiesText: project.projectActivitiesText || "Data required",
-          baselineDetails: project.baselineDetails || project.existingOperatingCondition || "Data required",
-          proposedIntervention: project.proposedIntervention || "Data required",
-          existingOperatingCondition: project.existingOperatingCondition || "Data required",
+        narrativeInputs: {
+          reportType: "Detailed Energy Audit Report",
+          projectNo: project.projectNo || fallbackText,
+          projectTitle: project.projectTitle || fallbackText,
+          equipmentCovered: project.equipmentCovered || fallbackText,
+          system: project.system || project.groupTitle || fallbackText,
+          ecmClassificationType: ecmType,
+          baselineContext: detTmpl.existingSystemDescription,
+          proposedContext: detTmpl.proposedProjectDescription,
+          supportingContext,
+          compactSupportingContext: projectSpecificSupportingContext,
+          currentNarrative: {
+            existingSystemDescription: detTmpl.existingSystemDescription,
+            proposedProjectDescription: detTmpl.proposedProjectDescription,
+            rationaleForEnergySaving: detTmpl.rationaleForEnergySaving,
+            problemGapIdentified: detTmpl.problemGapIdentified,
+            scopeOfWork: detTmpl.scopeOfWork,
+            keyActivities: detTmpl.keyActivities,
+            measurementVerificationPlan: detTmpl.measurementVerificationPlan,
+            benefitsOtherThanEnergySaving: detTmpl.benefitsOtherThanEnergySaving,
+            aspectsToBeTakenCareOf: detTmpl.aspectsToBeTakenCareOf,
+            finalConclusion: detTmpl.finalConclusion,
+          },
+          deterministicProjectData: {
+            groupTitle: project.groupTitle || fallbackText,
+            projectActivitiesText: project.projectActivitiesText || fallbackText,
+            baselineDetails: project.baselineDetails || project.existingOperatingCondition || fallbackText,
+            proposedIntervention: project.proposedIntervention || fallbackText,
+            existingOperatingCondition: project.existingOperatingCondition || fallbackText,
+          },
         },
-      },
       mergeTarget: { type: "project_detail", projectIndex },
       forbiddenFields: getReportComponentDefinition("project_detail")?.lockedFields || [],
     });
@@ -1300,7 +1458,9 @@ Return JSON now:`;
 }
 
 async function runBatchComponentNarrativeStage(payloads, templateConfig, options = {}) {
-  const systemPrompt = `You are a senior energy audit engineer and professional technical report writer for SEE-Tech Solutions.
+  const isEcmBatch = payloads.every(p => p.id === "project_detail");
+
+  const baseSystemPrompt = `You are a senior energy audit engineer and professional technical report writer for SEE-Tech Solutions.
 
 Your role is explanation enhancement only for a Detailed Energy Audit Report.
 
@@ -1311,17 +1471,49 @@ Absolute accuracy rules:
 4. Do not calculate savings, payback, investment, tariff, CO2, quantities, operating hours, efficiency, kWh, kW, TR, kVAr, or currency values.
 5. Do not change project titles, project numbers, equipment names, group names, priorities, or extracted table values.
 6. Use only the provided context.
-7. If information is missing, write "Data required" or keep the explanation general without inventing facts.
+7. If information is missing, write "[To be updated after site data verification]".
 8. Return valid JSON only.
 9. Return only allowed narrative fields.
 10. Do not include markdown or tables.
 11. Do not use generic filler, sales language, exaggerated claims, or repeated text.
 
+CRITICAL NEGATIVE CONSTRAINTS:
+- NEVER copy internal prompt instructions into the output.
+- NEVER use words like 'Explain', 'Discuss', or 'DRAFT'.
+- NEVER mention uploaded filenames like '.xlsx', '.pdf', '.docx' etc. Use "based on energy consumption records, equipment information, operational data, and ECM calculations made available during the study" instead.
+- NEVER output null, undefined, or "Data required".
+
 Writing objective:
 - Write like a professional Detailed Energy Audit Report.
-- Explain what the current system does, what inefficiency exists, what is proposed, why it reduces energy use, how implementation should be executed, how results should be verified, and what non-energy benefits or care points are relevant.
-- Use system-specific engineering logic for cooling systems, production machines, compressed air systems, auxiliary systems, motors, heat-loss reduction, heaters, and electrical power-quality measures.
-- Interpret available uploaded-file context and deterministic narrative without changing locked values.
+- Improve grammar, readability, technical explanation quality, and flow of the provided deterministic text.
+- Interpret available uploaded-file context and deterministic narrative without changing locked values.`;
+
+  const ecmHints = `
+Rule-Based Technical Context by ECM Type (DO NOT COPY THESE EXPLICITLY, use as engineering guidance):
+- chiller / cooling tower / CT segregation: Relevant principles: condenser water temperature, cooling tower approach, chiller lift, circuit segregation, CT fan/pump control, monitoring strategy.
+- pump / VFD / flow optimization: Relevant principles: variable flow, avoiding over-pumping, ΔT/ΔP monitoring, matching flow with load, VFD control logic.
+- IE5 / PMSM / motor retrofit: Relevant principles: reduced motor losses, better efficiency at operating load, direct drive/cogged belt benefits, alignment.
+- compressed air: Relevant principles: leakage, pressure optimization, specific power, compressor loading/unloading, flow measurement, corrective action.
+- heat recovery: Relevant principles: recovering exhaust/waste heat, pre-heating incoming stream, reducing heater energy input, fouling.
+- insulation: Relevant principles: surface heat loss reduction, heat retention, reduced reheating, safety.
+- IR heater / band heater: Relevant principles: improved heat transfer, better response, reduced standby loss, process temperature control.
+- servo retrofit: Relevant principles: demand-based hydraulic operation, reduced idle/part-load losses, better machine control, reduced heat generation.
+- AHU / plug fan: Relevant principles: fan efficiency, airflow control, belt loss reduction, static pressure monitoring, VFD integration.
+- APFC: Relevant principles: reactive power compensation, PF control, kVA demand impact, harmonic considerations.
+
+Field length guidelines:
+- existingSystemBaselineCondition / existingSystemDescription: 80 to 140 words.
+- proposedProjectDescription / projectDescriptionEnhanced: 80 to 140 words.
+- rationaleForEnergySaving: 80 to 140 words.
+- problemGapIdentified: 60 to 100 words.
+- scopeOfWork: 4 to 6 practical bullets.
+- keyActivities / keyActivitiesNarrative: 4 to 6 execution bullets.
+- measurementVerificationPlan: 3 to 5 bullets.
+- benefitsOtherThanEnergySaving: 3 to 5 bullets.
+- aspectsToBeTakenCareOf: 3 to 5 bullets.
+- finalConclusion / conclusion: 60 to 100 words.`;
+
+  const nonEcmHints = `
 - existingSystemDescription: 80 to 140 words.
 - proposedProjectDescription: 80 to 140 words.
 - rationaleForEnergySaving: 80 to 140 words.
@@ -1332,6 +1524,38 @@ Writing objective:
 - benefitsOtherThanEnergySaving: 3 to 5 bullets.
 - aspectsToBeTakenCareOf: 3 to 5 bullets.
 - finalConclusion: 60 to 100 words.`;
+
+  const systemPrompt = baseSystemPrompt + "\n" + (isEcmBatch ? ecmHints : nonEcmHints);
+
+  const ecmJsonFormat = `{
+  "ecmEnhancements": [
+    {
+      "ecmNo": "...",
+      "existingSystemBaselineCondition": "...",
+      "problemGapIdentified": "...",
+      "proposedEnergyConservationMeasure": "...",
+      "projectDescriptionEnhanced": "...",
+      "keyActivitiesNarrative": "...",
+      "rationaleForEnergySaving": "...",
+      "measurementVerificationPlan": "...",
+      "benefitsOtherThanEnergySaving": "...",
+      "aspectsToBeTakenCareOf": "...",
+      "conclusion": "..."
+    }
+  ]
+}`;
+
+  const nonEcmJsonFormat = `{
+  "components": [
+    {
+      "componentKey": "...",
+      "output": {
+        "field1": "...",
+        "field2": "..."
+      }
+    }
+  ]
+}`;
 
   const userPrompt = `Improve the report explanation for these components.
 AI is a report writer, not a calculator.
@@ -1348,23 +1572,13 @@ ${JSON.stringify({
   }, null, 2)}
 
 Return JSON exactly in this format. No nested objects inside output:
-{
-  "components": [
-    {
-      "componentKey": "...",
-      "output": {
-        "field1": "...",
-        "field2": "..."
-      }
-    }
-  ]
-}`;
+${isEcmBatch ? ecmJsonFormat : nonEcmJsonFormat}`;
 
   return runPromptStage(systemPrompt, userPrompt, templateConfig, options);
 }
 
 function applyComponentNarrative(report, payload, narrativeOutput, approvedTokens, warnings) {
-  const allowedOutputFields = payload.llmAllowedFields || [];
+  const allowedOutputFields = payload.allowedOutputFields || payload.llmAllowedFields || [];
   const lockedFields = payload.lockedFields || [];
 
   validateNarrativeOutputShape({
@@ -1373,13 +1587,48 @@ function applyComponentNarrative(report, payload, narrativeOutput, approvedToken
     lockedFields,
   }, narrativeOutput, approvedTokens, warnings);
 
+  // Strict QC Scan
+  const strictQcScan = (value) => {
+    if (typeof value !== 'string') return true;
+    const lower = value.toLowerCase();
+    const blacklist = [
+      "data required",
+      "[draft",
+      "qc review required",
+      "undefined",
+      "null",
+      "explain cooling",
+      "explain hydraulic",
+      "explain thermal",
+      "explain compressed air",
+      ".xlsx",
+      ".docx",
+      ".pdf"
+    ];
+    for (const bad of blacklist) {
+      if (lower.includes(bad)) return false;
+    }
+    return true;
+  };
+
+  const filteredNarrativeOutput = {};
+  for (const [key, value] of Object.entries(narrativeOutput)) {
+    if (strictQcScan(value)) {
+      filteredNarrativeOutput[key] = value;
+    } else {
+      warnings.push(`QC Rejected field '${key}' in component '${payload.id}' due to blacklisted content. Falling back to deterministic.`);
+    }
+  }
+
   if (payload.mergeTarget?.type === "executive_summary") {
     const before = cloneJson(report.executiveSummary || {});
-    const normalizedNarrativeOutput = { ...narrativeOutput };
+    const normalizedNarrativeOutput = { ...filteredNarrativeOutput };
     if (Array.isArray(normalizedNarrativeOutput.conclusionAndWayForward) && Array.isArray(before.conclusionAndWayForward)) {
       normalizedNarrativeOutput.conclusionAndWayForward = before.conclusionAndWayForward.map((stepRow, index) => ({
         ...stepRow,
-        action: safeReportValue(normalizedNarrativeOutput.conclusionAndWayForward[index]?.action || stepRow.action),
+        action: strictQcScan(normalizedNarrativeOutput.conclusionAndWayForward[index]?.action) 
+          ? safeReportValue(normalizedNarrativeOutput.conclusionAndWayForward[index]?.action)
+          : stepRow.action,
       }));
     }
     const merged = mergeNarrativeOnly(before, normalizedNarrativeOutput, allowedOutputFields);
@@ -1390,7 +1639,7 @@ function applyComponentNarrative(report, payload, narrativeOutput, approvedToken
 
   if (payload.mergeTarget?.type === "plant_profile") {
     const before = cloneJson(report.buildingProfile || {});
-    const merged = mergeNarrativeOnly(before, narrativeOutput, allowedOutputFields);
+    const merged = mergeNarrativeOnly(before, filteredNarrativeOutput, allowedOutputFields);
     assertLockedFieldsUnchanged(before, merged, lockedFields, payload.id);
     report.buildingProfile = merged;
     return report;
@@ -1399,7 +1648,7 @@ function applyComponentNarrative(report, payload, narrativeOutput, approvedToken
   if (payload.mergeTarget?.type === "project_group") {
     const idx = payload.mergeTarget.groupIndex;
     const before = cloneJson(report.groupedProjects?.[idx] || {});
-    const merged = mergeNarrativeOnly(before, narrativeOutput, allowedOutputFields);
+    const merged = mergeNarrativeOnly(before, filteredNarrativeOutput, allowedOutputFields);
     assertLockedFieldsUnchanged(before, merged, lockedFields, payload.id);
     if (Array.isArray(report.groupedProjects) && report.groupedProjects[idx]) {
       report.groupedProjects[idx] = merged;
@@ -1410,7 +1659,7 @@ function applyComponentNarrative(report, payload, narrativeOutput, approvedToken
   if (payload.mergeTarget?.type === "project_detail") {
     const idx = payload.mergeTarget.projectIndex;
     const before = cloneJson(report.projects?.[idx] || {});
-    const normalizedNarrativeOutput = { ...narrativeOutput };
+    const normalizedNarrativeOutput = { ...filteredNarrativeOutput };
     if (normalizedNarrativeOutput.conclusion !== undefined && normalizedNarrativeOutput.finalConclusion === undefined) {
       normalizedNarrativeOutput.finalConclusion = normalizedNarrativeOutput.conclusion;
       delete normalizedNarrativeOutput.conclusion;
@@ -1499,6 +1748,18 @@ async function generateCommercialAuditComponentReport({
   });
 
   const approvedTokens = collectApprovedNumericTokens(report);
+
+  for (const payload of componentPayloads) {
+    if (payload.qualityContext) {
+      report = applyComponentNarrative(
+        report, 
+        payload, 
+        payload.qualityContext, 
+        approvedTokens,
+        []
+      );
+    }
+  }
 
   const deterministicReport = finalizeCommercialAuditReport({
     report: cloneJson(report),
@@ -1640,6 +1901,48 @@ async function generateCommercialAuditComponentReport({
           }
 
           const batchPayloads = batch.payload;
+
+          if (result?.result && Array.isArray(result.result.ecmEnhancements)) {
+            console.log(`[REPORT] MAPPING ecmEnhancements to components array...`);
+            const enhancements = result.result.ecmEnhancements;
+            const mappedComponents = [];
+            const unmatchedEcms = [];
+
+            enhancements.forEach(enh => {
+              const ecmNoRaw = String(enh.ecmNo || "").trim();
+              const matchingPayload = batchPayloads.find(p => String(p.lockedData?.projectNo || "").trim() === ecmNoRaw);
+              
+              if (matchingPayload) {
+                const componentKey = buildComponentInstanceKey(matchingPayload);
+                console.log(`[REPORT] ECM Map Success | ECM: ${ecmNoRaw} -> componentKey: ${componentKey}`);
+                
+                // Map the specific keys back to the standard narrative keys
+                mappedComponents.push({
+                  componentKey,
+                  output: {
+                    existingSystemDescription: enh.existingSystemBaselineCondition || enh.existingSystemDescription,
+                    problemGapIdentified: enh.problemGapIdentified,
+                    proposedProjectDescription: enh.proposedEnergyConservationMeasure || enh.projectDescriptionEnhanced,
+                    keyActivities: enh.keyActivitiesNarrative || enh.keyActivities,
+                    rationaleForEnergySaving: enh.rationaleForEnergySaving,
+                    measurementVerificationPlan: enh.measurementVerificationPlan,
+                    benefitsOtherThanEnergySaving: enh.benefitsOtherThanEnergySaving,
+                    aspectsToBeTakenCareOf: enh.aspectsToBeTakenCareOf,
+                    finalConclusion: enh.conclusion || enh.finalConclusion
+                  }
+                });
+              } else {
+                console.warn(`[REPORT] ECM Map Failure | Unmatched ECM: ${ecmNoRaw}`);
+                unmatchedEcms.push(ecmNoRaw);
+              }
+            });
+
+            if (unmatchedEcms.length > 0) {
+              warnings.push(`${batchName} unmatched ECMs: ${unmatchedEcms.join(", ")}`);
+            }
+            
+            result.result.components = mappedComponents;
+          }
 
           if (!result?.result || !Array.isArray(result.result.components)) {
             llmFailureCount += batchPayloads.length;
@@ -1786,6 +2089,7 @@ async function generateCommercialAuditComponentReport({
       batchesCreated: useAiDuringGeneration ? batches.length : 0,
       actualGeminiCallsMade: aiCallsUsed,
       providerAttemptsCount: providerAttempts.length,
+      unmatchedEcmCount: warnings.filter(w => /unmatched ECM/i.test(w)).length,
     },
     error: exactErrorStr,
   };

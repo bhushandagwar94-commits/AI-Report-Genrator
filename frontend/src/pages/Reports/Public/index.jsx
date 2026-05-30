@@ -1478,6 +1478,11 @@ function Step5({
                 <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus || 'unknown'}</div>
                 <div><span className="font-bold opacity-80 text-white">Provider Attempted:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
                 <div><span className="font-bold opacity-80 text-white">Model Used:</span> {report?.modelUsed || report?.providerAttempts?.[0]?.model || 'none'}</div>
+                
+                {report?.debug?.unmatchedEcmCount > 0 && (
+                  <div className="text-red-400"><span className="font-bold opacity-80">Unmatched ECMs:</span> {report.debug.unmatchedEcmCount}</div>
+                )}
+                
                 {typeof report?.retryAfterSeconds === "number" && report.retryAfterSeconds > 0 && (
                   <div><span className="font-bold opacity-80 text-white">Retry After:</span> {report.retryAfterSeconds}s</div>
                 )}
@@ -1488,8 +1493,10 @@ function Step5({
                 
                 {report?.aiEnhancedFields && report.aiEnhancedFields.length > 0 && (
                   <div>
-                    <span className="font-bold opacity-80 text-green-400">AI Enhanced Fields:</span>
-                    <ul className="list-disc ml-5 mt-1 text-green-300/80">
+                    <span className="font-bold opacity-80 text-green-400">Total Fields Enhanced:</span> <span className="text-green-300">{report.aiEnhancedFields.length}</span>
+                    <br />
+                    <span className="font-bold opacity-80 text-green-400">AI Enhanced Fields (List):</span>
+                    <ul className="list-disc ml-5 mt-1 text-green-300/80 max-h-32 overflow-y-auto">
                       {report.aiEnhancedFields.map((f, i) => <li key={i}>{f}</li>)}
                     </ul>
                   </div>
