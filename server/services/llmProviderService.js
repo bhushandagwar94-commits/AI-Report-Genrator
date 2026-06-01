@@ -1477,6 +1477,40 @@ function stripMarkdownFences(rawText = "") {
   return cleaned.trim();
 }
 
+function classifyAiFailure(error, context = {}) {
+  const message = String(error?.message || error || "");
+
+  if (context.missingApiKey || /api key|missing key|unauthorized|401/i.test(message)) {
+    return "missing_api_key";
+  }
+
+  if (/timeout|aborted|AbortError|timed out/i.test(message)) {
+    return "provider_timeout";
+  }
+
+  if (/429|rate limit|quota/i.test(message)) {
+    return "provider_rate_limited";
+  }
+
+  if (/JSON|parse|Unexpected token/i.test(message)) {
+    return "invalid_json";
+  }
+
+  if (/schema|validation/i.test(message)) {
+    return "schema_validation_failed";
+  }
+
+  if (/QC|rejected|forbidden|unapproved numeric/i.test(message)) {
+    return "qc_rejected_all_fields";
+  }
+
+  if (/no enhanced fields|no fields merged|merge/i.test(message)) {
+    return "no_enhanced_fields_merged";
+  }
+
+  return "unknown_error";
+}
+
 function safeParseAiJson(content) {
   if (!content || typeof content !== "string") {
     throw new Error("AI returned empty content");
@@ -1621,9 +1655,16 @@ async function generateWithOpenRouterFallback(messages, options = {}) {
     const model = models[i];
     const attempt = {
       order: i + 1,
+      provider: "openrouter",
       model,
       status: "started",
-      startedAt: new Date().toISOString()
+      startedAt: new Date().getTime(),
+      fieldsGenerated: 0,
+      fieldsAccepted: 0,
+      fieldsDropped: 0,
+      errorCode: null,
+      errorMessage: null,
+      finalUsed: false,
     };
     attempts.push(attempt);
 
@@ -1638,16 +1679,16 @@ async function generateWithOpenRouterFallback(messages, options = {}) {
         } catch (parseError) {
           console.warn(`[LLM] OpenRouter model ${model} returned invalid JSON: ${parseError.message}`);
           attempt.status = "failed";
-          attempt.reason = `Invalid JSON returned: ${parseError.message}`;
-          attempt.jsonValid = false;
-          attempt.finishedAt = new Date().toISOString();
+          attempt.errorCode = classifyAiFailure(parseError);
+          attempt.errorMessage = parseError.message;
+          attempt.durationMs = new Date().getTime() - attempt.startedAt;
           continue;
         }
 
         console.log(`[LLM] OpenRouter model succeeded: ${model}`);
         attempt.status = "success";
-        attempt.finishedAt = new Date().toISOString();
-        attempt.jsonValid = true;
+        attempt.durationMs = new Date().getTime() - attempt.startedAt;
+        attempt.finalUsed = true;
         return {
           success: true,
           providerUsed: "openrouter",
@@ -1662,9 +1703,9 @@ async function generateWithOpenRouterFallback(messages, options = {}) {
       }
 
       attempt.status = "failed";
-      attempt.reason = "Empty content returned";
-      attempt.jsonValid = false;
-      attempt.finishedAt = new Date().toISOString();
+      attempt.errorCode = "no_enhanced_fields_returned";
+      attempt.errorMessage = "Empty content returned";
+      attempt.durationMs = new Date().getTime() - attempt.startedAt;
     } catch (error) {
       if (error.message.includes("timed out")) {
         console.warn(`[LLM] Model timed out after ${timeoutMs}ms: ${model}`);
@@ -1672,9 +1713,9 @@ async function generateWithOpenRouterFallback(messages, options = {}) {
         console.warn(`[LLM] OpenRouter model failed: ${model}`, error.message);
       }
       attempt.status = "failed";
-      attempt.reason = error.message;
-      attempt.jsonValid = false;
-      attempt.finishedAt = new Date().toISOString();
+      attempt.errorCode = classifyAiFailure(error);
+      attempt.errorMessage = error.message;
+      attempt.durationMs = new Date().getTime() - attempt.startedAt;
       continue;
     }
   }

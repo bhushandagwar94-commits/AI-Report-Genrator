@@ -21,6 +21,15 @@ function useIsAuthenticated() {
   useEffect(() => {
     const validateSession = async () => {
       try {
+        const healthCheck = await fetch("/api/health")
+          .then((res) => res.json())
+          .catch(() => null);
+          
+        if (!healthCheck || !healthCheck.success) {
+          setBackendOffline(true);
+          return;
+        }
+
         const onboardingComplete = await System.isOnboardingComplete();
         const keys = await System.keys();
         

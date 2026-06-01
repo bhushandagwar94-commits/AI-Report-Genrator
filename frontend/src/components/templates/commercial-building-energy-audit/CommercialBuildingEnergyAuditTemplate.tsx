@@ -189,21 +189,69 @@ function classifyEcmType(ecm: any) {
   const ecmNo = String(getEcmNumberVal(ecm) || "");
   if (ecmNo.includes("13")) return "heat_recovery";
   if (ecmNo.includes("14")) return "thermal_insulation";
-  if (ecmNo.includes("15")) return "ir_heater_retrofit";
+  if (ecmNo.includes("15")) return "ir_heater_or_band_heater_retrofit";
   if (ecmNo.match(/1[6-9]|20/)) return "servo_hydraulic_retrofit";
   if (ecmNo.includes("21")) return "compressed_air_management";
   if (ecmNo.includes("12")) return "apfc_power_factor_correction";
   
   if (title.includes("heat recovery") || title.includes("exhaust heat")) return "heat_recovery";
   if (title.includes("insulation") || title.includes("hot duct")) return "thermal_insulation";
-  if (title.includes("ir heater") || title.includes("band heater") || title.includes("barrel heating")) return "ir_heater_retrofit";
+  if (title.includes("ir heater") || title.includes("band heater") || title.includes("barrel heating")) return "ir_heater_or_band_heater_retrofit";
   if (title.includes("servo") || title.includes("hydraulic")) return "servo_hydraulic_retrofit";
+  if (title.includes("booster compressor")) return "booster_compressor_automation";
   if (title.includes("compressed air") || title.includes("booster compressor") || title.includes("air compressor")) return "compressed_air_management";
   if (title.includes("apfc") || title.includes("power factor") || title.includes("kvar")) return "apfc_power_factor_correction";
   if (title.includes("ahu") || title.includes("plug fan")) return "ahu_plug_fan_optimization";
   if (title.includes("chiller") || title.includes("cooling") || title.includes("chw") || title.includes("ct water") || title.includes("primary pump") || title.includes("secondary pump") || title.includes("ct segregation")) return "cooling_system_optimization";
-  if (title.includes("ie5") || title.includes("motor retrofit") || title.includes("pmsm")) return "motor_retrofit_ie5";
-  return "general";
+  if (title.includes("pump") || title.includes("flow optimization")) return "pump_flow_optimization";
+  if (title.includes("ie4") || title.includes("ie5") || title.includes("motor retrofit") || title.includes("pmsm")) return "motor_retrofit_ie4_ie5";
+  if (title.includes("blower") || title.includes("direct drive")) return "blower_direct_drive_retrofit";
+  if (title.includes("lighting") || title.includes("led")) return "lighting_efficiency";
+  return "general_ecm";
+}
+
+function getProblemGapEntry(ecmType: string) {
+  if (ecmType === "heat_recovery") return { system: "Heat recovery", gap: "Waste heat discharged without useful recovery" };
+  if (ecmType === "thermal_insulation") return { system: "Insulation", gap: "Heat loss from exposed hot surfaces or ducts" };
+  if (ecmType === "ir_heater_or_band_heater_retrofit") return { system: "IR heater retrofit", gap: "Conventional heater losses and lower heat-transfer effectiveness" };
+  if (ecmType === "servo_hydraulic_retrofit") return { system: "Servo hydraulic", gap: "Idle and part-load hydraulic losses" };
+  if (ecmType === "compressed_air_management" || ecmType === "booster_compressor_automation") return { system: "Compressed air", gap: "Leakage, pressure drop, higher generation pressure or inefficient compressor loading" };
+  if (ecmType === "apfc_power_factor_correction") return { system: "APFC", gap: "Low power factor or kVA/kVAh billing loss" };
+  if (ecmType === "ahu_plug_fan_optimization") return { system: "AHU / fan", gap: "Constant speed operation or inefficient fan arrangement" };
+  if (ecmType === "cooling_system_optimization") return { system: "Cooling system", gap: "Poor flow/temperature control, high kW/TR or fixed-speed operation" };
+  if (ecmType === "pump_flow_optimization") return { system: "Pump", gap: "Throttling, bypass or fixed-flow operation" };
+  if (ecmType === "motor_retrofit_ie4_ie5") return { system: "Motor retrofit", gap: "Standard efficiency motor losses" };
+  if (ecmType === "blower_direct_drive_retrofit") return { system: "Blower", gap: "Belt/transmission loss or non-optimized drive arrangement" };
+  return { system: "System", gap: "[To be updated after site data verification]" };
+}
+
+function getRationaleEntry(ecmType: string) {
+  if (ecmType === "heat_recovery") return { projectType: "Heat recovery", savingRationale: "Recovered exhaust heat reduces primary heating duty." };
+  if (ecmType === "thermal_insulation") return { projectType: "Insulation", savingRationale: "Reduced surface heat loss lowers reheating energy demand." };
+  if (ecmType === "ir_heater_or_band_heater_retrofit") return { projectType: "IR heater retrofit", savingRationale: "Improved heat transfer and reduced surface losses reduce heater energy demand." };
+  if (ecmType === "servo_hydraulic_retrofit") return { projectType: "Servo hydraulic", savingRationale: "Motor speed and torque follow machine cycle demand, reducing idle and part-load losses." };
+  if (ecmType === "compressed_air_management" || ecmType === "booster_compressor_automation") return { projectType: "Compressed air", savingRationale: "Leakage reduction, pressure optimization and loading control reduce specific power." };
+  if (ecmType === "apfc_power_factor_correction") return { projectType: "APFC", savingRationale: "Improved power factor reduces kVA demand and kVAh billing losses." };
+  if (ecmType === "ahu_plug_fan_optimization") return { projectType: "AHU / fan", savingRationale: "Higher fan efficiency and better airflow control reduce fan power." };
+  if (ecmType === "cooling_system_optimization") return { projectType: "Cooling system", savingRationale: "Lower condenser temperature, improved flow control and reduced chiller lift improve kW/TR." };
+  if (ecmType === "pump_flow_optimization") return { projectType: "Pump VFD", savingRationale: "Pump affinity laws allow large power reduction when speed/flow is reduced." };
+  if (ecmType === "motor_retrofit_ie4_ie5") return { projectType: "IE5 motor retrofit", savingRationale: "Higher motor efficiency reduces electrical losses." };
+  if (ecmType === "blower_direct_drive_retrofit") return { projectType: "Blower direct drive", savingRationale: "Direct drive removes transmission losses and improves drive efficiency." };
+  return { projectType: "Project", savingRationale: "[To be updated after site data verification]" };
+}
+
+function getMvParamValue(ecmType: string) {
+  if (ecmType === "cooling_system_optimization") return "kW/TR, CHW/CW temperature, flow, pump/fan kW";
+  if (ecmType === "heat_recovery") return "Exhaust air temperature, inlet air temperature, heater kW, operating hours";
+  if (ecmType === "thermal_insulation") return "Surface temperature, duct temperature, heater load, operating hours";
+  if (ecmType === "ir_heater_or_band_heater_retrofit") return "Heater kW, barrel temperature, heating cycle, surface temperature";
+  if (ecmType === "servo_hydraulic_retrofit") return "Hydraulic motor kW, cycle time, idle load, operating hours";
+  if (ecmType === "compressed_air_management" || ecmType === "booster_compressor_automation") return "Pressure, flow, leakage, compressor kW";
+  if (ecmType === "apfc_power_factor_correction") return "PF, kVA, kVAh, reactive power compensation";
+  if (ecmType === "ahu_plug_fan_optimization" || ecmType === "blower_direct_drive_retrofit") return "Airflow, static pressure, fan kW";
+  if (ecmType === "pump_flow_optimization") return "Flow, head, pressure, pump kW";
+  if (ecmType === "motor_retrofit_ie4_ie5") return "Motor input kW, load factor, operating hours";
+  return "ECM-type-specific parameter";
 }
 
 function sanitizePromptLeakageText(text: any, ecmType: string) {
@@ -233,9 +281,11 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
     else if (ecmType === "servo_hydraulic_retrofit") safe = "The existing hydraulic machine drive arrangement operates with energy consumption during idle and part-load portions of the machine cycle.";
     else if (ecmType === "compressed_air_management") safe = "The compressed air system requires measurement of pressure, flow, leakage, and compressor loading pattern to identify avoidable generation losses.";
     else if (ecmType === "apfc_power_factor_correction") safe = "The electrical system requires effective reactive power compensation to maintain power factor and reduce kVA/kVAh-related billing impact.";
-    else if (ecmType === "ir_heater_retrofit") safe = "The existing band heating system operates with high surface temperatures, leading to convective heat losses to the ambient environment.";
+    else if (ecmType === "ir_heater_or_band_heater_retrofit") safe = "The existing band heating system operates with high surface temperatures, leading to convective heat losses to the ambient environment.";
     else if (ecmType === "ahu_plug_fan_optimization") safe = "The existing air handling system operates with conventional fan and drive arrangements, presenting opportunities for flow optimization and efficiency upgrades.";
-    else if (ecmType === "motor_retrofit_ie5") safe = "The existing driven equipment is operated by standard-efficiency motors, resulting in higher power consumption for the given mechanical load.";
+    else if (ecmType === "pump_flow_optimization") safe = "The existing pumping arrangement appears to operate with fixed or excess flow, indicating avoidable energy use where actual process demand varies over time.";
+    else if (ecmType === "motor_retrofit_ie4_ie5") safe = "The existing driven equipment is operated by standard-efficiency motors, resulting in higher power consumption for the given mechanical load.";
+    else if (ecmType === "blower_direct_drive_retrofit") safe = "The existing blower drive arrangement includes avoidable transmission losses and requires verification of airflow and pressure stability for optimized operation.";
     else safe = "The existing system operates under baseline conditions that present measurable opportunities for energy performance optimization.";
   }
   return safe;
@@ -385,14 +435,7 @@ function buildTechnicalSpecificationRows(ecmType: string, ecm: any) {
 }
 
 function buildMvPlanRows(ecmType: string, ecm: any) {
-  let paramValue = "ECM-type-specific parameter";
-  if (ecmType === "cooling_system_optimization") paramValue = "Flow, head, pressure, kW, CHW/CW temperature";
-  else if (ecmType === "heat_recovery") paramValue = "Exhaust air temperature, inlet air temperature, heater kW, operating hours";
-  else if (ecmType === "thermal_insulation" || ecmType === "ir_heater_retrofit") paramValue = "Surface temperature, duct temperature, heater load, operating hours";
-  else if (ecmType === "servo_hydraulic_retrofit") paramValue = "Hydraulic motor kW, cycle time, idle load, operating hours";
-  else if (ecmType === "compressed_air_management") paramValue = "Pressure, flow, leakage, compressor kW";
-  else if (ecmType === "apfc_power_factor_correction") paramValue = "PF, kVA, kVAh, reactive power compensation";
-  else if (ecmType === "ahu_plug_fan_optimization") paramValue = "Airflow, static pressure, fan kW";
+  const paramValue = getMvParamValue(ecmType);
 
   let rows = ecm.measurementVerificationPlan || ecm.mvPlan || ecm.monitoringPlan || ecm.monitoringAndVerificationPlan || [];
   if (rows.length < 3) {
@@ -1030,7 +1073,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.4 Problem / Gap Identified`} />
       <p className="text-sm leading-snug mb-2">{problemGap}</p>
-      {(project.problemGapTable && project.problemGapTable.length > 0) && <ReportTable compact columns={[{ key: "system", label: "System" }, { key: "gap", label: "Typical Gap" }]} rows={project.problemGapTable} />}
+      <ReportTable compact columns={[{ key: "system", label: "System" }, { key: "gap", label: "Typical Gap" }]} rows={(project.problemGapTable && project.problemGapTable.length > 0) ? project.problemGapTable : [getProblemGapEntry(ecmType)]} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.5 Proposed Project`} />
       <p className="text-sm leading-snug mb-2">{proposedDescription}</p>
@@ -1041,7 +1084,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.7 Rationale for Energy Saving`} />
       <p className="text-sm leading-snug mb-2">{rationale}</p>
-      {(project.rationaleTable && project.rationaleTable.length > 0) && <ReportTable compact columns={[{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }]} rows={project.rationaleTable} />}
+      <ReportTable compact columns={[{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }]} rows={(project.rationaleTable && project.rationaleTable.length > 0) ? project.rationaleTable : [getRationaleEntry(ecmType)]} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.8 Energy Saving Calculation`} />
       <ReportTable compact columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={buildEnergySavingCalculationRows(project)} />
@@ -1089,7 +1132,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 }
 
 function DevDiagnostics({ data }: { data: any }) {
-  if (process.env.NODE_ENV === 'production' || !(import.meta as any).env?.DEV) return null;
+  if (process.env.NODE_ENV !== 'development') return null;
   return (
     <div className="mb-4 p-4 bg-gray-900 text-green-400 font-mono text-xs rounded border border-green-800 report-preview-scroll" style={{maxHeight: 200, overflowY: 'auto'}}>
       <div className="font-bold mb-2">DEV DIAGNOSTICS - Normalization Applied</div>

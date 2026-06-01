@@ -73,7 +73,14 @@ The seed script recreates the required public report setup without committing th
    ```env
    LLM_PROVIDER=openrouter
    OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODELS=openai/gpt-oss-120b:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free
+   OPENROUTER_MODELS=openai/gpt-oss-120b:free,openai/gpt-oss-20b:free,meta-llama/llama-3.1-8b-instruct:free
+   OPENROUTER_TIMEOUT_MS=90000
+   OPENROUTER_SECOND_STAGE_TIMEOUT_MS=90000
+   AI_SECOND_STAGE_REQUIRED=false
+   AI_ENHANCEMENT_TIMEOUT_MODE=graceful
+   AI_TOTAL_TIMEOUT_MS=120000
+   OPENROUTER_BACKGROUND_REFINEMENT=false
+   OPENROUTER_ECM_BATCH_SIZE=3
    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions
    OPENROUTER_TIMEOUT_MS=90000
    OPENROUTER_TEMPERATURE=0.2
@@ -85,7 +92,9 @@ The seed script recreates the required public report setup without committing th
    ```
 
 **Model Fallback Explanation:** 
-- The first model listed in `OPENROUTER_MODELS` is used as the primary model.
+- The report enhancement chain calls Gemini first and then OpenRouter using the ordered list in `OPENROUTER_MODELS`.
+- OpenRouter tries models in order and falls back gracefully if a slower model times out.
+- The second-stage OpenRouter timeout reads `OPENROUTER_SECOND_STAGE_TIMEOUT_MS` and defaults to `90000`.
 - If it fails, is rate-limited, or returns invalid JSON, the system automatically tries the second backup model, and so on.
 - The `openrouter/free` model is used as a final API fallback router.
 - If all API models fail, the system still seamlessly builds a report using deterministic data extraction (Excel + form data).

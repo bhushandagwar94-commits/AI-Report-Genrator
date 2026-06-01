@@ -169,9 +169,19 @@ if (process.env.NODE_ENV !== "development") {
 
 app.get("/api/health", (req, res) => {
   res.json({
-    ok: true,
+    success: true,
+    status: "ok",
     service: "backend",
-    time: new Date().toISOString()
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    status: "ok",
+    service: "backend",
+    timestamp: new Date().toISOString()
   });
 });
 

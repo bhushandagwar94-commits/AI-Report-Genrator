@@ -5,6 +5,7 @@ import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "react-toastify";
+import DeveloperPipelinePanel from "@/components/DeveloperPipelinePanel";
 import CommercialBuildingEnergyAuditTemplate, {
   sampleCommercialBuildingEnergyAuditData,
 } from "@/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate";
@@ -51,6 +52,122 @@ const SKIP_LLM_FOR_DEV =
   import.meta.env.VITE_SKIP_LLM_FOR_DEV === "true";
 
 const AI_PROVIDER = import.meta.env.VITE_AI_PROVIDER || "openrouter";
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function mergeUniqueBlocks(prevBlocks = [], nextBlocks = []) {
+  const merged = [...asArray(prevBlocks), ...asArray(nextBlocks)];
+  const seen = new Set();
+
+  return merged.filter((block, index) => {
+    const key = block?.id
+      ? `${block.id}-${block.startedAt || ""}-${block.finishedAt || ""}`
+      : `idx-${index}`;
+
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergePipelineDebug(prevInput, nextInput) {
+  const prev = asObject(prevInput);
+  const next = asObject(nextInput);
+
+  return {
+    ...prev,
+    ...next,
+
+    inputSummary: {
+      ...asObject(prev.inputSummary),
+      ...asObject(next.inputSummary),
+      files: asArray(next.inputSummary?.files).length
+        ? asArray(next.inputSummary.files)
+        : asArray(prev.inputSummary?.files),
+      sheetSummaries: asArray(next.inputSummary?.sheetSummaries).length
+        ? asArray(next.inputSummary.sheetSummaries)
+        : asArray(prev.inputSummary?.sheetSummaries),
+      warnings: [
+        ...asArray(prev.inputSummary?.warnings),
+        ...asArray(next.inputSummary?.warnings)
+      ],
+      errors: [
+        ...asArray(prev.inputSummary?.errors),
+        ...asArray(next.inputSummary?.errors)
+      ]
+    },
+
+    dataStructuring: {
+      ...asObject(prev.dataStructuring),
+      ...asObject(next.dataStructuring)
+    },
+
+    functionBlocks: mergeUniqueBlocks(
+      prev.functionBlocks,
+      next.functionBlocks
+    ),
+
+    aiNodes: asArray(next.aiNodes).length
+      ? asArray(next.aiNodes)
+      : asArray(prev.aiNodes),
+
+    providerAttempts: asArray(next.providerAttempts).length
+      ? asArray(next.providerAttempts)
+      : asArray(prev.providerAttempts),
+
+    prompts: asArray(next.prompts).length
+      ? asArray(next.prompts)
+      : asArray(prev.prompts),
+
+    calculationTrace: asArray(next.calculationTrace).length
+      ? asArray(next.calculationTrace)
+      : asArray(prev.calculationTrace),
+
+    plottingTrace: asArray(next.plottingTrace).length
+      ? asArray(next.plottingTrace)
+      : asArray(prev.plottingTrace),
+
+    validationTrace: {
+      ...asObject(prev.validationTrace),
+      ...asObject(next.validationTrace)
+    },
+
+    exportTrace: {
+      ...asObject(prev.exportTrace),
+      ...asObject(next.exportTrace)
+    },
+
+    vectorDb: {
+      ...asObject(prev.vectorDb),
+      ...asObject(next.vectorDb)
+    },
+
+    ocrTrace: {
+      ...asObject(prev.ocrTrace),
+      ...asObject(next.ocrTrace)
+    },
+
+    recommendedModels: asArray(next.recommendedModels).length
+      ? asArray(next.recommendedModels)
+      : asArray(prev.recommendedModels),
+
+    warnings: [
+      ...asArray(prev.warnings),
+      ...asArray(next.warnings)
+    ],
+
+    errors: [
+      ...asArray(prev.errors),
+      ...asArray(next.errors)
+    ]
+  };
+}
 
 // ─── Template definitions (shown in UI — no admin data exposed) ─────────────────
 // Keys match the server-side TEMPLATE_SLUG_MAP (seetech-xxx-001 format)
@@ -118,10 +235,10 @@ const TEMPLATE_CATALOG = [
 ];
 
 const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG = "commercial-building-energy-audit";
-const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 45000);
+const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 90000);
 const OPENROUTER_MODELS = (
   import.meta.env.VITE_OPENROUTER_MODELS ||
-  "openai/gpt-oss-120b:free,openrouter/free"
+  "openai/gpt-oss-120b"
 )
   .split(",")
   .map((model) => model.trim())
@@ -148,17 +265,64 @@ function createAiProgressState() {
 }
 
 function cleanAiFailureMessage(reason) {
-  if (!reason) return "AI enhancement failed";
-  return reason
-    .replace(/AI enhancement failed:?/gi, "")
-    .replace(/Gemini \d+:/gi, "")
-    .replace(/Deterministic report used\.?/gi, "")
-    .replace(/Your report is still ready\.?/gi, "")
-    .trim();
+  if (!reason) return null;
+  const str = String(reason);
+  if (str.includes("quota") || str.includes("429")) return "Rate limit or quota exceeded";
+  if (str.includes("parse") || str.includes("JSON")) return "Provider returned invalid format";
+  if (str.includes("schema") || str.includes("QC") || str.includes("merged")) return "Provider output was rejected by quality checks";
+  if (str.includes("timeout") || str.includes("fetch failed")) return "Provider request timed out";
+  if (str.includes("key")) return "Missing or invalid API key";
+  return str.length > 50 ? "Provider error" : str;
+}
+
+function showAiEnhancementToast(aiStatus, showToastFn) {
+  if (!aiStatus || !showToastFn) return;
+
+  const status = aiStatus.status;
+
+  if (status === "success") {
+    showToastFn(
+      `AI enhancement completed using ${aiStatus.finalEnhancerUsed || "AI"}.`,
+      "success"
+    );
+    return;
+  }
+
+  if (status === "partial_success") {
+    showToastFn(
+      `AI enhancement partially completed. ${aiStatus.fieldsAccepted || 0} fields enhanced, ${aiStatus.fieldsDropped || 0} fields used deterministic fallback.`,
+      "warning"
+    );
+    return;
+  }
+
+  if (status === "failed_non_blocking") {
+    showToastFn(
+      `AI enhancement could not be applied: ${aiStatus.failureReason || "unknown reason"}. Deterministic report is ready.`,
+      "warning"
+    );
+    return;
+  }
+
+  if (status === "skipped") {
+    showToastFn(
+      `AI enhancement skipped: ${aiStatus.failureReason || "not configured"}. Deterministic report is ready.`,
+      "info"
+    );
+    return;
+  }
+  
+  if (status === "quota_exceeded") {
+    showToastFn(
+      `Gemini free quota exceeded. Deterministic report is ready.`,
+      "warning"
+    );
+    return;
+  }
 }
 
 function formatGeminiQuotaMessage(seconds) {
-  return `Gemini free quota is temporarily exhausted. Retry in ${seconds} seconds. Your report is still ready.`;
+  return `Gemini free quota is temporarily exhausted. Retry in ${seconds} seconds. Deterministic report is ready.`;
 }
 
 function formatProviderAttemptLabel(attempt, index) {
@@ -166,20 +330,20 @@ function formatProviderAttemptLabel(attempt, index) {
     return `Gemini Key ${attempt.keyIndex}`;
   }
   if (attempt.provider === "openrouter") {
-    return `OpenRouter Model ${attempt.order || index + 1}`;
+    return "OpenRouter";
   }
   return `Model ${attempt.order || index + 1}`;
 }
 
 const getAiModels = () =>
   (import.meta.env.VITE_OPENROUTER_MODELS ||
-    "openai/gpt-oss-120b:free,openrouter/free")
+    "openai/gpt-oss-120b")
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
 
 const getAiTimeoutMs = () =>
-  Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 45000);
+  Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 90000);
 
 function isCommercialBuildingEnergyAuditTemplate(template) {
   return [
@@ -193,10 +357,9 @@ function isCommercialBuildingEnergyAuditTemplate(template) {
 // ─── Step metadata ─────────────────────────────────────────────────────────────
 const STEPS = [
   { id: 1, label: "Select Template" },
-  { id: 2, label: "Basic Details" },
-  { id: 3, label: "Upload Files" },
-  { id: 4, label: "Generate" },
-  { id: 5, label: "Preview & Download" },
+  { id: 2, label: "Upload Files" },
+  { id: 3, label: "Generate" },
+  { id: 4, label: "Preview & Download" },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -427,138 +590,11 @@ function Step1({ templates, selected, onSelect, loading }) {
   );
 }
 
-// ─── STEP 2 ── Basic Details ───────────────────────────────────────────────────
-const OUTPUT_FORMAT_OPTIONS = [
-  { value: "pdf", label: "PDF" },
-  { value: "docx", label: "DOCX" },
-  { value: "both", label: "Both" },
-];
-
-function Step2({ details, onChange }) {
-  const fields = [
-    {
-      key: "clientName",
-      label: "Client / Facility Name",
-      placeholder: "e.g. Acme Manufacturing Pvt. Ltd.",
-      required: true,
-      icon: Buildings,
-      col: 2,
-    },
-    {
-      key: "facilityName",
-      label: "Facility / Plant Name",
-      placeholder: "e.g. Unit-II, MIDC Plant",
-      required: false,
-      icon: Buildings,
-      col: 2,
-    },
-    {
-      key: "location",
-      label: "Location",
-      placeholder: "e.g. Plot No. 5, Taloja Industrial Area, Navi Mumbai",
-      required: true,
-      icon: MapPin,
-      col: 2,
-    },
-    {
-      key: "auditPeriod",
-      label: "Audit Period",
-      placeholder: "e.g. 10 Apr 2026 – 14 Apr 2026",
-      required: true,
-      icon: Calendar,
-      col: 1,
-    },
-    {
-      key: "reportDate",
-      label: "Report Date",
-      placeholder: "e.g. 20 May 2026",
-      required: true,
-      icon: ClipboardText,
-      col: 1,
-    },
-    {
-      key: "contactPerson",
-      label: "Contact Person",
-      placeholder: "e.g. Mr. Rajesh Kumar, Sr. Manager – Engineering",
-      icon: User,
-      col: 2,
-    },
-  ];
-
-  return (
-    <div className="animate-fade-in">
-      <div className="mb-5">
-        <h2 className="text-xl font-bold text-white">Enter Basic Details</h2>
-        <p className="text-sm text-white/45 mt-1">
-          This information will appear on the report cover page and header.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {fields.map((f) => {
-          const Icon = f.icon;
-          return (
-            <div key={f.key} className={f.col === 2 ? "col-span-2" : "col-span-2 sm:col-span-1"}>
-              <label className="block text-xs font-semibold text-white/60 mb-1.5">
-                {f.label}
-                {f.required && <span className="text-red-400 ml-0.5">*</span>}
-              </label>
-              <div className="relative">
-                <Icon
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none"
-                />
-                <input
-                  type="text"
-                  placeholder={f.placeholder}
-                  value={details[f.key] || ""}
-                  onChange={(e) => onChange(f.key, e.target.value)}
-                  className="w-full h-10 pl-8 pr-3 bg-[rgba(255,255,255,0.04)] border border-white/10 focus:border-primary-button rounded-xl text-sm text-white focus:outline-none placeholder:text-white/20 transition-all"
-                />
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Output Format */}
-        <div className="col-span-2">
-          <label className="block text-xs font-semibold text-white/60 mb-2">
-            Output Format
-          </label>
-          <div className="flex gap-x-3">
-            {OUTPUT_FORMAT_OPTIONS.map((opt) => {
-              const isActive = details.outputFormat === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => onChange("outputFormat", opt.value)}
-                  className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-bold transition-all duration-150 ${
-                    isActive
-                      ? "border-primary-button bg-primary-button/15 text-primary-button"
-                      : "border-white/10 bg-white/3 text-white/40 hover:border-white/25 hover:text-white/70"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-1.5 text-[11px] text-white/25">
-            Note: Multi-format output (DOCX / PDF conversion) requires a document converter service.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── STEP 3 ── Upload Files ────────────────────────────────────────────────────
+// ─── STEP 2 ── Upload Files ───────────────────────────────────────────────────
 const ACCEPTED_TYPES = {
   "Excel": { exts: ".xls,.xlsx", label: "XLS / XLSX", color: "#22c55e" },
   "PDF": { exts: ".pdf", label: "PDF", color: "#ef4444" },
   "Word": { exts: ".docx", label: "DOCX", color: "#3b82f6" },
-  "PowerPoint": { exts: ".pptx", label: "PPTX", color: "#f97316" },
   "Images": { exts: ".jpg,.jpeg,.png", label: "JPG / JPEG / PNG", color: "#a855f7" },
 };
 
@@ -566,151 +602,138 @@ const ALL_ACCEPT = Object.values(ACCEPTED_TYPES).map((t) => t.exts).join(",");
 
 const isExcelFileName = (filename = "") => /\.(xlsx|xls)$/i.test(filename);
 
-function validationTone(status) {
-  if (status === "valid") return "border-green-500/25 bg-green-500/10 text-green-300";
-  if (status === "warning") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-300";
-  if (status === "error") return "border-red-500/25 bg-red-500/10 text-red-300";
-  return "border-white/10 bg-white/5 text-white/45";
+const NON_BLOCKING_UPLOAD_STATUSES = new Set([
+  "success",
+  "accepted",
+  "accepted_supporting_file",
+  "warning",
+  "needs_review"
+]);
+
+const FATAL_UPLOAD_STATUSES = new Set([
+  "failed",
+  "error",
+  "rejected",
+  "invalid"
+]);
+
+function normalizeValidationStatus(fileOrValidation) {
+  const raw =
+    fileOrValidation?.validationStatus ||
+    fileOrValidation?.validation?.status ||
+    fileOrValidation?.status ||
+    fileOrValidation?.result ||
+    fileOrValidation?.validationResult ||
+    "";
+
+  return String(raw).trim().toLowerCase();
 }
 
-function ExcelValidationCard({ validation }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+function isFileUsable(file) {
+  const status = normalizeValidationStatus(file);
+  return NON_BLOCKING_UPLOAD_STATUSES.has(status);
+}
 
-  if (!validation) {
-    return (
-      <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${validationTone()}`}>
-        Validation pending.
-      </div>
-    );
+function hasFatalFileError(file) {
+  const status = normalizeValidationStatus(file);
+  return FATAL_UPLOAD_STATUSES.has(status);
+}
+
+function getValidationBadge(status) {
+  const normalized = String(status || "").toLowerCase();
+
+  if (["success", "accepted"].includes(normalized)) {
+    return { label: "Ready", className: "bg-emerald-500/15 text-emerald-300" };
   }
 
-  const { status, readinessScore, professionalSummary, criticalIssues, highPriorityRecommendations, mediumPriorityRecommendations, optionalRecommendations, technicalDetails, mappedColumns, role } = validation;
+  if (normalized === "accepted_supporting_file") {
+    return { label: "Supporting file accepted", className: "bg-sky-500/15 text-sky-300" };
+  }
 
-  const roleLabel = role === "ecm_project_sheet" ? "ECM Project Sheet" : 
-                    role === "equipment_master" ? "Equipment Master" :
-                    role === "energy_consumption_data" ? "Energy Consumption Data" :
-                    role === "specification_data" ? "Specification Data" :
-                    role === "image_evidence" ? "Image Evidence" :
-                    "Supporting Document";
+  if (["warning", "needs_review"].includes(normalized)) {
+    return { label: "Ready with warnings", className: "bg-yellow-500/15 text-yellow-300" };
+  }
+
+  if (["failed", "error", "rejected", "invalid"].includes(normalized)) {
+    return { label: "Failed", className: "bg-red-500/15 text-red-300" };
+  }
+
+  return { label: "Pending", className: "bg-slate-500/15 text-slate-300" };
+}
+
+function ExcelValidationCard({ validation, file, status, warnings = [], errors = [] }) {
+  const safeWarnings = Array.isArray(warnings)
+    ? warnings
+    : Array.isArray(validation?.warnings)
+      ? validation.warnings
+      : [];
+
+  const safeErrors = Array.isArray(errors)
+    ? errors
+    : Array.isArray(validation?.errors)
+      ? validation.errors
+      : [];
+
+  const fileName =
+    file?.name ||
+    file?.originalName ||
+    validation?.fileName ||
+    "Uploaded file";
+
+  const currentStatus = status || validation?.status || validation?.result || "pending";
+  const badge = getValidationBadge(currentStatus);
 
   return (
-    <div className={`mt-3 rounded-xl border p-4 text-sm ${validationTone(status)}`}>
-      <div className="flex flex-col gap-y-3">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-x-2 border-b border-current pb-2 border-opacity-10">
-          <div className="flex items-center gap-x-2">
-            {status === "error" ? (
-              <X size={20} className="shrink-0" />
-            ) : status === "warning" ? (
-              <WarningCircle size={20} className="shrink-0" />
-            ) : (
-              <CheckCircle size={20} weight="fill" className="shrink-0" />
-            )}
-            <span className="font-bold text-base">
-              {status === "valid" || status === "accepted_project_file" ? "Accepted: Project File" : 
-               status === "accepted_supporting_file" ? `Accepted: ${roleLabel}` : 
-               status === "warning" ? "Validation: Warning" : "Validation: Error"}
-            </span>
-          </div>
-          {readinessScore !== undefined && readinessScore > 0 && role === "ecm_project_sheet" && (
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">Data Readiness</span>
-              <span className="text-lg font-black">{readinessScore}%</span>
-            </div>
-          )}
+    <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-200">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="font-semibold text-white">File validation</div>
+          <div className="text-slate-400">{fileName}</div>
         </div>
 
-        {/* Summary */}
-        <p className="opacity-90 leading-relaxed font-medium">
-          {professionalSummary || "Validation completed."}
-        </p>
-
-        {/* Critical Issues */}
-        {criticalIssues?.length > 0 && (
-          <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-            <p className="font-bold text-red-400 mb-1 flex items-center gap-x-1.5"><X size={16}/> Critical Blockers</p>
-            <ul className="list-disc list-inside text-red-300/80 text-xs space-y-1">
-              {criticalIssues.map((issue, i) => <li key={i}>{issue}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {/* High Priority Recommendations */}
-        {highPriorityRecommendations?.length > 0 && role === "ecm_project_sheet" && (
-          <div className="mt-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-3">
-            <p className="font-bold text-yellow-400 mb-2 flex items-center gap-x-1.5"><WarningCircle size={16}/> High-Priority Improvements</p>
-            <div className="grid gap-2 text-xs text-yellow-300/80">
-              {highPriorityRecommendations.map((rec, i) => (
-                <div key={i} className="flex flex-col bg-black/10 p-2 rounded">
-                  <span className="font-semibold text-yellow-300">Missing: {rec.field}</span>
-                  <span className="opacity-80 mt-0.5">{rec.whyItMatters}</span>
-                  <span className="opacity-60 text-[10px] mt-1">Suggested column: {rec.suggestedColumnNames.join(", ")}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Technical Details Toggle */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setDetailsOpen(!detailsOpen);
-          }}
-          className="mt-2 flex items-center gap-x-1 text-xs font-semibold opacity-70 hover:opacity-100 transition-opacity self-start focus:outline-none"
-        >
-          {detailsOpen ? <CaretUp size={14} /> : <CaretDown size={14} />}
-          {detailsOpen ? "Hide Technical Details" : "Show Technical Details"}
-        </button>
-
-        {/* Technical Details Collapsible */}
-        {detailsOpen && (
-          <div className="mt-2 grid gap-y-3 text-xs opacity-70 bg-black/10 rounded-lg p-3">
-            {/* Medium & Optional */}
-            {(mediumPriorityRecommendations?.length > 0 || optionalRecommendations?.length > 0) && role === "ecm_project_sheet" && (
-              <div>
-                <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Additional Recommendations</p>
-                <ul className="list-disc list-inside space-y-1 mt-1">
-                  {mediumPriorityRecommendations?.map((rec, i) => (
-                    <li key={i}>Add <strong>{rec.field}</strong>: {rec.whyItMatters}</li>
-                  ))}
-                  {optionalRecommendations?.map((rec, i) => (
-                    <li key={i}>{rec.whyItMatters}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-            {/* Mapped Columns */}
-            {role === "ecm_project_sheet" && (
-              <div>
-                 <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Detected Mapping</p>
-                 <div className="grid grid-cols-2 gap-1 mt-1">
-                   {Object.entries(mappedColumns || {}).filter(([, val]) => val).map(([key, val], i) => (
-                     <span key={i} className="truncate" title={`${key} → ${val}`}>
-                       <span className="opacity-60">{key}:</span> {val}
-                     </span>
-                   ))}
-                 </div>
-              </div>
-            )}
-
-            {/* Raw Details */}
-            <div>
-               <p className="font-bold mb-1 opacity-90 border-b border-current border-opacity-10 pb-1">Scan Details</p>
-               <p>Sheets: {(technicalDetails?.sheetsScanned || []).join(", ")}</p>
-               <p>Header row: {technicalDetails?.headerRow}</p>
-               <p>Rows detected: {technicalDetails?.rowsDetected}</p>
-               <p>Columns detected: {(technicalDetails?.rawColumns || []).join(", ")}</p>
-            </div>
-          </div>
-        )}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.className}`}>
+          {badge.label}
+        </span>
       </div>
+
+      {validation?.parserUsed && (
+        <div className="mt-2 text-slate-400">
+          Parser: {validation.parserUsed}
+        </div>
+      )}
+
+      {validation?.ecmRowsFound !== undefined && (
+        <div className="mt-1 text-slate-400">
+          ECM rows found: {validation.ecmRowsFound}
+        </div>
+      )}
+
+      {safeWarnings.length > 0 && (
+        <div className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+          <div className="mb-1 font-semibold text-yellow-300">Warnings</div>
+          <ul className="list-disc space-y-1 pl-5">
+            {safeWarnings.map((warning, index) => (
+              <li key={`warning-${index}`}>{String(warning?.message || warning)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {safeErrors.length > 0 && (
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+          <div className="mb-1 font-semibold text-red-300">Errors</div>
+          <ul className="list-disc space-y-1 pl-5">
+            {safeErrors.map((error, index) => (
+              <li key={`error-${index}`}>{String(error?.message || error)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
 
-function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
+function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
   const dropRef = useRef(null);
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -810,12 +833,12 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
       </div>
 
       {/* File list */}
-      {uploadedFiles.length > 0 && (
+      {safeUploadedFiles.length > 0 && (
         <div className="mt-4 flex flex-col gap-y-2">
           <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-            {uploadedFiles.length} file{uploadedFiles.length !== 1 ? "s" : ""} ready
+            {safeUploadedFiles.length} file{safeUploadedFiles.length !== 1 ? "s" : ""} ready
           </p>
-          {uploadedFiles.map((f, idx) => (
+          {safeUploadedFiles.map((f, idx) => (
             <div
               key={idx}
               className="flex flex-wrap items-center gap-x-3 px-3 py-2.5 bg-white/4 border border-white/8 rounded-xl group"
@@ -857,7 +880,7 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
         </div>
       )}
 
-      {uploadedFiles.length === 0 && !uploading && (
+      {safeUploadedFiles.length === 0 && !uploading && (
         <p className="mt-4 text-center text-xs text-white/25 italic">
           Files are optional — you can generate from form details alone.
         </p>
@@ -867,10 +890,10 @@ function Step3({ uploadedFiles, onUpload, onRemove, uploading }) {
 }
 
 // ─── STEP 4 ── Generate ────────────────────────────────────────────────────────
-function Step4({
+function Step3({
   selectedTemplate,
   details,
-  uploadedFiles,
+  safeUploadedFiles,
   onGenerate,
   onPreviewSample,
   generating,
@@ -918,7 +941,7 @@ function Step4({
           },
           {
             label: "Files",
-            value: `${uploadedFiles.length} uploaded`,
+            value: `${safeUploadedFiles.length} uploaded`,
             accent: "#a855f7",
             bg: "rgba(168,85,247,0.1)",
             IconComp: UploadSimple,
@@ -964,13 +987,13 @@ function Step4({
       )}
 
       {/* Files preview */}
-      {uploadedFiles.length > 0 && (
+      {safeUploadedFiles.length > 0 && (
         <div className="bg-white/3 border border-white/8 rounded-xl p-4">
           <p className="text-[10px] text-white/35 uppercase tracking-wider font-semibold mb-2">
             Source Files
           </p>
           <div className="flex flex-wrap gap-2">
-            {uploadedFiles.map((f, i) => (
+            {safeUploadedFiles.map((f, i) => (
               <span
                 key={i}
                 className="flex items-center gap-x-1.5 px-2.5 py-1 bg-white/6 rounded-lg text-xs text-white/60 border border-white/8"
@@ -990,7 +1013,7 @@ function Step4({
         </div>
       )}
       
-      {!hasProjectFile && uploadedFiles.length > 0 && !hasInvalidExcel && (
+      {!hasProjectFile && safeUploadedFiles.length > 0 && !hasInvalidExcel && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
           <label className="flex items-start gap-x-3 cursor-pointer">
             <input
@@ -1009,15 +1032,15 @@ function Step4({
       
       <button
         onClick={onGenerate}
-        disabled={generating || hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)}
+        disabled={generating || hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)}
         className="flex items-center justify-center gap-x-3 w-full py-4 rounded-2xl font-bold text-base text-white transition-all shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] disabled:opacity-55 disabled:cursor-not-allowed disabled:scale-100"
         style={{
           background: generating
             ? "rgba(70,200,255,0.3)"
-            : hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)
+            : hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)
               ? "rgba(239,68,68,0.25)"
             : "linear-gradient(135deg, #46c8ff 0%, #3b82f6 100%)",
-          boxShadow: generating || hasInvalidExcel || (!hasProjectFile && uploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly) ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
+          boxShadow: generating || hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly) ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
         }}
       >
         {generating ? (
@@ -1124,7 +1147,7 @@ function Step4({
 }
 
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
-function Step5({
+function Step4({
   report,
   selectedTemplate,
   onStartOver,
@@ -1435,7 +1458,9 @@ function Step5({
                     ? `Retry Gemini in ${geminiCooldownSeconds}s`
                     : aiEnhancing
                       ? "Enhancing..."
-                      : "Enhance with AI"}
+                      : report?.aiEnhancementStatus || report?.aiEnhanced || (report?.providerAttempts && report.providerAttempts.length > 0)
+                        ? "Retry AI Enhancement"
+                        : "Enhance with AI"}
                 </button>
                 <button
                   type="button"
@@ -1475,9 +1500,11 @@ function Step5({
                 AI Enhancement Debug (Dev Only)
               </summary>
               <div className="mt-3 text-xs text-white/70 space-y-2 font-mono">
-                <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus || 'unknown'}</div>
-                <div><span className="font-bold opacity-80 text-white">Provider Attempted:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
+                <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus?.status || report?.aiEnhancementStatus || 'unknown'}</div>
+                <div><span className="font-bold opacity-80 text-white">Provider Chain:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
+                <div><span className="font-bold opacity-80 text-white">Final Enhancer Used:</span> {report?.debug?.finalEnhancerUsed || report?.providerUsed || 'unknown'}</div>
                 <div><span className="font-bold opacity-80 text-white">Model Used:</span> {report?.modelUsed || report?.providerAttempts?.[0]?.model || 'none'}</div>
+                <div><span className="font-bold opacity-80 text-white">Report Status:</span> Ready</div>
                 
                 {report?.debug?.unmatchedEcmCount > 0 && (
                   <div className="text-red-400"><span className="font-bold opacity-80">Unmatched ECMs:</span> {report.debug.unmatchedEcmCount}</div>
@@ -1816,6 +1843,21 @@ export default function PublicReports() {
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
   const [allowGenerateWithSupportingFilesOnly, setAllowGenerateWithSupportingFilesOnly] = useState(false);
   const [geminiCooldownSeconds, setGeminiCooldownSeconds] = useState(0);
+  const [pipelineDebugData, setPipelineDebugData] = useState({});
+  const [isPipelineDebugOpen, setIsPipelineDebugOpen] = useState(false);
+
+  const safeUploadedFiles = Array.isArray(uploadedFiles) ? uploadedFiles : [];
+  const safeValidationResults = []; // No longer a state variable
+  const safePipelineDebug =
+    pipelineDebugData && typeof pipelineDebugData === "object" ? pipelineDebugData : {};
+
+  const hasUsableUploadedFiles = safeUploadedFiles.some(isFileUsable);
+  const hasFatalUploadErrors = safeUploadedFiles.some(hasFatalFileError);
+
+  const canContinueFromUpload =
+    safeUploadedFiles.length > 0 &&
+    hasUsableUploadedFiles &&
+    !hasFatalUploadErrors;
 
   useEffect(() => {
     if (geminiCooldownSeconds <= 0) return;
@@ -1935,6 +1977,7 @@ export default function PublicReports() {
         const validationForm = new FormData();
         validationForm.append("files", file);
         const validationResponse = await Reports.validateUpload(validationForm);
+        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, validationResponse?.pipelineDebug || {}));
         validation = validationResponse.files?.[0] || {
           filename: file.name,
           fileType: "excel",
@@ -1955,6 +1998,7 @@ export default function PublicReports() {
       fd.append("file", file);
       const res = await Reports.uploadFile(fd);
       if (res.success) {
+        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || {}));
         const uploadedFile = {
           filename: res.filename,
           location: res.location,
@@ -1989,8 +2033,8 @@ export default function PublicReports() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const handleGenerate = async () => {
-    const hasInvalidExcel = uploadedFiles.some(
-      (file) => isExcelFileName(file.filename) && file.validation?.status === "error"
+    const hasInvalidExcel = safeUploadedFiles.some(
+      (file) => isExcelFileName(file.filename) && hasFatalFileError(file.validation || file)
     );
     if (hasInvalidExcel) {
       showToast("Please fix or remove the invalid Excel file before generating the report.", "error");
@@ -2012,17 +2056,45 @@ export default function PublicReports() {
         });
       }
 
+      // Extract basic info from uploaded file validation if available
+      let extractedClientName = "";
+      let extractedFacilityName = "";
+      let extractedLocation = "";
+      let extractedAuditPeriod = "";
+      
+      const projectFile = safeUploadedFiles.find(f => f.validation && f.validation.status !== "accepted_supporting_file");
+      if (projectFile && projectFile.validation) {
+        // If your validation object extracts this metadata, pull it here.
+        // For now, we'll just check if it's there.
+        extractedClientName = projectFile.validation.extractedClientName || "";
+        extractedFacilityName = projectFile.validation.extractedFacilityName || "";
+        extractedLocation = projectFile.validation.extractedLocation || "";
+        extractedAuditPeriod = projectFile.validation.extractedAuditPeriod || "";
+      }
+
+      const reportDetails = {
+        clientName: extractedClientName || "[Client / Facility Name]",
+        facilityName: extractedFacilityName || "[To be updated after site data verification]",
+        location: extractedLocation || "[To be updated after site data verification]",
+        auditPeriod: extractedAuditPeriod || "[To be updated after site data verification]",
+        reportDate: new Date().toLocaleDateString("en-IN"),
+        contactPerson: "[To be updated after site data verification]",
+        outputFormat: "docx"
+      };
+
       // Use slug (templateId) from the resolved catalog template.
       // Falls back to numeric DB id if slug not available.
       const res = await Reports.generateReport({
         templateId:   selectedTemplate.templateId || selectedTemplate.slug || selectedTemplate.id,
-        publicForm:   details,   // camelCase; model.js converts to snake_case payload
-        uploadedFiles,
+        publicForm:   reportDetails,   // camelCase; model.js converts to snake_case payload
+        uploadedFiles: safeUploadedFiles,
       });
       if (res.error) {
+        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || res?.data?.pipelineDebug || {}));
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
         setGeneratedReport(res.report);
+        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || {}));
         let parsedData = null;
         try {
           if (res.report?.outputContent) {
@@ -2036,19 +2108,19 @@ export default function PublicReports() {
             ...sampleCommercialBuildingEnergyAuditData,
             reportInfo: {
               ...sampleCommercialBuildingEnergyAuditData.reportInfo,
-              clientName: details.clientName || "Data required",
-              location: details.location || "Data required",
-              auditPeriod: details.auditPeriod || "Data required",
-              reportDate: details.reportDate || "Data required",
+              clientName: reportDetails.clientName,
+              location: reportDetails.location,
+              auditPeriod: reportDetails.auditPeriod,
+              reportDate: reportDetails.reportDate,
             },
             buildingProfile: {
               ...sampleCommercialBuildingEnergyAuditData.buildingProfile,
-              facilityName: details.facilityName || "Data required",
+              facilityName: reportDetails.facilityName,
             }
           };
         }
         setGeneratedReportData(parsedData);
-        setStep(5);
+        setStep(4);
       }
     } catch (err) {
       showToast("Generation error: " + err.message, "error");
@@ -2069,7 +2141,7 @@ export default function PublicReports() {
     try {
       const res = await Reports.enhanceReportWithAi(generatedReport.id);
       if (res.error) {
-        showToast("AI enhancement failed. Your report is still ready.", "warning");
+        showAiEnhancementToast({ status: "failed_non_blocking", failureReason: res.error }, showToast);
         return;
       }
 
@@ -2084,45 +2156,40 @@ export default function PublicReports() {
         }
       }
 
-      if (res.report?.aiEnhancementStatus === "quota_exceeded" || res.report?.retryAfterSeconds) {
+      const aiStatus =
+        res?.aiEnhancementStatus ||
+        res?.data?.aiEnhancementStatus ||
+        res?.pipelineDebug?.aiEnhancementStatus ||
+        res.report?.aiEnhancementStatus ||
+        null;
+
+      if (aiStatus?.status === "quota_exceeded" || res.report?.retryAfterSeconds) {
         const seconds = res.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
-      } else if (res.report?.aiEnhanced) {
-        if (res.report?.providerUsed === "openrouter" && (res.report?.providerAttempts || []).some((attempt) => attempt.provider === "gemini")) {
-          showToast("AI enhancement completed using fallback provider.", "success");
-        } else {
-          showToast("AI enhancement applied successfully.", "success");
-        }
-      } else if (res.report?.aiEnhancementStatus === "ai_unavailable") {
-        toast.info("AI enhancement is unavailable right now. Your report is still ready.");
       } else {
-        const reason = res.report?.aiFailureReason || res.report?.providerWarning || "AI enhancement failed";
-        const cleanReason = cleanAiFailureMessage(reason);
-        
-        toast.warning(
-          cleanReason
-            ? `AI enhancement failed: ${cleanReason}. Your report is still ready.`
-            : "AI enhancement failed. Your report is still ready."
-        );
+        if (aiStatus) {
+          showAiEnhancementToast(aiStatus, showToast);
+        } else {
+          toast.info("AI enhancement processed. Deterministic report is ready.");
+        }
       }
     } catch (err) {
-      if (err?.response?.data?.report?.aiEnhancementStatus === "quota_exceeded" || err?.response?.data?.report?.retryAfterSeconds) {
+      const statusObj = err?.response?.data?.report?.aiEnhancementStatus || err?.response?.data?.aiEnhancementStatus;
+      if (statusObj?.status === "quota_exceeded" || err?.response?.data?.report?.retryAfterSeconds) {
         const seconds = err?.response?.data?.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
         return;
       }
-      if (err?.response?.data?.report?.aiEnhancementStatus === "ai_unavailable") {
-        toast.info("AI enhancement is unavailable right now. Your report is still ready.");
+      
+      if (statusObj) {
+        showAiEnhancementToast(statusObj, showToast);
         return;
       }
+      
       const cleanReason = cleanAiFailureMessage(err.message);
-      toast.warning(
-        cleanReason
-          ? `AI enhancement failed: ${cleanReason}. Your report is still ready.`
-          : "AI enhancement failed. Your report is still ready."
-      );
+      showAiEnhancementToast({ status: "failed_non_blocking", failureReason: cleanReason }, showToast);
     } finally {
       stopAiCountdown();
       setAiEnhancing(false);
@@ -2134,13 +2201,13 @@ export default function PublicReports() {
       outputContent: "Sample Commercial Building Energy Audit preview",
       missingData: "[]",
     });
-    setStep(5);
+    setStep(4);
   };
 
   const handleStartOver = () => {
     setStep(1);
     setSelectedTemplate(null);
-    setDetails({ outputFormat: "pdf" });
+    setDetails({ outputFormat: "docx" });
     setUploadedFiles([]);
     setGeneratedReport(null);
     setGeneratedReportData(null);
@@ -2148,26 +2215,24 @@ export default function PublicReports() {
     setAiProgress(createAiProgressState());
     setAllowGenerateWithSupportingFilesOnly(false);
     setGeminiCooldownSeconds(0);
+    setPipelineDebugData({}); // Cleared on New Report / Start Over
   };
 
   // Navigation guards
   const canNext = () => {
     if (step === 1) return !!selectedTemplate && selectedTemplate.meta?.status === "active";
+    
     if (step === 2) {
-      // Required: Client Name, Location, Audit Period, Report Date
-      return !!(
-        details.clientName?.trim() &&
-        details.location?.trim() &&
-        details.auditPeriod?.trim() &&
-        details.reportDate?.trim()
-      );
+      if (safeUploadedFiles.length === 0) return true; // Optional
+      return canContinueFromUpload;
     }
-    if (step === 3) return true; // files are optional
+
+    if (step === 3) return true;
     return false;
   };
 
-  const hasInvalidExcel = uploadedFiles.some(
-    (file) => isExcelFileName(file.filename) && file.validation?.status === "error"
+  const hasInvalidExcel = safeUploadedFiles.some(
+    (file) => isExcelFileName(file.filename) && hasFatalFileError(file.validation || file)
   );
 
   return (
@@ -2188,7 +2253,7 @@ export default function PublicReports() {
 
         <div
           className={`relative mx-auto px-4 py-8 md:px-8 md:py-10 ${
-            step === 5 ? "report-preview-card" : "max-w-[820px]"
+            step === 4 ? "report-preview-card" : "max-w-[820px]"
           }`}
         >
           {/* Page header */}
@@ -2212,7 +2277,7 @@ export default function PublicReports() {
           {/* Card */}
           <div
             className={`bg-white/3 border border-white/8 rounded-2xl p-5 md:p-7 backdrop-blur-sm ${
-              step === 5 ? "report-preview-shell" : ""
+              step === 4 ? "report-preview-shell" : ""
             }`}
           >
             {step === 1 && (
@@ -2224,28 +2289,25 @@ export default function PublicReports() {
               />
             )}
             {step === 2 && (
-              <Step2 details={details} onChange={handleDetailChange} />
-            )}
-            {step === 3 && (
-              <Step3
-                uploadedFiles={uploadedFiles}
+              <Step2
+                safeUploadedFiles={safeUploadedFiles}
                 onUpload={handleUpload}
                 onRemove={handleRemove}
                 uploading={uploading}
               />
             )}
-            {step === 4 && (
-              <Step4
+            {step === 3 && (
+              <Step3
                 selectedTemplate={selectedTemplate}
                 details={details}
-                uploadedFiles={uploadedFiles}
+                safeUploadedFiles={safeUploadedFiles}
                 onGenerate={handleGenerate}
                 onPreviewSample={handlePreviewSample}
                 generating={generating}
                 showSlowWarning={showSlowWarning}
                 hasInvalidExcel={hasInvalidExcel}
                 aiProgress={aiProgress}
-                hasProjectFile={uploadedFiles.some(
+                hasProjectFile={safeUploadedFiles.some(
                   (file) =>
                     isExcelFileName(file.filename) &&
                     (file.validation?.status === "accepted_project_file" ||
@@ -2256,8 +2318,8 @@ export default function PublicReports() {
                 setAllowGenerateWithSupportingFilesOnly={setAllowGenerateWithSupportingFilesOnly}
               />
             )}
-            {step === 5 && (
-              <Step5
+            {step === 4 && (
+              <Step4
                 report={generatedReport}
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
@@ -2344,6 +2406,11 @@ export default function PublicReports() {
           100% { background-position: -200% center; }
         }
       `}</style>
+      <DeveloperPipelinePanel
+        pipelineDebug={pipelineDebugData || {}}
+        isOpen={isPipelineDebugOpen}
+        setIsOpen={setIsPipelineDebugOpen}
+      />
     </div>
   );
 }

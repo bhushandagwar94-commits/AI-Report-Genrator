@@ -43,11 +43,13 @@ function bootSSL(app, port = 3001) {
         await eagerLoadContextWindows();
         await PushNotifications.setupPushNotificationService();
         await TelegramBotService.bootIfActive();
-        console.log(`Primary server in HTTPS mode listening on port ${port}`);
-        console.log("[SERVER] Backend starting...");
-        console.log("[SERVER] NODE_ENV:", process.env.NODE_ENV);
-        console.log("[SERVER] PORT:", port);
-        console.log("[SERVER] Health endpoint: /api/health");
+        const hasGemini = !!process.env.GEMINI_API_KEY ? "yes" : "no";
+        const hasOpenRouter = !!process.env.OPENROUTER_API_KEY ? "yes" : "no";
+        const hasDebug = (process.env.ENABLE_PIPELINE_DEBUG === 'true' || process.env.ENABLE_PIPELINE_DEBUG === '1') ? "yes" : "no";
+        console.log(`Backend server running on http://localhost:${port}`);
+        console.log(`Health check: http://localhost:${port}/api/health`);
+        console.log(`AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`);
+        console.log(`Pipeline debug enabled ${hasDebug}`);
       })
       .on("error", catchSigTerms);
 
@@ -80,11 +82,13 @@ function bootHTTP(app, port = 3001) {
       await eagerLoadContextWindows();
       await PushNotifications.setupPushNotificationService();
       await TelegramBotService.bootIfActive();
-      console.log(`Primary server in HTTP mode listening on port ${port}`);
-      console.log("[SERVER] Backend starting...");
-      console.log("[SERVER] NODE_ENV:", process.env.NODE_ENV);
-      console.log("[SERVER] PORT:", port);
-      console.log("[SERVER] Health endpoint: /api/health");
+      const hasGemini = !!process.env.GEMINI_API_KEY ? "yes" : "no";
+      const hasOpenRouter = !!process.env.OPENROUTER_API_KEY ? "yes" : "no";
+      const hasDebug = (process.env.ENABLE_PIPELINE_DEBUG === 'true' || process.env.ENABLE_PIPELINE_DEBUG === '1') ? "yes" : "no";
+      console.log(`Backend server running on http://localhost:${port}`);
+      console.log(`Health check: http://localhost:${port}/api/health`);
+      console.log(`AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`);
+      console.log(`Pipeline debug enabled ${hasDebug}`);
     })
     .on("error", catchSigTerms);
 

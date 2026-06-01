@@ -1,6 +1,9 @@
 const { getLLMProvider } = require("../utils/helpers");
 const { cleanJsonResponse, generateWithOpenRouterFallback } = require("./llmProviderService");
 const { generateWithGemini } = require("./geminiProviderService");
+const _ = require("lodash");
+const crypto = require("crypto");
+
 const {
   buildCommercialBuildingEnergyAuditBaseData,
   cleanAndDeduplicateProjects,
@@ -21,6 +24,85 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeoutPromise]).finally(() => {
     clearTimeout(timeoutId);
   });
+}
+
+function stableStringifyForHash(value) {
+  if (value === null || value === undefined) return "";
+
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringifyForHash).join(",")}]`;
+  }
+
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${key}:${stableStringifyForHash(value[key])}`)
+    .join(",")}}`;
+}
+
+function pickNarrativeFieldsFromReportData(reportData) {
+  const fields = [];
+
+  const pushText = (path, value) => {
+    if (value !== null && value !== undefined) {
+      fields.push(`${path}=${String(value)}`);
+    }
+  };
+
+  const data = reportData || {};
+
+  pushText("executiveSummary.purposeText", data?.executiveSummary?.purposeText);
+  pushText("executiveSummary.keyObservations", data?.executiveSummary?.keyObservations);
+  pushText("executiveSummary.conclusionAndWayForward", data?.executiveSummary?.conclusionAndWayForward);
+
+  const groups = Array.isArray(data?.groups) ? data.groups : [];
+  groups.forEach((group, groupIndex) => {
+    pushText(`groups.${groupIndex}.groupIntroduction`, group?.groupIntroduction);
+    pushText(`groups.${groupIndex}.groupObservation`, group?.groupObservation);
+
+    const projects = Array.isArray(group?.projects) ? group.projects : [];
+    projects.forEach((ecm, ecmIndex) => {
+      const base = `groups.${groupIndex}.projects.${ecmIndex}`;
+
+      pushText(`${base}.existingSystemDescription`, ecm?.existingSystemDescription);
+      pushText(`${base}.existingSystemBaselineCondition`, ecm?.existingSystemBaselineCondition);
+      pushText(`${base}.problemGapIdentified`, ecm?.problemGapIdentified);
+      pushText(`${base}.proposedProjectDescription`, ecm?.proposedProjectDescription);
+      pushText(`${base}.proposedEnergyConservationMeasure`, ecm?.proposedEnergyConservationMeasure);
+      pushText(`${base}.rationaleForEnergySaving`, ecm?.rationaleForEnergySaving);
+      pushText(`${base}.measurementVerificationPlanNarrative`, ecm?.measurementVerificationPlanNarrative);
+      pushText(`${base}.benefitsOtherThanEnergySaving`, ecm?.benefitsOtherThanEnergySaving);
+      pushText(`${base}.precautions`, ecm?.precautions);
+      pushText(`${base}.aspectsToBeTakenCareOf`, ecm?.aspectsToBeTakenCareOf);
+      pushText(`${base}.projectConclusion`, ecm?.projectConclusion);
+      pushText(`${base}.conclusion`, ecm?.conclusion);
+      pushText(`${base}.schematicConceptualFramework`, ecm?.schematicConceptualFramework);
+    });
+  });
+
+  return fields;
+}
+
+function hashNarrativeFields(reportData) {
+  try {
+    const narrativeFields = pickNarrativeFieldsFromReportData(reportData);
+    return stableStringifyForHash(narrativeFields);
+  } catch (error) {
+    console.warn("[AI enhancement] hashNarrativeFields failed:", error?.message || error);
+    return `hash_fallback_${Date.now()}`;
+  }
+}
+
+function safeHashNarrativeFields(reportData) {
+  try {
+    return hashNarrativeFields(reportData);
+  } catch (error) {
+    console.warn("[AI enhancement] narrative hash skipped:", error?.message || error);
+    return null;
+  }
 }
 
 /**
@@ -63,18 +145,24 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
     }
   }
 
-  // B0. Try Gemini
-  if (!jsonResult && (provider === "gemini" || useProviderFallbackChain)) {
-    console.log("[REPORT PIPELINE] About to call generateWithGemini");
+  // Sequence: Gemini first, OpenRouter second
+  let geminiResult = null;
+  let openRouterResult = null;
+  let geminiJson = null;
+  let openRouterJson = null;
+
+  // 1. Try Gemini
+  try {
+    console.log("[runPromptStage] Executing Gemini enhancement");
     const promptText = `System:\n${systemPrompt}\n\nUser:\n${userPrompt}`;
-    const geminiResult = await generateWithGemini(promptText);
-    
+    geminiResult = await generateWithGemini(promptText);
+
     if (geminiResult.providerAttempts) {
       providerAttempts.push(...geminiResult.providerAttempts);
     } else {
       providerAttempts.push({
         provider: "gemini",
-        model: geminiResult.modelUsed || "gemini-1.5-flash",
+        model: geminiResult.modelUsed || "gemini-2.5-flash-lite",
         status: geminiResult.success ? "success" : "failed",
         reason: geminiResult.error || null,
         error: geminiResult.error || null
@@ -83,19 +171,7 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
 
     if (geminiResult.success) {
       try {
-        jsonResult = cleanJsonResponse(geminiResult.content);
-        providerUsed = "gemini";
-        providerStatus = "success";
-        modelUsed = geminiResult.modelUsed;
-        return { 
-          result: jsonResult, 
-          providerUsed, 
-          providerStatus,
-          fallbackReason,
-          modelUsed,
-          providerAttempts,
-          retryAfterSeconds: null,
-        };
+        geminiJson = cleanJsonResponse(geminiResult.content);
       } catch (parseError) {
         console.warn(`[runPromptStage] Initial Gemini JSON parse failed, attempting repair...`);
         const repairPrompt = `System:\nFix this into valid JSON only. Do not change values. Do not add fields.\n\nUser:\n${geminiResult.content}`;
@@ -103,7 +179,7 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
         
         providerAttempts.push({
           provider: "gemini",
-          model: repairResult.modelUsed || "gemini-1.5-flash",
+          model: repairResult.modelUsed || "gemini-2.5-flash-lite",
           status: repairResult.success ? "success" : "failed",
           reason: repairResult.error || "Repair attempt failed",
           error: repairResult.error || "Repair attempt failed"
@@ -111,141 +187,109 @@ async function runPromptStage(systemPrompt, userPrompt, templateConfig, options 
 
         if (repairResult.success) {
           try {
-            jsonResult = cleanJsonResponse(repairResult.content);
-            providerUsed = "gemini";
-            providerStatus = "success";
-            modelUsed = repairResult.modelUsed;
-            return { 
-              result: jsonResult, 
-              providerUsed, 
-              providerStatus,
-              fallbackReason,
-              modelUsed,
-              providerAttempts,
-              retryAfterSeconds: null,
-            };
+            geminiJson = cleanJsonResponse(repairResult.content);
           } catch (repairParseError) {
-             geminiResult.success = false;
-             geminiResult.error = repairParseError.message;
+            console.warn(`[runPromptStage] Gemini repair failed: ${repairParseError.message}`);
           }
-        } else {
-           geminiResult.success = false;
-           geminiResult.error = repairResult.error;
         }
       }
     }
-    
-    if (!geminiResult.success) {
-      console.warn(`[runPromptStage] Gemini failed: ${geminiResult.error}`);
-      const geminiQuotaExceeded =
-        geminiResult.isQuotaExceeded ||
-        geminiResult.providerStatus === "quota_exceeded" ||
-        providerAttempts.some((attempt) => attempt.status === "quota_exceeded");
-      retryAfterSeconds = geminiResult.retryAfterSeconds || null;
-
-      if (!useProviderFallbackChain || !geminiQuotaExceeded || !process.env.OPENROUTER_API_KEY) {
-        return {
-          success: false,
-          result: null,
-          providerUsed: "gemini",
-          providerStatus: geminiQuotaExceeded ? "quota_exceeded" : "failed",
-          error: geminiResult.error,
-          providerAttempts,
-          retryAfterSeconds,
-          isQuotaExceeded: geminiQuotaExceeded,
-        };
-      }
-
-      console.log("[AI FALLBACK] Gemini quota exhausted. Trying OpenRouter...");
-    }
-  }
-
-  // B. Try OpenRouter
-  if (!jsonResult && (provider === "openrouter" || useProviderFallbackChain) && process.env.OPENROUTER_API_KEY) {
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ];
-    
-    console.log("[REPORT PIPELINE] About to call generateWithOpenRouterFallback");
-    console.log("[REPORT GENERATE] OPENROUTER_API_KEY present:", Boolean(process.env.OPENROUTER_API_KEY));
-    console.log("[REPORT GENERATE] OPENROUTER_MODELS:", process.env.OPENROUTER_MODELS);
-    
-    const openRouterResult = await generateWithOpenRouterFallback(messages, options);
-    const openRouterAttempts = openRouterResult?.providerAttempts || openRouterResult?.attempts || [];
-    providerAttempts = [...providerAttempts, ...openRouterAttempts];
-    console.log("[REPORT PIPELINE] LLM result:", {
-      success: openRouterResult?.success,
-      providerUsed: openRouterResult?.providerUsed,
-      providerStatus: openRouterResult?.providerStatus,
-      modelUsed: openRouterResult?.modelUsed,
-      attemptsCount: providerAttempts.length || 0,
-      error: openRouterResult?.error
+  } catch (error) {
+    providerAttempts.push({
+      provider: "gemini",
+      model: "gemini-2.5-flash-lite",
+      status: "failed",
+      error: error?.message || String(error)
     });
-    
-    if (openRouterResult.success) {
-      jsonResult = openRouterResult.parsedData;
-      providerUsed = "openrouter";
-      providerStatus = openRouterResult.providerStatus || "success";
-      modelUsed = openRouterResult.modelUsed || null;
-      return { 
-        result: jsonResult, 
-        providerUsed, 
-        providerStatus,
-        fallbackReason,
-        modelUsed,
-        providerAttempts,
-        retryAfterSeconds: null,
-      };
-    } else {
-      console.warn(`[runPromptStage] OpenRouter failed: ${openRouterResult.error}`);
-      providerStatus = openRouterResult.providerStatus || "fallback";
-      fallbackReason += `OpenRouter: ${openRouterResult.error}; `;
-      if (useProviderFallbackChain) {
-        return {
-          success: false,
-          result: null,
-          providerUsed: "deterministic",
-          providerStatus: "success",
-          error: "All AI providers failed or quota exhausted. Deterministic report used.",
-          providerAttempts,
-          retryAfterSeconds: null,
-          aiEnhancementStatus: "ai_unavailable",
-        };
-      }
-      // Can't return immediately, might try OpenAI
-    }
   }
 
-  // C. Try OpenAI
-  if (!jsonResult && process.env.OPENAI_API_KEY) {
+  // 2. Try OpenRouter
+  if (!process.env.OPENROUTER_API_KEY) {
+    providerAttempts.push({
+      provider: "openrouter",
+      model: "openai/gpt-oss-120b:free",
+      status: "skipped",
+      reason: "OPENROUTER_API_KEY is not configured",
+      error: null
+    });
+  } else {
     try {
-      const llmProvider = getLLMProvider({ provider: "openai" });
-      const result = await llmProvider.getChatCompletion(
-        [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        { temperature: 0.1 }
-      );
-      if (result && result.textResponse) {
-        jsonResult = cleanJsonResponse(result.textResponse);
-        providerUsed = "openai";
-        providerStatus = "success";
-        return { result: jsonResult, providerUsed, providerStatus, fallbackReason, modelUsed, providerAttempts };
+      console.log("[runPromptStage] Executing OpenRouter enhancement");
+      let openRouterUserPrompt = userPrompt;
+      if (geminiJson) {
+        openRouterUserPrompt += `\n\n--- INITIAL AI DRAFT ---\nAn initial AI has generated a draft output. Use it as a foundation and deepen the engineering explanation, ensuring the output strictly adheres to the requested JSON format:\n\n${JSON.stringify(geminiJson, null, 2)}`;
       }
-    } catch (e) {
-      console.error("[runPromptStage] OpenAI failed:", e.message);
-      fallbackReason += `OpenAI: ${e.message}; `;
+
+      const messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: openRouterUserPrompt }
+      ];
+      openRouterResult = await generateWithOpenRouterFallback(messages);
+      
+      if (openRouterResult.providerAttempts) {
+        providerAttempts.push(...openRouterResult.providerAttempts);
+      } else {
+        providerAttempts.push({
+          provider: "openrouter",
+          model: openRouterResult.modelUsed || "openai/gpt-oss-120b:free",
+          status: openRouterResult.success ? "success" : "failed",
+          reason: openRouterResult.error || null,
+          error: openRouterResult.error || null
+        });
+      }
+
+      if (openRouterResult.success) {
+        try {
+          openRouterJson = cleanJsonResponse(openRouterResult.content);
+        } catch (parseError) {
+           console.warn(`[runPromptStage] OpenRouter JSON parse failed.`);
+        }
+      }
+    } catch (error) {
+      providerAttempts.push({
+        provider: "openrouter",
+        model: "openai/gpt-oss-120b:free",
+        status: "failed",
+        error: error?.message || String(error)
+      });
     }
   }
 
-  const finalError = new Error("No LLM provider available or all failed: " + fallbackReason);
-  finalError.providerAttempts = providerAttempts;
-  finalError.providerUsed = "deterministic-fallback";
-  finalError.providerStatus = "fallback";
-  finalError.modelUsed = modelUsed;
-  throw finalError;
+  // Selection Logic
+  if (openRouterJson) {
+    return {
+      result: openRouterJson,
+      providerUsed: "openrouter",
+      providerStatus: "success",
+      modelUsed: openRouterResult?.modelUsed || "openai/gpt-oss-120b:free",
+      fallbackReason: "",
+      providerAttempts,
+      retryAfterSeconds: null
+    };
+  } else if (geminiJson) {
+    return {
+      result: geminiJson,
+      providerUsed: "gemini",
+      providerStatus: "success",
+      modelUsed: geminiResult?.modelUsed || "gemini-2.5-flash-lite",
+      fallbackReason: "OpenRouter failed or disabled",
+      providerAttempts,
+      retryAfterSeconds: null
+    };
+  }
+
+  // Both failed
+  const isQuotaExceeded = providerAttempts.some(a => a.status === "quota_exceeded");
+  return {
+    success: false,
+    result: null,
+    providerUsed: "none",
+    providerStatus: isQuotaExceeded ? "quota_exceeded" : "failed",
+    error: "All providers failed to return valid JSON",
+    providerAttempts,
+    retryAfterSeconds: null,
+    isQuotaExceeded
+  };
 }
 
 
@@ -1699,7 +1743,11 @@ async function generateCommercialAuditComponentReport({
   const useAiDuringGeneration = typeof useAiOverride === "boolean"
     ? useAiOverride
     : String(process.env.USE_AI_DURING_GENERATION || "true").toLowerCase() === "true";
-  const aiFinalizationTimeoutMs = Number(process.env.AI_FINALIZATION_TIMEOUT_MS || 30000);
+  const aiFinalizationTimeoutMs = Number(
+    process.env.AI_FINALIZATION_TIMEOUT_MS ||
+    process.env.AI_TOTAL_TIMEOUT_MS ||
+    120000
+  );
   let providerUsed = "deterministic";
   let providerStatus = "success";
   let modelUsed = null;
@@ -2048,37 +2096,76 @@ async function generateCommercialAuditComponentReport({
   }
 
   const aiEnhanced = llmSuccessCount > 0;
-  const allAiUnavailable =
-    !aiEnhanced &&
-    providerAttempts.some((attempt) => attempt.provider === "openrouter") &&
-    exactErrorStr === "All AI providers failed or quota exhausted. Deterministic report used.";
-  const providerWarning = quotaExceededRetry && !aiEnhanced && !providerAttempts.some((attempt) => attempt.provider === "openrouter")
-    ? "Gemini free quota exceeded. Your report is still ready."
-    : allAiUnavailable
-      ? "AI enhancement is unavailable right now. Your report is still ready."
-      : aiEnhanced
-        ? (llmFailureCount > 0 ? "Some AI enhancement batches failed. Using deterministic fallbacks for failed batches." : null)
-        : (warnings.find((warning) => /AI enhancement/i.test(warning)) || null);
-  const aiEnhancementStatus = allAiUnavailable
-    ? "ai_unavailable"
-    : quotaExceededRetry && !aiEnhanced && !providerAttempts.some((attempt) => attempt.provider === "openrouter")
-      ? "quota_exceeded"
-      : aiEnhanced
-        ? (allAiDroppedFields.length > 0 ? "partial_success" : "success")
-        : (allAiDroppedFields.length > 0 ? "no_fields_changed" : "failed");
+  
+  // Merge Check
+  const beforeHash = safeHashNarrativeFields(deterministicReport);
+  const afterHash = safeHashNarrativeFields(report);
+  const mergeHadEffect = beforeHash && afterHash 
+    ? beforeHash !== afterHash 
+    : Boolean(allAiEnhancedFields.length > 0);
+
+  let finalStatus = "failed_non_blocking";
+  let finalFailureReason = aiFailureReason || exactErrorStr;
+  let finalEnhancerUsed = "deterministic";
+
+  if (!useAiDuringGeneration) {
+    finalStatus = "skipped";
+    finalFailureReason = "AI enhancement disabled during generation.";
+    finalEnhancerUsed = "none";
+  } else if (aiEnhanced) {
+    if (!mergeHadEffect) {
+      finalStatus = "failed_non_blocking";
+      finalFailureReason = "no_enhanced_fields_merged";
+      finalEnhancerUsed = "deterministic";
+      
+      // Mark latest success attempt as success_but_no_effect
+      const lastSuccess = providerAttempts.slice().reverse().find(a => a.status === "success");
+      if (lastSuccess) {
+        lastSuccess.status = "success_but_no_effect";
+      }
+    } else if (allAiDroppedFields.length > 0 || llmFailureCount > 0) {
+      finalStatus = "partial_success";
+      finalEnhancerUsed = providerUsed;
+    } else {
+      finalStatus = "success";
+      finalEnhancerUsed = providerUsed;
+    }
+  } else if (quotaExceededRetry && !providerAttempts.some((attempt) => attempt.provider === "openrouter")) {
+    finalFailureReason = `quota_exceeded (${quotaExceededRetry}s)`;
+  } else {
+    finalFailureReason = exactErrorStr || "All AI providers failed";
+  }
+
+  const aiEnhancementStatus = {
+    status: finalStatus,
+    finalEnhancerUsed: finalEnhancerUsed,
+    providerAttempts,
+    fieldsRequested: allAiEnhancedFields.length + allAiDroppedFields.length,
+    fieldsGenerated: allAiEnhancedFields.length,
+    fieldsAccepted: allAiEnhancedFields.length, // Simplified mapping
+    fieldsDropped: allAiDroppedFields.length,
+    ecmsRequested: batches.length, // Simplified mapping
+    ecmsEnhanced: llmSuccessCount,
+    failureReason: finalFailureReason,
+    userMessage: "",
+    developerMessage: exactErrorStr,
+    droppedFields: allAiDroppedFields,
+    warnings: warnings,
+    errors: exactErrorStr ? [exactErrorStr] : []
+  };
 
   return {
-    report: aiEnhanced ? report : deterministicReport,
+    report: aiEnhanced && mergeHadEffect ? report : deterministicReport,
     deterministicReport,
     providerUsed,
     providerStatus,
     modelUsed,
     providerAttempts,
     warnings,
-    providerWarning,
-    aiEnhanced,
+    providerWarning: aiEnhancementStatus.failureReason,
+    aiEnhanced: aiEnhanced && mergeHadEffect,
     aiEnhancementStatus,
-    aiFailureReason: aiFailureReason || exactErrorStr,
+    aiFailureReason: finalFailureReason,
     retryAfterSeconds: quotaExceededRetry,
     componentPayloads,
     aiEnhancedFields: allAiEnhancedFields,
