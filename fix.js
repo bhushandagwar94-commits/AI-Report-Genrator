@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const docxServicePath = 'C:\\Users\\ASUS\\Documents\\GitHub\\AI-Report-Genrator\\server\\services\\docxExportService.js';
-const templatePath = 'C:\\Users\\ASUS\\Documents\\GitHub\\AI-Report-Genrator\\frontend\\src\\components\\templates\\commercial-building-energy-audit\\CommercialBuildingEnergyAuditTemplate.tsx';
+const docxServicePath = path.join(__dirname, 'server/services/docxExportService.js');
+const templatePath = path.join(__dirname, 'frontend/src/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx');
 
 let docxCode = fs.readFileSync(docxServicePath, 'utf-8');
 let templateCode = fs.readFileSync(templatePath, 'utf-8');
