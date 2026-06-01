@@ -1132,7 +1132,12 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 }
 
 function DevDiagnostics({ data }: { data: any }) {
+<<<<<<< HEAD
   if (process.env.NODE_ENV !== 'development') return null;
+=======
+  // @ts-ignore
+  if (process.env.NODE_ENV === 'production' || !(import.meta as any).env?.DEV) return null;
+>>>>>>> edba105bff42db5e84f24c790af66014f397993d
   return (
     <div className="mb-4 p-4 bg-gray-900 text-green-400 font-mono text-xs rounded border border-green-800 report-preview-scroll" style={{maxHeight: 200, overflowY: 'auto'}}>
       <div className="font-bold mb-2">DEV DIAGNOSTICS - Normalization Applied</div>
