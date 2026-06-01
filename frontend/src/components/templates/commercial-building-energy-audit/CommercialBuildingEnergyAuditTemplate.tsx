@@ -936,6 +936,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 }
 
 function DevDiagnostics({ data }: { data: any }) {
+  // @ts-ignore
   if (process.env.NODE_ENV === 'production' || !(import.meta as any).env?.DEV) return null;
   return (
     <div className="mb-4 p-4 bg-gray-900 text-green-400 font-mono text-xs rounded border border-green-800 report-preview-scroll" style={{maxHeight: 200, overflowY: 'auto'}}>
