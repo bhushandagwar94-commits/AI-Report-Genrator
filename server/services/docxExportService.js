@@ -108,6 +108,14 @@ function formatEcmNumber(valueOrProject) {
 
 function classifyEcmType(ecm) {
   const title = String(ecm.projectTitle || ecm.title || ecm.ecmName || "").toLowerCase();
+  const ecmNo = String(getEcmNumberVal(ecm) || "");
+  if (ecmNo.includes("13")) return "heat_recovery";
+  if (ecmNo.includes("14")) return "thermal_insulation";
+  if (ecmNo.includes("15")) return "ir_heater_retrofit";
+  if (ecmNo.match(/1[6-9]|20/)) return "servo_hydraulic_retrofit";
+  if (ecmNo.includes("21")) return "compressed_air_management";
+  if (ecmNo.includes("12")) return "apfc_power_factor_correction";
+  
   if (title.includes("heat recovery") || title.includes("exhaust heat")) return "heat_recovery";
   if (title.includes("insulation") || title.includes("hot duct")) return "thermal_insulation";
   if (title.includes("ir heater") || title.includes("band heater") || title.includes("barrel heating")) return "ir_heater_retrofit";
@@ -293,13 +301,22 @@ function buildTechnicalSpecificationRows(ecmType, ecm) {
 }
 
 function buildMvPlanRows(ecmType, ecm) {
+  let paramValue = "ECM-type-specific parameter";
+  if (ecmType === "cooling_system_optimization") paramValue = "Flow, head, pressure, kW, CHW/CW temperature";
+  else if (ecmType === "heat_recovery") paramValue = "Exhaust air temperature, inlet air temperature, heater kW, operating hours";
+  else if (ecmType === "thermal_insulation" || ecmType === "ir_heater_retrofit") paramValue = "Surface temperature, duct temperature, heater load, operating hours";
+  else if (ecmType === "servo_hydraulic_retrofit") paramValue = "Hydraulic motor kW, cycle time, idle load, operating hours";
+  else if (ecmType === "compressed_air_management") paramValue = "Pressure, flow, leakage, compressor kW";
+  else if (ecmType === "apfc_power_factor_correction") paramValue = "PF, kVA, kVAh, reactive power compensation";
+  else if (ecmType === "ahu_plug_fan_optimization") paramValue = "Airflow, static pressure, fan kW";
+
   let rows = ecm.measurementVerificationPlan || ecm.mvPlan || ecm.measurementAndVerificationPlan || [];
   if (rows.length < 3) {
     rows = [
       { parameter: "Power consumption", baselineMeasurement: "kW before project", postImplementationMeasurement: "kW after project" },
       { parameter: "Operating hours", baselineMeasurement: "Existing operating schedule", postImplementationMeasurement: "Revised operating schedule" },
       { parameter: "Energy consumption", baselineMeasurement: "kWh/year baseline", postImplementationMeasurement: "kWh/year after project" },
-      { parameter: "Performance parameter", baselineMeasurement: "ECM-type-specific parameter", postImplementationMeasurement: "Confirmed after commissioning" },
+      { parameter: "Performance parameter", baselineMeasurement: paramValue, postImplementationMeasurement: "Confirmed after commissioning" },
       { parameter: "Saving validation", baselineMeasurement: "Calculated from baseline", postImplementationMeasurement: "Verified from measured data" }
     ];
   }
@@ -424,6 +441,44 @@ function keyValueTable(rowsData) {
       });
     }),
   });
+}
+
+
+function mandatoryTable(columns, rowsData, placeholder = "[To be updated after site data verification]") {
+  const safeColumns = asArray(columns).length ? asArray(columns) : [{ key: "value", label: "Value" }];
+  const rows = asArray(rowsData);
+  if (rows.length === 0) {
+    const emptyRow = {};
+    safeColumns.forEach(c => emptyRow[c.key] = placeholder);
+    return createTable(safeColumns, [emptyRow]);
+  }
+  
+  const mappedRows = rows.map(r => {
+    const newRow = { ...r };
+    safeColumns.forEach(c => {
+      let val = newRow[c.key];
+      if (val === undefined || val === null || String(val).trim() === "" || /^(data required|null|undefined|\[draft.*?\])$/i.test(String(val).trim())) {
+        newRow[c.key] = placeholder;
+      }
+    });
+    return newRow;
+  });
+  return createTable(safeColumns, mappedRows);
+}
+
+function mandatoryKeyValueTable(dataObj, placeholder = "[To be updated after site data verification]") {
+  const safeObj = { ...dataObj };
+  const keys = Object.keys(safeObj);
+  if (keys.length === 0) {
+     return keyValueTable([{label: "Details", value: placeholder}]);
+  }
+  keys.forEach(k => {
+    let val = safeObj[k];
+    if (val === undefined || val === null || String(val).trim() === "" || /^(data required|null|undefined|\[draft.*?\])$/i.test(String(val).trim())) {
+      safeObj[k] = placeholder;
+    }
+  });
+  return keyValueTable(keys.map(k => ({ label: k, value: safeObj[k] })));
 }
 
 function generateCoverPage(info) {
@@ -646,146 +701,242 @@ function generateBuildingProfile(report) {
   const bp = report.buildingProfile || {};
   const esd = report.electricalSupplyDetails || {};
   const benchmark = report.specificEnergyBenchmark || {};
+  const placeholder = "[To be updated after site data verification]";
   return [
     heading1("Chapter 2: Plant / Building Details and Energy Profile"),
     
     heading2("2.1 General Information"),
-    optionalKeyValueTable({
+    mandatoryKeyValueTable({
       "Name of facility": bp.facilityName || report.reportInfo?.clientName,
       "Address": bp.address,
       "Type of building": bp.typeOfBuilding || report.reportInfo?.buildingType,
+      "Year of construction": bp.yearOfConstruction,
+      "Total built-up area": bp.totalBuiltUpArea,
+      "Conditioned area": bp.conditionedArea,
+      "Number of floors": bp.numberOfFloors,
+      "Occupancy type": bp.occupancyType,
+      "Average occupancy": bp.averageOccupancy,
+      "Operating days and hours": bp.operatingDaysAndHours,
       "Facility contact person": bp.facilityContactPerson,
+      "Audit date": report.reportInfo?.auditPeriod,
+      "SEE-Tech audit team": report.reportInfo?.preparedBy || "SEE-Tech Solutions",
     }),
 
     heading2("2.2 Building Operation Details"),
-    optionalKeyValueTable({
-      "Operating days/year": bp.operatingDaysPerYear || bp.operatingDaysAndHours,
-      "Operating hours/day": bp.operatingHoursPerDay,
-      "Shift pattern": bp.shiftPattern,
-      "Weekly off / holiday pattern": bp.weeklyOffPattern,
-      "Production/occupancy pattern": bp.productionPattern,
-      "Major operating zones": bp.majorOperatingZones,
-      "Remarks": bp.operationRemarks,
-    }),
+    mandatoryTable(
+      [
+        { key: "area", label: "Area / Function" },
+        { key: "operatingHours", label: "Operating Hours" },
+        { key: "remarks", label: "Remarks" },
+      ],
+      asArray(report.buildingOperationDetails).length ? report.buildingOperationDetails : [
+        { area: "Office area" },
+        { area: "Common area" },
+        { area: "Basement / parking" },
+        { area: "Server room / data room" },
+        { area: "Kitchen" },
+        { area: "Laundry" },
+        { area: "Guest rooms" },
+        { area: "Patient rooms / wards" },
+        { area: "OT / ICU / critical areas" }
+      ]
+    ),
 
     heading2("2.3 Utility and Energy Sources"),
-    optionalTable(
+    mandatoryTable(
       [
         { key: "energySource", label: "Energy Source" },
         { key: "use", label: "Use" },
         { key: "annualConsumption", label: "Annual Consumption" },
-        { key: "annualCost", label: "Annual Cost" },
+        { key: "annualCost", label: "Annual Cost ₹" },
       ],
-      report.utilityAndEnergySources
+      asArray(report.utilityAndEnergySources).length ? report.utilityAndEnergySources : [
+        { energySource: "Grid electricity", use: "HVAC, lighting, pumps, plug loads" },
+        { energySource: "Diesel", use: "DG backup" },
+        { energySource: "PNG / LPG", use: "Kitchen, boiler, hot water" },
+        { energySource: "Solar PV", use: "Captive generation" },
+        { energySource: "Solar thermal", use: "Hot water" },
+        { energySource: "Other", use: "" }
+      ]
     ),
 
     heading2("2.4 Electrical Supply Details"),
-    optionalKeyValueTable({
+    mandatoryKeyValueTable({
       "Supply voltage": esd.supplyVoltage,
-      "Contract demand / sanctioned load": esd.contractDemand,
+      "Consumer number": esd.consumerNumber,
+      "Tariff category": esd.tariffCategory,
+      "Contract demand / sanctioned load": esd.contractDemand || esd.sanctionedLoad,
       "Connected load": esd.connectedLoad,
       "Transformer capacity": esd.transformerCapacity,
       "DG capacity": esd.dgCapacity,
-      "Tariff category": esd.tariffCategory,
-      "Billing demand": esd.billingDemand,
-      "Power factor": esd.powerFactor,
-      "Average tariff": esd.averageElectricityTariff || formatINR(report.executiveSummary?.averageTariff),
-      "Metering arrangement": esd.meteringArrangement,
+      "APFC panel capacity": esd.apfcPanelCapacity,
+      "Average power factor": esd.powerFactor || esd.averagePowerFactor,
+      "Billing type": esd.billingType,
+      "Average electricity tariff": esd.averageElectricityTariff || formatINR(report.executiveSummary?.averageTariff),
     }),
 
     heading2("2.5 Electricity Consumption and Billing Summary"),
-    optionalTable(
+    mandatoryTable(
       [
         { key: "month", label: "Month" },
-        { key: "kwh", label: "kWh Consumption" },
-        { key: "demand", label: "Max Demand" },
-        { key: "pf", label: "Power Factor" },
-        { key: "bill", label: "Electricity Bill" },
-        { key: "tariff", label: "Average Tariff" },
-        { key: "remarks", label: "Remarks" },
+        { key: "kwh", label: "kWh" },
+        { key: "kvah", label: "kVAh" },
+        { key: "demand", label: "Maximum Demand kVA" },
+        { key: "pf", label: "PF" },
+        { key: "bill", label: "Bill Amount ₹" },
+        { key: "sec", label: "Specific Consumption" },
       ],
-      report.monthlyBillingSummary
+      asArray(report.monthlyBillingSummary).length ? report.monthlyBillingSummary : [
+        { month: "Apr" }, { month: "May" }, { month: "Jun" }, { month: "Jul" },
+        { month: "Aug" }, { month: "Sep" }, { month: "Oct" }, { month: "Nov" },
+        { month: "Dec" }, { month: "Jan" }, { month: "Feb" }, { month: "Mar" },
+        { month: "Total / Average" }
+      ]
     ),
 
     heading2("2.6 Specific Energy Consumption Benchmark"),
-    optionalKeyValueTable({
-      "SEC definition": benchmark.secDefinition,
-      "Production/occupancy denominator": benchmark.denominator,
-      "SEC trend / value": benchmark.specificEnergyConsumption,
-      "Benchmark/reference value": benchmark.referenceBenchmark,
-      "Interpretation": benchmark.improvementPotential,
+    mandatoryTable(
+      [
+        { key: "buildingType", label: "Building Type" },
+        { key: "benchmark", label: "Recommended Benchmark" },
+      ],
+      [
+        { buildingType: "Office building", benchmark: "kWh/sq.ft/year" },
+        { buildingType: "IT park", benchmark: "kWh/sq.ft/year and kWh/workstation/year" },
+        { buildingType: "Hotel", benchmark: "kWh/occupied room night" },
+        { buildingType: "Hospital", benchmark: "kWh/bed/day or kWh/sq.ft/year" },
+        { buildingType: "Mall", benchmark: "kWh/sq.ft/year" },
+        { buildingType: "Educational building", benchmark: "kWh/student/year or kWh/sq.ft/year" }
+      ]
+    ),
+    mandatoryKeyValueTable({
+      "Annual electricity consumption": benchmark.annualElectricityConsumption,
+      "Built-up area": benchmark.builtUpArea,
+      "Conditioned area": benchmark.conditionedArea,
+      "Annual occupancy / room nights / bed days": benchmark.annualOccupancy,
+      "Specific energy consumption": benchmark.specificEnergyConsumption,
+      "Reference / target benchmark": benchmark.referenceBenchmark,
+      "Improvement potential": benchmark.improvementPotential,
     }),
 
-    heading2("2.7 Major Energy Consuming Systems"),
-    optionalTable(
+    heading2("2.7 Major Energy-Consuming Systems"),
+    mandatoryTable(
       [
         { key: "system", label: "System" },
         { key: "majorEquipment", label: "Major Equipment" },
-        { key: "estimatedShare", label: "Estimated Share" },
+        { key: "estimatedShare", label: "Estimated Share of Energy Consumption" },
         { key: "remarks", label: "Remarks" },
       ],
-      report.majorEnergyConsumingSystems
+      asArray(report.majorEnergyConsumingSystems).length ? report.majorEnergyConsumingSystems : [
+        { system: "HVAC", majorEquipment: "Chiller / VRF / AHU / pumps / cooling tower" },
+        { system: "Lighting", majorEquipment: "Indoor / outdoor / parking / facade" },
+        { system: "Pumps", majorEquipment: "Domestic / STP / hot water / HVAC" },
+        { system: "Plug loads", majorEquipment: "Office equipment / appliances" },
+        { system: "Server / IT loads", majorEquipment: "UPS, PAC, server room" },
+        { system: "Kitchen / laundry", majorEquipment: "Hotel / hospital loads" },
+        { system: "Hot water system", majorEquipment: "Boiler / heat pump / solar" },
+        { system: "Lifts / escalators", majorEquipment: "Vertical transport" }
+      ]
     ),
 
     heading2("2.8 HVAC System Details"),
-    optionalTable(
+    mandatoryTable(
       [
-        { key: "equipment", label: "Equipment (Chillers/AHUs/etc)" },
-        { key: "rating", label: "Rating/Capacity" },
+        { key: "equipment", label: "Equipment" },
+        { key: "capacity", label: "Capacity" },
         { key: "quantity", label: "Quantity" },
-        { key: "operatingHours", label: "Operating Hours" },
-        { key: "observations", label: "Observations" },
+        { key: "connectedLoad", label: "Connected Load" },
+        { key: "controlSystem", label: "Control System" },
+        { key: "remarks", label: "Remarks" },
       ],
-      report.hvacSystemDetails
+      asArray(report.hvacSystemDetails).length ? report.hvacSystemDetails : [
+        { equipment: "Chiller / VRF outdoor unit" },
+        { equipment: "AHU" },
+        { equipment: "FCU" },
+        { equipment: "Cooling tower" },
+        { equipment: "Chilled water pump" },
+        { equipment: "Condenser water pump" },
+        { equipment: "Fresh air unit" },
+        { equipment: "Exhaust / ventilation fan" }
+      ]
     ),
+    paragraph("The HVAC system is one of the major energy-consuming systems in the building. During the audit, operating hours, loading pattern, temperature settings, pump and fan operation, control philosophy and maintenance condition should be reviewed. The main opportunities may relate to variable speed operation, AHU scheduling, chiller efficiency, fresh air optimization, cooling tower performance or set point optimization."),
 
     heading2("2.9 Lighting System Details"),
-    optionalTable(
+    mandatoryTable(
       [
         { key: "area", label: "Area" },
-        { key: "type", label: "Fixture Type" },
-        { key: "quantity", label: "Quantity" },
+        { key: "type", label: "Existing Fixture" },
         { key: "wattage", label: "Wattage" },
+        { key: "quantity", label: "Quantity" },
         { key: "operatingHours", label: "Operating Hours" },
-        { key: "observations", label: "Observations" },
+        { key: "control", label: "Control Type" },
       ],
-      report.lightingSystemDetails
+      asArray(report.lightingSystemDetails).length ? report.lightingSystemDetails : [
+        { area: "Office area" },
+        { area: "Corridor" },
+        { area: "Parking" },
+        { area: "Outdoor" },
+        { area: "Back-of-house" },
+        { area: "Guest room / ward" }
+      ]
     ),
+    paragraph("Lighting energy consumption can be reduced through LED retrofit, lux optimization and occupancy-based controls. Corridors, parking areas, toilets, staircases and service areas are usually suitable for sensors or timer-based control."),
 
     heading2("2.10 Pumps and Motors"),
-    optionalTable(
+    mandatoryTable(
       [
-        { key: "name", label: "Pump/Motor Name" },
-        { key: "rating", label: "Rating" },
+        { key: "name", label: "Pump / Motor" },
+        { key: "application", label: "Application" },
+        { key: "rating", label: "Rating kW" },
         { key: "quantity", label: "Quantity" },
-        { key: "efficiency", label: "Efficiency Class" },
         { key: "operatingHours", label: "Operating Hours" },
-        { key: "observations", label: "Observations" },
+        { key: "control", label: "Control Method" },
+        { key: "remarks", label: "Remarks" },
       ],
-      report.pumpAndMotorDetails
+      asArray(report.pumpAndMotorDetails).length ? report.pumpAndMotorDetails : [
+        { name: "Domestic water pump" },
+        { name: "Hydro-pneumatic pump" },
+        { name: "STP pump / blower" },
+        { name: "Hot water pump" },
+        { name: "HVAC pump" },
+        { name: "Exhaust fan" }
+      ]
     ),
 
     heading2("2.11 Building Automation and Controls"),
-    optionalTable(
+    mandatoryTable(
       [
-        { key: "system", label: "System Controlled" },
-        { key: "method", label: "Existing Control Method" },
-        { key: "sensors", label: "Sensors/Feedback" },
-        { key: "gaps", label: "Gaps Observed" },
+        { key: "system", label: "System" },
+        { key: "existingControl", label: "Existing Control" },
+        { key: "observation", label: "Observation" },
+        { key: "savingOpportunity", label: "Saving Opportunity" },
       ],
-      report.automationAndControls
+      asArray(report.automationAndControls).length ? report.automationAndControls : [
+        { system: "HVAC scheduling" },
+        { system: "AHU control" },
+        { system: "Pump control" },
+        { system: "Lighting control" },
+        { system: "Parking ventilation" },
+        { system: "Temperature set point" },
+        { system: "Energy monitoring" }
+      ]
     ),
 
     heading2("2.12 Summary of Audit Observations"),
-    optionalTable(
+    mandatoryTable(
       [
+        { key: "srNo", label: "Sr. No." },
         { key: "observation", label: "Observation" },
-        { key: "impact", label: "Energy Impact" },
-        { key: "recommendation", label: "Recommended Direction" },
-        { key: "relatedEcms", label: "Related ECMs" },
+        { key: "impact", label: "Impact" },
+        { key: "recommendation", label: "Recommended Project" },
       ],
-      report.auditObservations || [
-        { observation: "Optimization opportunities exist across major systems.", impact: "Higher than necessary energy consumption", recommendation: "Implement ECMs in a phased manner." },
+      asArray(report.auditObservations).length ? report.auditObservations : [
+        { srNo: 1, observation: "[To be updated after site data verification]", impact: "High energy consumption" },
+        { srNo: 2, observation: "[To be updated after site data verification]", impact: "Higher demand / kVAh billing" },
+        { srNo: 3, observation: "[To be updated after site data verification]", impact: "Excess operating hours" },
+        { srNo: 4, observation: "[To be updated after site data verification]", impact: "Inefficient equipment" },
+        { srNo: 5, observation: "[To be updated after site data verification]", impact: "Poor control / manual operation" }
       ]
     ),
     pageBreak(),
@@ -843,10 +994,20 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     // 3.x.4 Problem / Gap Identified
     heading3(`${ecmSectionNumber}.4 Problem / Gap Identified`),
     paragraph(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
-    (project.problemGapTable && project.problemGapTable.length > 0) ? optionalTable(
-      [{ key: "system", label: "System" }, { key: "gap", label: "Typical Gap" }],
-      project.problemGapTable
-    ) : new Paragraph({ text: "" }),
+    mandatoryTable([{ key: "system", label: "System" }, { key: "gap", label: "Typical Gap" }], (project.problemGapTable && project.problemGapTable.length > 0) ? project.problemGapTable : [
+      {
+        system: ecmType === "heat_recovery" ? "Heat recovery" :
+                ecmType === "thermal_insulation" ? "Insulation" :
+                ecmType === "ir_heater_retrofit" ? "Insulation" :
+                ecmType === "apfc_power_factor_correction" ? "APFC" :
+                ecmType === "compressed_air_management" ? "Compressed air" : "System",
+        gap: ecmType === "heat_recovery" ? "Waste heat discharged without useful recovery" :
+             ecmType === "thermal_insulation" ? "Heat loss from exposed hot surfaces or ducts" :
+             ecmType === "ir_heater_retrofit" ? "Heat loss from exposed hot surfaces or ducts" :
+             ecmType === "apfc_power_factor_correction" ? "Low PF or kVAh billing loss" :
+             ecmType === "compressed_air_management" ? "Air leakage, pressure drops, inefficient generation" : "[To be updated after site data verification]"
+      }
+    ]),
 
     // 3.x.5 Proposed Project
     heading3(`${ecmSectionNumber}.5 Proposed Project`),
@@ -866,10 +1027,16 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     // 3.x.7 Rationale for Energy Saving
     heading3(`${ecmSectionNumber}.7 Rationale for Energy Saving`),
     paragraph(sanitizePromptLeakageText(project.rationaleForEnergySaving || "The recommendation reduces avoidable losses and improves alignment between system demand and energy input.", ecmType)),
-    (project.rationaleTable && project.rationaleTable.length > 0) ? optionalTable(
-      [{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }],
-      project.rationaleTable
-    ) : new Paragraph({ text: "" }),
+    mandatoryTable([{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }], (project.rationaleTable && project.rationaleTable.length > 0) ? project.rationaleTable : [
+      {
+        projectType: ecmType === "heat_recovery" ? "Heat recovery" :
+                     ecmType === "thermal_insulation" ? "Insulation" :
+                     ecmType === "ir_heater_retrofit" ? "Insulation" :
+                     ecmType === "apfc_power_factor_correction" ? "APFC" :
+                     ecmType === "compressed_air_management" ? "Compressed air" : "Project",
+        savingRationale: "[To be updated after site data verification]"
+      }
+    ]),
 
     // 3.x.8 Energy Saving Calculation
     heading3(`${ecmSectionNumber}.8 Energy Saving Calculation`),
@@ -996,9 +1163,28 @@ function generateAnnexures() {
   ];
 }
 
+
 function removeDataRequired(obj) {
   if (typeof obj === "string") {
-    return /^data required$/i.test(obj.trim()) ? "" : obj;
+    let safe = obj.trim();
+    safe = safe.replace(/\[DRAFT - QC REVIEW REQUIRED\]/gi, "");
+    safe = safe.replace(/data required[^.]*\.?/gi, "");
+    safe = safe.replace(/undefined/gi, "");
+    safe = safe.replace(/null/gi, "");
+    safe = safe.replace(/explain\s+cooling[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+hydraulic[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+thermal[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+compressed\s+air[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+motor\s+efficiency[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+power\s+factor[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+heat\s+recovery[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+insulation[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+servo[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+apfc[^.]*\.?/gi, "");
+    safe = safe.replace(/explain\s+motor[^.]*\.?/gi, "");
+    safe = safe.replace(/ecm\s+ecm/gi, "ECM");
+    if (!safe.trim()) return "";
+    return safe.trim();
   }
   if (Array.isArray(obj)) {
     return obj.map(removeDataRequired);
@@ -1012,7 +1198,6 @@ function removeDataRequired(obj) {
   }
   return obj;
 }
-
 async function buildCommercialBuildingEnergyAuditDocx(reportData) {
   const cleanReportData = removeDataRequired(reportData);
   const report = normalizeReportForExport(cleanReportData);
