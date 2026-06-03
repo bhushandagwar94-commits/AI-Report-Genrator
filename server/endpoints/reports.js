@@ -35,6 +35,7 @@ const {
   generateCommercialAuditComponentReport,
 } = require("../services/reportPipeline");
 const { getGeminiApiKeys } = require("../services/geminiProviderService");
+const { extractSupportingContext } = require("../services/supportingFileExtractor");
 
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
@@ -1612,76 +1613,34 @@ function reportEndpoints(app) {
           errors: []
         };
 
-        if ([".xlsx", ".xls", ".jpg", ".jpeg", ".png"].includes(ext)) {
-          fileSummary.parserUsed = "native Excel parser";
-          fileSummary.parserReason = "native formats detected";
-          debugCollector.data.inputSummary.files.push(fileSummary);
-          debugCollector.finalize();
-          
-          return response.status(200).json({
-            success: true,
-            location: uploadedPath || originalname,
-            filename: originalname,
-            size,
-            mimetype,
-            parsingStatus: "not_required",
-            token_count_estimate: 0,
-            pipelineDebug: debugCollector.data
-          });
-        }
-
-        const Collector = new CollectorApi();
-        const processingOnline = await Collector.online();
-
-        if (!processingOnline) {
-          fileSummary.uploadStatus = "warning";
-          fileSummary.warnings.push("Document processing server is offline.");
-          debugCollector.data.inputSummary.files.push(fileSummary);
-          debugCollector.finalize();
-          return response.status(200).json({
-            success: true,
-            location: uploadedPath || originalname,
-            filename: originalname,
-            size,
-            mimetype,
-            parsingStatus: "uploaded_unparsed",
-            warning: "Document processing server is offline. File was uploaded but not parsed.",
-            token_count_estimate: 0,
-            pipelineDebug: debugCollector.data
-          });
-        }
-
-        const { success, reason, documents } = await Collector.parseDocument(originalname);
-        if (!success || !documents?.[0]) {
-          fileSummary.uploadStatus = "warning";
-          fileSummary.warnings.push(reason || "Document parsing failed.");
-          debugCollector.data.inputSummary.files.push(fileSummary);
-          debugCollector.finalize();
-          return response.status(200).json({
-            success: true,
-            location: uploadedPath || originalname,
-            filename: originalname,
-            size,
-            mimetype,
-            parsingStatus: "uploaded_unparsed",
-            warning: reason || "Document parsing failed on the collector server. File was uploaded but not parsed.",
-            token_count_estimate: 0,
-            pipelineDebug: debugCollector.data
-          });
-        }
-
-        const doc = documents[0];
-        fileSummary.extractedCharacters = doc.token_count_estimate || 0;
+        const ACCEPTED_EXTENSIONS = [
+          ".xlsx",
+          ".xls",
+          ".csv",
+          ".pdf",
+          ".docx",
+          ".doc",
+          ".pptx",
+          ".ppt",
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp"
+        ];
+        
+        fileSummary.parserUsed = "direct_upload";
+        fileSummary.parserReason = "validation_removed";
         debugCollector.data.inputSummary.files.push(fileSummary);
         debugCollector.finalize();
+        
         return response.status(200).json({
           success: true,
-          location: doc.location,
+          location: uploadedPath || originalname,
           filename: originalname,
           size,
           mimetype,
-          parsingStatus: "parsed",
-          token_count_estimate: doc.token_count_estimate || 0,
+          parsingStatus: "uploaded",
+          token_count_estimate: 0,
           pipelineDebug: debugCollector.data
         });
       } catch (e) {
@@ -2558,11 +2517,19 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
         console.log("[AI ENHANCE GEMINI ATTEMPT]", attempt);
 
         try {
+          const supportingContextResult = await extractSupportingContext(uploadedFiles);
+          const extractedInfo = {
+            supportingText: supportingContextResult.extractedText,
+            supportingFilesAttempted: supportingContextResult.files.length,
+            supportingFilesExtracted: supportingContextResult.files.filter(f => f.extractionStatus === "extracted").length,
+            supportingWarnings: supportingContextResult.warnings
+          };
+
           const componentResult = await withTimeout(
             generateCommercialAuditComponentReport({
               formData: inputDetails,
               extractedExcelData: {},
-              extractedInfo: {},
+              extractedInfo,
               imageMetadata: buildImageMetadataFromUploads(uploadedFiles),
               uploadedFiles,
               templateConfig: report.template,

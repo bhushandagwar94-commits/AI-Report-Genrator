@@ -1132,20 +1132,41 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
 }
 
 function DevDiagnostics({ data }: { data: any }) {
-  // @ts-ignore
-  if (process.env.NODE_ENV === 'production' || !(import.meta as any).env?.DEV) return null;
+  const isDev = typeof process !== 'undefined' ? process.env?.NODE_ENV === 'development' : (import.meta as any).env?.DEV;
+  const shouldShowDiagnostics =
+    isDev &&
+    typeof window !== 'undefined' &&
+    window.localStorage?.getItem('showReportDiagnostics') === 'true';
+
+  if (!shouldShowDiagnostics) return null;
+
+  const groups = Array.isArray(data?.groups) ? data.groups : [];
+  const projects = groups.flatMap((group: any) =>
+    Array.isArray(group?.projects) ? group.projects : []
+  );
+
+  const projectGroupingHit = Boolean(
+    data?.executiveSummary?.projectGrouping ||
+      data?.projectGrouping ||
+      data?.chapter1?.projectGrouping
+  );
+
+  const priorityHit = Boolean(
+    data?.executiveSummary?.recommendedImplementationPriority ||
+      data?.recommendedImplementationPriority ||
+      data?.chapter1?.recommendedImplementationPriority
+  );
+
   return (
-    <div className="mb-4 p-4 bg-gray-900 text-green-400 font-mono text-xs rounded border border-green-800 report-preview-scroll" style={{maxHeight: 200, overflowY: 'auto'}}>
-      <div className="font-bold mb-2">DEV DIAGNOSTICS - Normalization Applied</div>
-      <ul>
-        <li>Normalized Groups Count: {asArray(data.groupedProjects).length || 1}</li>
-        <li>Normalized ECM Count: {asArray(data.projects).length}</li>
-        <li>Chapter 1 Grouping Backend Hit: {Boolean(data.projectGrouping) ? "TRUE" : "FALSE"}</li>
-        <li>Chapter 1 Priority Backend Hit: {Boolean(data.implementationPriority) ? "TRUE" : "FALSE"}</li>
-        <li>Missing Text Fields Sanitized (Safe Check): Working</li>
-        <li>Missing Calculations Sanitized: Working</li>
-        <li>Forbidden Tokens Filtered: Data required, [DRAFT, null, undefined, Explain...</li>
-      </ul>
+    <div className="mb-4 rounded border border-emerald-500 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
+      <div>DEV DIAGNOSTICS - Normalization Applied</div>
+      <div>Normalized Groups Count: {groups.length}</div>
+      <div>Normalized ECM Count: {projects.length}</div>
+      <div>Chapter 1 Grouping Backend Hit: {String(projectGroupingHit).toUpperCase()}</div>
+      <div>Chapter 1 Priority Backend Hit: {String(priorityHit).toUpperCase()}</div>
+      <div>Missing Text Fields Sanitized: Working</div>
+      <div>Missing Calculations Sanitized: Working</div>
+      <div>Forbidden Tokens Filtered: Data required, [DRAFT], null, undefined, Explain...</div>
     </div>
   );
 }

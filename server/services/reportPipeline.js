@@ -623,6 +623,7 @@ function buildSupportingContext({ extractedInfo = {}, uploadedFiles = [], imageM
         ])
       : []),
     ...(Array.isArray(imageMetadata) ? imageMetadata.map((image) => image?.caption || image?.placementSection) : []),
+    ...(extractedInfo?.supportingText ? [extractedInfo.supportingText] : []),
     // Filenames are explicitly excluded to prevent AI from mentioning specific files like .xlsx in the report
   ]
     .map((item) => normalizeWhitespace(item))
@@ -1520,6 +1521,9 @@ Absolute accuracy rules:
 9. Return only allowed narrative fields.
 10. Do not include markdown or tables.
 11. Do not use generic filler, sales language, exaggerated claims, or repeated text.
+12. Use the deterministic Excel reportData as the source of truth for all numeric values.
+13. Use supporting PPT/PDF/DOCX text only to improve engineering narrative.
+14. Do not change investment, savings, kWh, payback, ECM titles, or quantities.
 
 CRITICAL NEGATIVE CONSTRAINTS:
 - NEVER copy internal prompt instructions into the output.

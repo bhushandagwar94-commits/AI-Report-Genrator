@@ -612,11 +612,12 @@ function Step1({ templates, selected, onSelect, loading }) {
 
 // ─── STEP 2 ── Upload Files ───────────────────────────────────────────────────
 const ACCEPTED_TYPES = {
-  Excel: { exts: ".xls,.xlsx", label: "XLS / XLSX", color: "#22c55e" },
+  Excel: { exts: ".xls,.xlsx,.csv", label: "XLS / XLSX / CSV", color: "#22c55e" },
   PDF: { exts: ".pdf", label: "PDF", color: "#ef4444" },
-  Word: { exts: ".docx", label: "DOCX", color: "#3b82f6" },
+  Word: { exts: ".doc,.docx", label: "DOC / DOCX", color: "#3b82f6" },
+  PowerPoint: { exts: ".ppt,.pptx", label: "PPT / PPTX", color: "#f97316" },
   Images: {
-    exts: ".jpg,.jpeg,.png",
+    exts: ".jpg,.jpeg,.png,.webp",
     label: "JPG / JPEG / PNG",
     color: "#a855f7",
   },
@@ -624,7 +625,7 @@ const ACCEPTED_TYPES = {
 
 const ALL_ACCEPT = Object.values(ACCEPTED_TYPES)
   .map((t) => t.exts)
-  .join(",");
+  .join(",") + ",application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/pdf,image/jpeg,image/png,image/webp";
 
 const isExcelFileName = (filename = "") => /\.(xlsx|xls)$/i.test(filename);
 
@@ -2172,10 +2173,7 @@ export default function PublicReports() {
   const hasUsableUploadedFiles = safeUploadedFiles.some(isFileUsable);
   const hasFatalUploadErrors = safeUploadedFiles.some(hasFatalFileError);
 
-  const canContinueFromUpload =
-    safeUploadedFiles.length > 0 &&
-    hasUsableUploadedFiles &&
-    !hasFatalUploadErrors;
+  const canContinueFromUpload = safeUploadedFiles.length > 0;
 
   useEffect(() => {
     if (geminiCooldownSeconds <= 0) return;
@@ -2290,33 +2288,6 @@ export default function PublicReports() {
   const handleUpload = async (file) => {
     setUploading(true);
     try {
-      let validation = null;
-      if (isExcelFileName(file.name)) {
-        const validationForm = new FormData();
-        validationForm.append("files", file);
-        const validationResponse = await Reports.validateUpload(validationForm);
-        setPipelineDebugData((prev) =>
-          mergePipelineDebug(
-            prev || {},
-            validationResponse?.pipelineDebug || {}
-          )
-        );
-        validation = validationResponse.files?.[0] || {
-          filename: file.name,
-          fileType: "excel",
-          status: "error",
-          sheets: [],
-          headerRow: 0,
-          detectedColumns: [],
-          mappedColumns: {},
-          projectRowsDetected: 0,
-          missingRequiredColumns: [],
-          missingRecommendedColumns: [],
-          warnings: [],
-          errors: [validationResponse.error || "Excel validation failed."],
-        };
-      }
-
       const fd = new FormData();
       fd.append("file", file);
       const res = await Reports.uploadFile(fd);
@@ -2331,24 +2302,10 @@ export default function PublicReports() {
           mimetype: res.mimetype || file.type,
           parsingStatus: res.parsingStatus || "uploaded",
           token_count_estimate: res.token_count_estimate || 0,
-          validation,
+          validation: null,
         };
         setUploadedFiles((prev) => [...prev, uploadedFile]);
-        if (validation?.status === "error") {
-          showToast(
-            "Excel validation failed. Please fix or remove the file before generating.",
-            "error"
-          );
-        } else if (validation?.status === "warning") {
-          showToast("Excel uploaded with validation warnings.", "warning");
-        } else if (validation?.status === "valid") {
-          showToast(
-            `Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`,
-            "success"
-          );
-        } else if (res.warning) {
-          showToast(res.warning, "warning");
-        }
+        showToast("File uploaded. Extraction will be attempted during generation. Unsupported or unreadable files will be skipped with warnings.", "success");
         return uploadedFile;
       } else {
         showToast(`Upload failed: ${res.error}`, "error");
@@ -2364,18 +2321,6 @@ export default function PublicReports() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const handleGenerate = async () => {
-    const hasInvalidExcel = safeUploadedFiles.some(
-      (file) =>
-        isExcelFileName(file.filename) &&
-        hasFatalFileError(file.validation || file)
-    );
-    if (hasInvalidExcel) {
-      showToast(
-        "Please fix or remove the invalid Excel file before generating the report.",
-        "error"
-      );
-      return;
-    }
 
     setGenerating(true);
     try {
@@ -2610,11 +2555,7 @@ export default function PublicReports() {
     return false;
   };
 
-  const hasInvalidExcel = safeUploadedFiles.some(
-    (file) =>
-      isExcelFileName(file.filename) &&
-      hasFatalFileError(file.validation || file)
-  );
+  const hasInvalidExcel = false;
 
   return (
     <div className="w-screen h-screen overflow-hidden bg-theme-bg-container flex">
@@ -2694,13 +2635,7 @@ export default function PublicReports() {
                 showSlowWarning={showSlowWarning}
                 hasInvalidExcel={hasInvalidExcel}
                 aiProgress={aiProgress}
-                hasProjectFile={safeUploadedFiles.some(
-                  (file) =>
-                    isExcelFileName(file.filename) &&
-                    (file.validation?.status === "accepted_project_file" ||
-                      file.validation?.status === "valid" ||
-                      file.validation?.status === "warning")
-                )}
+                hasProjectFile={safeUploadedFiles.some((file) => isExcelFileName(file.filename))}
                 allowGenerateWithSupportingFilesOnly={
                   allowGenerateWithSupportingFilesOnly
                 }
