@@ -203,7 +203,7 @@ function OptionsMenu({
 
     setListeners();
     return cleanupListeners;
-  }, [menuRef.current, containerRef.current]);
+  }, [menuRef, containerRef]);
 
   const renameThread = async () => {
     const name = window

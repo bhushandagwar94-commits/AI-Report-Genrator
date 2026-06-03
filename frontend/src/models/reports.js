@@ -136,7 +136,11 @@ const Reports = {
    * @param {Object}        params.publicForm   - form field values (camelCase from the React state)
    * @param {Array}         params.uploadedFiles
    */
-  generateReport: async ({ templateId, publicForm = {}, uploadedFiles = [] }) => {
+  generateReport: async ({
+    templateId,
+    publicForm = {},
+    uploadedFiles = [],
+  }) => {
     const payload = {
       template_id: templateId,
       public_form: {
@@ -154,7 +158,10 @@ const Reports = {
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GENERATION_MAX_WAIT_MS);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      GENERATION_MAX_WAIT_MS
+    );
 
     return await fetch(`${API_BASE}/reports/generate`, {
       method: "POST",
@@ -177,7 +184,10 @@ const Reports = {
 
   enhanceReportWithAi: async (id) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GENERATION_MAX_WAIT_MS);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      GENERATION_MAX_WAIT_MS
+    );
 
     return await fetch(`${API_BASE}/reports/${id}/enhance-ai`, {
       method: "POST",
@@ -210,10 +220,13 @@ const Reports = {
   },
 
   downloadDocx: async (id, allowDraft = false) => {
-    return await fetch(`${API_BASE}/reports/${id}/export/docx${allowDraft ? '?allowDraft=true' : ''}`, {
-      method: "POST",
-      headers: baseHeaders(),
-    })
+    return await fetch(
+      `${API_BASE}/reports/${id}/export/docx${allowDraft ? "?allowDraft=true" : ""}`,
+      {
+        method: "POST",
+        headers: baseHeaders(),
+      }
+    )
       .then(async (res) => {
         if (!res.ok) {
           const contentType = res.headers.get("content-type") || "";
@@ -230,7 +243,7 @@ const Reports = {
             if (!text) {
               try {
                 text = await res.text();
-              } catch (_) { }
+              } catch (_) {}
             }
             return { success: false, error: text || "Export failed." };
           }
@@ -241,7 +254,7 @@ const Reports = {
             qcErrors: errJson.qcErrors,
             qcWarnings: errJson.qcWarnings,
             summary: errJson.summary,
-            raw: errJson
+            raw: errJson,
           };
         }
         const blob = await res.blob();

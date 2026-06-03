@@ -24,7 +24,7 @@ function useIsAuthenticated() {
         const healthCheck = await fetch("/api/health")
           .then((res) => res.json())
           .catch(() => null);
-          
+
         if (!healthCheck || !healthCheck.success) {
           setBackendOffline(true);
           return;
@@ -32,7 +32,7 @@ function useIsAuthenticated() {
 
         const onboardingComplete = await System.isOnboardingComplete();
         const keys = await System.keys();
-        
+
         if (!keys) {
           setBackendOffline(true);
           return;
@@ -42,7 +42,9 @@ function useIsAuthenticated() {
         setMultiUserMode(MultiUserMode);
 
         // Check for the onboarding redirect condition
-        const isDevBypass = import.meta.env.DEV && import.meta.env.VITE_SKIP_ONBOARDING === "true";
+        const isDevBypass =
+          import.meta.env.DEV &&
+          import.meta.env.VITE_SKIP_ONBOARDING === "true";
         if (onboardingComplete === false && !isDevBypass) {
           setShouldRedirectToOnboarding(true);
           setIsAuthed(true);
@@ -107,9 +109,11 @@ export function AdminRoute({ Component, hideUserMenu = false }) {
     return (
       <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
         <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <h1 className="text-2xl font-bold text-red-500 mb-4">
+            Backend is not ready
+          </h1>
           <p className="text-white mb-6">Please start yarn dev:all</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
           >
@@ -154,9 +158,11 @@ export function ManagerRoute({ Component }) {
     return (
       <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
         <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <h1 className="text-2xl font-bold text-red-500 mb-4">
+            Backend is not ready
+          </h1>
           <p className="text-white mb-6">Please start yarn dev:all</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
           >
@@ -194,9 +200,11 @@ export function SingleUserRoute({ Component }) {
     return (
       <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
         <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <h1 className="text-2xl font-bold text-red-500 mb-4">
+            Backend is not ready
+          </h1>
           <p className="text-white mb-6">Please start yarn dev:all</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
           >
@@ -223,15 +231,18 @@ export function SingleUserRoute({ Component }) {
 }
 
 export default function PrivateRoute({ Component }) {
-  const { isAuthd, shouldRedirectToOnboarding, backendOffline } = useIsAuthenticated();
-  
+  const { isAuthd, shouldRedirectToOnboarding, backendOffline } =
+    useIsAuthenticated();
+
   if (backendOffline) {
     return (
       <div className="flex flex-col items-center justify-center w-screen h-screen bg-black">
         <div className="p-8 text-center bg-gray-800 rounded-lg shadow-xl border border-gray-700">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Backend is not ready</h1>
+          <h1 className="text-2xl font-bold text-red-500 mb-4">
+            Backend is not ready
+          </h1>
           <p className="text-white mb-6">Please start yarn dev:all</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors"
           >

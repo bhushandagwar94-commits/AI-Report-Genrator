@@ -26,35 +26,29 @@ import {
   FilePpt,
   File,
   Lightning,
-  Wind,
   Sun,
   Cpu,
   Drop,
   Gauge,
   Thermometer,
-  Calendar,
-  User,
-  MapPin,
-  Buildings,
   ClipboardText,
   FileText,
   Copy,
   WarningCircle,
-  CaretDown,
-  CaretUp,
   Info,
 } from "@phosphor-icons/react";
 
 const USE_AI_DURING_GENERATION =
   import.meta.env.VITE_USE_AI_DURING_GENERATION === "true";
 
-const SKIP_LLM_FOR_DEV =
-  import.meta.env.VITE_SKIP_LLM_FOR_DEV === "true";
+const SKIP_LLM_FOR_DEV = import.meta.env.VITE_SKIP_LLM_FOR_DEV === "true";
 
 const AI_PROVIDER = import.meta.env.VITE_AI_PROVIDER || "openrouter";
 
 function asObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
 }
 
 function asArray(value) {
@@ -95,23 +89,20 @@ function mergePipelineDebug(prevInput, nextInput) {
         : asArray(prev.inputSummary?.sheetSummaries),
       warnings: [
         ...asArray(prev.inputSummary?.warnings),
-        ...asArray(next.inputSummary?.warnings)
+        ...asArray(next.inputSummary?.warnings),
       ],
       errors: [
         ...asArray(prev.inputSummary?.errors),
-        ...asArray(next.inputSummary?.errors)
-      ]
+        ...asArray(next.inputSummary?.errors),
+      ],
     },
 
     dataStructuring: {
       ...asObject(prev.dataStructuring),
-      ...asObject(next.dataStructuring)
+      ...asObject(next.dataStructuring),
     },
 
-    functionBlocks: mergeUniqueBlocks(
-      prev.functionBlocks,
-      next.functionBlocks
-    ),
+    functionBlocks: mergeUniqueBlocks(prev.functionBlocks, next.functionBlocks),
 
     aiNodes: asArray(next.aiNodes).length
       ? asArray(next.aiNodes)
@@ -135,37 +126,31 @@ function mergePipelineDebug(prevInput, nextInput) {
 
     validationTrace: {
       ...asObject(prev.validationTrace),
-      ...asObject(next.validationTrace)
+      ...asObject(next.validationTrace),
     },
 
     exportTrace: {
       ...asObject(prev.exportTrace),
-      ...asObject(next.exportTrace)
+      ...asObject(next.exportTrace),
     },
 
     vectorDb: {
       ...asObject(prev.vectorDb),
-      ...asObject(next.vectorDb)
+      ...asObject(next.vectorDb),
     },
 
     ocrTrace: {
       ...asObject(prev.ocrTrace),
-      ...asObject(next.ocrTrace)
+      ...asObject(next.ocrTrace),
     },
 
     recommendedModels: asArray(next.recommendedModels).length
       ? asArray(next.recommendedModels)
       : asArray(prev.recommendedModels),
 
-    warnings: [
-      ...asArray(prev.warnings),
-      ...asArray(next.warnings)
-    ],
+    warnings: [...asArray(prev.warnings), ...asArray(next.warnings)],
 
-    errors: [
-      ...asArray(prev.errors),
-      ...asArray(next.errors)
-    ]
+    errors: [...asArray(prev.errors), ...asArray(next.errors)],
   };
 }
 
@@ -175,7 +160,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "commercial-building-energy-audit",
     label: "Detailed Energy Audit Report",
-    description: "Comprehensive facility-wide energy audit with ECM analysis, savings, investment, payback and implementation roadmap.",
+    description:
+      "Comprehensive facility-wide energy audit with ECM analysis, savings, investment, payback and implementation roadmap.",
     icon: Lightning,
     color: "#f59e0b",
     bg: "rgba(245,158,11,0.12)",
@@ -185,7 +171,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "boiler-audit",
     label: "Boiler Audit Report",
-    description: "Thermal efficiency analysis, flue gas measurement and fuel optimization.",
+    description:
+      "Thermal efficiency analysis, flue gas measurement and fuel optimization.",
     icon: Drop,
     color: "#ef4444",
     bg: "rgba(239,68,68,0.12)",
@@ -195,7 +182,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "motor-retrofit",
     label: "Motor Retrofit Report",
-    description: "Motor load survey, IE2/IE3 retrofit analysis, VFD feasibility and savings.",
+    description:
+      "Motor load survey, IE2/IE3 retrofit analysis, VFD feasibility and savings.",
     icon: Cpu,
     color: "#8b5cf6",
     bg: "rgba(139,92,246,0.12)",
@@ -205,7 +193,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "apfc-report",
     label: "APFC Report",
-    description: "Power factor correction analysis, reactive power compensation and kVAh billing optimization.",
+    description:
+      "Power factor correction analysis, reactive power compensation and kVAh billing optimization.",
     icon: Gauge,
     color: "#06b6d4",
     bg: "rgba(6,182,212,0.12)",
@@ -215,7 +204,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "solar-report",
     label: "Solar Report",
-    description: "Solar PV feasibility, generation estimate, investment and payback analysis.",
+    description:
+      "Solar PV feasibility, generation estimate, investment and payback analysis.",
     icon: Sun,
     color: "#eab308",
     bg: "rgba(234,179,8,0.12)",
@@ -225,7 +215,8 @@ const TEMPLATE_CATALOG = [
   {
     key: "hvac-report",
     label: "HVAC Report",
-    description: "Chiller, AHU, pump and cooling tower performance audit with retrofit recommendations.",
+    description:
+      "Chiller, AHU, pump and cooling tower performance audit with retrofit recommendations.",
     icon: Thermometer,
     color: "#22c55e",
     bg: "rgba(34,197,94,0.12)",
@@ -234,11 +225,13 @@ const TEMPLATE_CATALOG = [
   },
 ];
 
-const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG = "commercial-building-energy-audit";
-const OPENROUTER_TIMEOUT_MS = Number(import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 90000);
+const COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG =
+  "commercial-building-energy-audit";
+const OPENROUTER_TIMEOUT_MS = Number(
+  import.meta.env.VITE_OPENROUTER_TIMEOUT_MS || 90000
+);
 const OPENROUTER_MODELS = (
-  import.meta.env.VITE_OPENROUTER_MODELS ||
-  "openai/gpt-oss-120b"
+  import.meta.env.VITE_OPENROUTER_MODELS || "openai/gpt-oss-120b"
 )
   .split(",")
   .map((model) => model.trim())
@@ -260,17 +253,23 @@ function createAiProgressState() {
     remainingMs: OPENROUTER_TIMEOUT_MS,
     elapsedMs: 0,
     timeoutMs: OPENROUTER_TIMEOUT_MS,
-    message: OPENROUTER_MODELS.length ? `Trying AI model 1/${OPENROUTER_MODELS.length}` : "",
+    message: OPENROUTER_MODELS.length
+      ? `Trying AI model 1/${OPENROUTER_MODELS.length}`
+      : "",
   };
 }
 
 function cleanAiFailureMessage(reason) {
   if (!reason) return null;
   const str = String(reason);
-  if (str.includes("quota") || str.includes("429")) return "Rate limit or quota exceeded";
-  if (str.includes("parse") || str.includes("JSON")) return "Provider returned invalid format";
-  if (str.includes("schema") || str.includes("QC") || str.includes("merged")) return "Provider output was rejected by quality checks";
-  if (str.includes("timeout") || str.includes("fetch failed")) return "Provider request timed out";
+  if (str.includes("quota") || str.includes("429"))
+    return "Rate limit or quota exceeded";
+  if (str.includes("parse") || str.includes("JSON"))
+    return "Provider returned invalid format";
+  if (str.includes("schema") || str.includes("QC") || str.includes("merged"))
+    return "Provider output was rejected by quality checks";
+  if (str.includes("timeout") || str.includes("fetch failed"))
+    return "Provider request timed out";
   if (str.includes("key")) return "Missing or invalid API key";
   return str.length > 50 ? "Provider error" : str;
 }
@@ -311,7 +310,7 @@ function showAiEnhancementToast(aiStatus, showToastFn) {
     );
     return;
   }
-  
+
   if (status === "quota_exceeded") {
     showToastFn(
       `Gemini free quota exceeded. Deterministic report is ready.`,
@@ -336,8 +335,7 @@ function formatProviderAttemptLabel(attempt, index) {
 }
 
 const getAiModels = () =>
-  (import.meta.env.VITE_OPENROUTER_MODELS ||
-    "openai/gpt-oss-120b")
+  (import.meta.env.VITE_OPENROUTER_MODELS || "openai/gpt-oss-120b")
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
@@ -370,9 +368,12 @@ function fileExt(name) {
 function FileTypeIcon({ name, size = 20 }) {
   const ext = fileExt(name);
   if (ext === "pdf") return <FilePdf size={size} className="text-red-400" />;
-  if (["xls", "xlsx", "csv"].includes(ext)) return <FileXls size={size} className="text-green-400" />;
-  if (["doc", "docx"].includes(ext)) return <FileDoc size={size} className="text-blue-400" />;
-  if (["ppt", "pptx"].includes(ext)) return <FilePpt size={size} className="text-orange-400" />;
+  if (["xls", "xlsx", "csv"].includes(ext))
+    return <FileXls size={size} className="text-green-400" />;
+  if (["doc", "docx"].includes(ext))
+    return <FileDoc size={size} className="text-blue-400" />;
+  if (["ppt", "pptx"].includes(ext))
+    return <FilePpt size={size} className="text-orange-400" />;
   if (["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "tiff"].includes(ext))
     return <FileImage size={size} className="text-purple-400" />;
   return <File size={size} className="text-white/40" />;
@@ -386,7 +387,10 @@ function formatBytes(bytes) {
 }
 
 function getProjectsForQC(reportData) {
-  if (Array.isArray(reportData?.groupedProjects) && reportData.groupedProjects.length) {
+  if (
+    Array.isArray(reportData?.groupedProjects) &&
+    reportData.groupedProjects.length
+  ) {
     return reportData.groupedProjects.flatMap((group, groupIndex) =>
       Array.isArray(group?.projects)
         ? group.projects.map((project, projectIndex) => ({
@@ -436,8 +440,8 @@ function StepIndicator({ currentStep }) {
                   isCompleted
                     ? "bg-primary-button border-primary-button text-white"
                     : isActive
-                    ? "bg-transparent border-primary-button text-primary-button ring-4 ring-primary-button/15"
-                    : "bg-transparent border-white/15 text-white/25"
+                      ? "bg-transparent border-primary-button text-primary-button ring-4 ring-primary-button/15"
+                      : "bg-transparent border-white/15 text-white/25"
                 }`}
               >
                 {isCompleted ? (
@@ -451,8 +455,8 @@ function StepIndicator({ currentStep }) {
                   isActive
                     ? "text-primary-button"
                     : isCompleted
-                    ? "text-white/55"
-                    : "text-white/20"
+                      ? "text-white/55"
+                      : "text-white/20"
                 }`}
               >
                 {step.label}
@@ -498,14 +502,18 @@ function Step1({ templates, selected, onSelect, loading }) {
       <div className="mb-5">
         <h2 className="text-xl font-bold text-white">Select Report Type</h2>
         <p className="text-sm text-white/45 mt-1">
-          Currently available: Detailed Energy Audit Report. More report formats will be available soon.
+          Currently available: Detailed Energy Audit Report. More report formats
+          will be available soon.
         </p>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-36 rounded-2xl bg-white/5 animate-pulse border border-white/5" />
+            <div
+              key={i}
+              className="h-36 rounded-2xl bg-white/5 animate-pulse border border-white/5"
+            />
           ))}
         </div>
       ) : (
@@ -534,13 +542,23 @@ function Step1({ templates, selected, onSelect, loading }) {
                   isSelected
                     ? "shadow-lg scale-[1.02]"
                     : isAvailable
-                    ? "hover:scale-[1.015] hover:shadow-md cursor-pointer opacity-100"
-                    : "opacity-40 cursor-not-allowed grayscale"
+                      ? "hover:scale-[1.015] hover:shadow-md cursor-pointer opacity-100"
+                      : "opacity-40 cursor-not-allowed grayscale"
                 }`}
                 style={{
-                  borderColor: isSelected ? cat.color : isAvailable ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
-                  background: isSelected ? cat.bg : isAvailable ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)",
-                  boxShadow: isSelected ? `0 0 20px 0 ${cat.color}22` : undefined,
+                  borderColor: isSelected
+                    ? cat.color
+                    : isAvailable
+                      ? "rgba(255,255,255,0.15)"
+                      : "rgba(255,255,255,0.05)",
+                  background: isSelected
+                    ? cat.bg
+                    : isAvailable
+                      ? "rgba(255,255,255,0.04)"
+                      : "rgba(255,255,255,0.02)",
+                  boxShadow: isSelected
+                    ? `0 0 20px 0 ${cat.color}22`
+                    : undefined,
                 }}
               >
                 {/* Icon */}
@@ -553,7 +571,9 @@ function Step1({ templates, selected, onSelect, loading }) {
 
                 <h3
                   className="text-sm font-bold leading-snug mb-1"
-                  style={{ color: isSelected || isAvailable ? cat.color : "#ffffff" }}
+                  style={{
+                    color: isSelected || isAvailable ? cat.color : "#ffffff",
+                  }}
                 >
                   {cat.label}
                 </h3>
@@ -592,13 +612,19 @@ function Step1({ templates, selected, onSelect, loading }) {
 
 // ─── STEP 2 ── Upload Files ───────────────────────────────────────────────────
 const ACCEPTED_TYPES = {
-  "Excel": { exts: ".xls,.xlsx", label: "XLS / XLSX", color: "#22c55e" },
-  "PDF": { exts: ".pdf", label: "PDF", color: "#ef4444" },
-  "Word": { exts: ".docx", label: "DOCX", color: "#3b82f6" },
-  "Images": { exts: ".jpg,.jpeg,.png", label: "JPG / JPEG / PNG", color: "#a855f7" },
+  Excel: { exts: ".xls,.xlsx", label: "XLS / XLSX", color: "#22c55e" },
+  PDF: { exts: ".pdf", label: "PDF", color: "#ef4444" },
+  Word: { exts: ".docx", label: "DOCX", color: "#3b82f6" },
+  Images: {
+    exts: ".jpg,.jpeg,.png",
+    label: "JPG / JPEG / PNG",
+    color: "#a855f7",
+  },
 };
 
-const ALL_ACCEPT = Object.values(ACCEPTED_TYPES).map((t) => t.exts).join(",");
+const ALL_ACCEPT = Object.values(ACCEPTED_TYPES)
+  .map((t) => t.exts)
+  .join(",");
 
 const isExcelFileName = (filename = "") => /\.(xlsx|xls)$/i.test(filename);
 
@@ -607,14 +633,14 @@ const NON_BLOCKING_UPLOAD_STATUSES = new Set([
   "accepted",
   "accepted_supporting_file",
   "warning",
-  "needs_review"
+  "needs_review",
 ]);
 
 const FATAL_UPLOAD_STATUSES = new Set([
   "failed",
   "error",
   "rejected",
-  "invalid"
+  "invalid",
 ]);
 
 function normalizeValidationStatus(fileOrValidation) {
@@ -647,11 +673,17 @@ function getValidationBadge(status) {
   }
 
   if (normalized === "accepted_supporting_file") {
-    return { label: "Supporting file accepted", className: "bg-sky-500/15 text-sky-300" };
+    return {
+      label: "Supporting file accepted",
+      className: "bg-sky-500/15 text-sky-300",
+    };
   }
 
   if (["warning", "needs_review"].includes(normalized)) {
-    return { label: "Ready with warnings", className: "bg-yellow-500/15 text-yellow-300" };
+    return {
+      label: "Ready with warnings",
+      className: "bg-yellow-500/15 text-yellow-300",
+    };
   }
 
   if (["failed", "error", "rejected", "invalid"].includes(normalized)) {
@@ -661,7 +693,13 @@ function getValidationBadge(status) {
   return { label: "Pending", className: "bg-slate-500/15 text-slate-300" };
 }
 
-function ExcelValidationCard({ validation, file, status, warnings = [], errors = [] }) {
+function ExcelValidationCard({
+  validation,
+  file,
+  status,
+  warnings = [],
+  errors = [],
+}) {
   const safeWarnings = Array.isArray(warnings)
     ? warnings
     : Array.isArray(validation?.warnings)
@@ -675,12 +713,10 @@ function ExcelValidationCard({ validation, file, status, warnings = [], errors =
       : [];
 
   const fileName =
-    file?.name ||
-    file?.originalName ||
-    validation?.fileName ||
-    "Uploaded file";
+    file?.name || file?.originalName || validation?.fileName || "Uploaded file";
 
-  const currentStatus = status || validation?.status || validation?.result || "pending";
+  const currentStatus =
+    status || validation?.status || validation?.result || "pending";
   const badge = getValidationBadge(currentStatus);
 
   return (
@@ -691,7 +727,9 @@ function ExcelValidationCard({ validation, file, status, warnings = [], errors =
           <div className="text-slate-400">{fileName}</div>
         </div>
 
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.className}`}>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.className}`}
+        >
           {badge.label}
         </span>
       </div>
@@ -713,7 +751,9 @@ function ExcelValidationCard({ validation, file, status, warnings = [], errors =
           <div className="mb-1 font-semibold text-yellow-300">Warnings</div>
           <ul className="list-disc space-y-1 pl-5">
             {safeWarnings.map((warning, index) => (
-              <li key={`warning-${index}`}>{String(warning?.message || warning)}</li>
+              <li key={`warning-${index}`}>
+                {String(warning?.message || warning)}
+              </li>
             ))}
           </ul>
         </div>
@@ -747,9 +787,12 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
   return (
     <div className="animate-fade-in">
       <div className="mb-5">
-        <h2 className="text-xl font-bold text-white">Upload Source Documents</h2>
+        <h2 className="text-xl font-bold text-white">
+          Upload Source Documents
+        </h2>
         <p className="text-sm text-white/45 mt-1">
-          The AI will extract data from your uploaded files to populate the report.
+          The AI will extract data from your uploaded files to populate the
+          report.
         </p>
       </div>
 
@@ -774,9 +817,16 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
       {/* Drop zone */}
       <div
         ref={dropRef}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); processFiles(e.dataTransfer.files); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          processFiles(e.dataTransfer.files);
+        }}
         className={`relative flex flex-col items-center justify-center gap-y-3 border-2 border-dashed rounded-2xl p-8 cursor-pointer transition-all duration-200 ${
           dragging
             ? "border-primary-button bg-primary-button/8 scale-[1.01]"
@@ -806,7 +856,9 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-white">
-            {dragging ? "Release to upload" : "Drag & drop files or click to browse"}
+            {dragging
+              ? "Release to upload"
+              : "Drag & drop files or click to browse"}
           </p>
           <p className="text-xs text-white/30 mt-0.5">
             Excel · PDF · Word · PowerPoint · Images — multiple files supported
@@ -825,7 +877,10 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
         {uploading && (
           <div className="absolute inset-0 rounded-2xl flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-y-2">
-              <SpinnerGap size={30} className="text-primary-button animate-spin" />
+              <SpinnerGap
+                size={30}
+                className="text-primary-button animate-spin"
+              />
               <p className="text-xs text-white/60">Processing file…</p>
             </div>
           </div>
@@ -836,7 +891,8 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
       {safeUploadedFiles.length > 0 && (
         <div className="mt-4 flex flex-col gap-y-2">
           <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-            {safeUploadedFiles.length} file{safeUploadedFiles.length !== 1 ? "s" : ""} ready
+            {safeUploadedFiles.length} file
+            {safeUploadedFiles.length !== 1 ? "s" : ""} ready
           </p>
           {safeUploadedFiles.map((f, idx) => (
             <div
@@ -845,15 +901,20 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
             >
               <FileTypeIcon name={f.filename} size={18} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white font-medium truncate leading-tight">{f.filename}</p>
+                <p className="text-sm text-white font-medium truncate leading-tight">
+                  {f.filename}
+                </p>
                 <p className="text-[11px] text-white/30 leading-none mt-0.5">
-                  {(fileExt(f.filename) || "file").toUpperCase()} - {formatBytes(f.size) || "Size unavailable"} -{" "}
+                  {(fileExt(f.filename) || "file").toUpperCase()} -{" "}
+                  {formatBytes(f.size) || "Size unavailable"} -{" "}
                   {isExcelFileName(f.filename)
                     ? `Validation: ${f.validation?.status || "pending"}`
                     : f.parsingStatus === "uploaded_unparsed"
                       ? "Uploaded; parsing unavailable"
                       : "Uploaded"}
-                  {f.token_count_estimate > 0 ? ` - ~${f.token_count_estimate.toLocaleString()} tokens` : ""}
+                  {f.token_count_estimate > 0
+                    ? ` - ~${f.token_count_estimate.toLocaleString()} tokens`
+                    : ""}
                 </p>
               </div>
               {f.validation?.status === "error" ? (
@@ -861,7 +922,11 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
               ) : f.validation?.status === "warning" ? (
                 <WarningCircle size={14} className="text-yellow-400 shrink-0" />
               ) : (
-                <CheckCircle size={14} weight="fill" className="text-green-400 shrink-0" />
+                <CheckCircle
+                  size={14}
+                  weight="fill"
+                  className="text-green-400 shrink-0"
+                />
               )}
               <button
                 onClick={() => onRemove(idx)}
@@ -904,7 +969,9 @@ function Step3({
   allowGenerateWithSupportingFilesOnly,
   setAllowGenerateWithSupportingFilesOnly,
 }) {
-  const filledDetails = Object.entries(details).filter(([k, v]) => k !== "outputFormat" && v?.trim?.());
+  const filledDetails = Object.entries(details).filter(
+    ([k, v]) => k !== "outputFormat" && v?.trim?.()
+  );
   const labelMap = {
     clientName: "Client / Facility",
     location: "Location",
@@ -918,7 +985,8 @@ function Step3({
       <div>
         <h2 className="text-xl font-bold text-white">Ready to Generate</h2>
         <p className="text-sm text-white/45 mt-1">
-          Review your selections, then click <strong className="text-white">Generate Report</strong>.
+          Review your selections, then click{" "}
+          <strong className="text-white">Generate Report</strong>.
         </p>
       </div>
 
@@ -952,12 +1020,23 @@ function Step3({
             className="flex flex-col gap-y-2 p-4 rounded-2xl border"
             style={{ background: card.bg, borderColor: card.accent + "30" }}
           >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: card.accent + "20" }}>
-              <card.IconComp size={16} style={{ color: card.accent }} weight="fill" />
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: card.accent + "20" }}
+            >
+              <card.IconComp
+                size={16}
+                style={{ color: card.accent }}
+                weight="fill"
+              />
             </div>
             <div>
-              <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">{card.label}</p>
-              <p className="text-sm font-bold text-white leading-snug mt-0.5 line-clamp-2">{card.value}</p>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">
+                {card.label}
+              </p>
+              <p className="text-sm font-bold text-white leading-snug mt-0.5 line-clamp-2">
+                {card.value}
+              </p>
             </div>
           </div>
         ))}
@@ -973,13 +1052,17 @@ function Step3({
             {filledDetails.map(([k, v]) => (
               <div key={k}>
                 <p className="text-[10px] text-white/30">{labelMap[k] || k}</p>
-                <p className="text-sm text-white/80 font-medium truncate">{v}</p>
+                <p className="text-sm text-white/80 font-medium truncate">
+                  {v}
+                </p>
               </div>
             ))}
             {details.outputFormat && (
               <div>
                 <p className="text-[10px] text-white/30">Output Format</p>
-                <p className="text-sm text-white/80 font-medium uppercase">{details.outputFormat}</p>
+                <p className="text-sm text-white/80 font-medium uppercase">
+                  {details.outputFormat}
+                </p>
               </div>
             )}
           </div>
@@ -1012,35 +1095,58 @@ function Step3({
           Please fix or remove the invalid file before generating the report.
         </div>
       )}
-      
+
       {!hasProjectFile && safeUploadedFiles.length > 0 && !hasInvalidExcel && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
           <label className="flex items-start gap-x-3 cursor-pointer">
             <input
               type="checkbox"
               checked={allowGenerateWithSupportingFilesOnly}
-              onChange={(e) => setAllowGenerateWithSupportingFilesOnly(e.target.checked)}
+              onChange={(e) =>
+                setAllowGenerateWithSupportingFilesOnly(e.target.checked)
+              }
               className="mt-1 flex-shrink-0"
             />
             <div className="text-sm text-amber-200">
-              <span className="font-bold block mb-0.5">Generate preliminary audit profile</span>
-              <span className="opacity-80">No ECM project sheet was found. Check this box to generate a draft report using only the supporting data.</span>
+              <span className="font-bold block mb-0.5">
+                Generate preliminary audit profile
+              </span>
+              <span className="opacity-80">
+                No ECM project sheet was found. Check this box to generate a
+                draft report using only the supporting data.
+              </span>
             </div>
           </label>
         </div>
       )}
-      
+
       <button
         onClick={onGenerate}
-        disabled={generating || hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)}
+        disabled={
+          generating ||
+          hasInvalidExcel ||
+          (!hasProjectFile &&
+            safeUploadedFiles.length > 0 &&
+            !allowGenerateWithSupportingFilesOnly)
+        }
         className="flex items-center justify-center gap-x-3 w-full py-4 rounded-2xl font-bold text-base text-white transition-all shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] disabled:opacity-55 disabled:cursor-not-allowed disabled:scale-100"
         style={{
           background: generating
             ? "rgba(70,200,255,0.3)"
-            : hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly)
+            : hasInvalidExcel ||
+                (!hasProjectFile &&
+                  safeUploadedFiles.length > 0 &&
+                  !allowGenerateWithSupportingFilesOnly)
               ? "rgba(239,68,68,0.25)"
-            : "linear-gradient(135deg, #46c8ff 0%, #3b82f6 100%)",
-          boxShadow: generating || hasInvalidExcel || (!hasProjectFile && safeUploadedFiles.length > 0 && !allowGenerateWithSupportingFilesOnly) ? "none" : "0 8px 32px rgba(70,200,255,0.25)",
+              : "linear-gradient(135deg, #46c8ff 0%, #3b82f6 100%)",
+          boxShadow:
+            generating ||
+            hasInvalidExcel ||
+            (!hasProjectFile &&
+              safeUploadedFiles.length > 0 &&
+              !allowGenerateWithSupportingFilesOnly)
+              ? "none"
+              : "0 8px 32px rgba(70,200,255,0.25)",
         }}
       >
         {generating ? (
@@ -1077,40 +1183,48 @@ function Step3({
             USE_AI_DURING_GENERATION &&
             !SKIP_LLM_FOR_DEV &&
             aiProgress.active && (
-            <div className="ai-generation-progress-card w-full animate-fade-in">
-              <div className="ai-progress-title">AI is enhancing your report...</div>
-              <div className="ai-progress-row">
-                <span>Status</span>
-                <strong>{aiProgress.message}</strong>
+              <div className="ai-generation-progress-card w-full animate-fade-in">
+                <div className="ai-progress-title">
+                  AI is enhancing your report...
+                </div>
+                <div className="ai-progress-row">
+                  <span>Status</span>
+                  <strong>{aiProgress.message}</strong>
+                </div>
+                <div className="ai-progress-row">
+                  <span>Current model</span>
+                  <strong>
+                    {Math.min(
+                      aiProgress.modelIndex + 1,
+                      aiProgress.totalModels
+                    )}
+                    /{aiProgress.totalModels}:{" "}
+                    {aiProgress.modelName || "Waiting..."}
+                  </strong>
+                </div>
+                <div className="ai-progress-row">
+                  <span>Time remaining for this model</span>
+                  <strong>{formatDuration(aiProgress.remainingMs)}</strong>
+                </div>
+                <div className="ai-progress-row">
+                  <span>Total elapsed time</span>
+                  <strong>{formatDuration(aiProgress.elapsedMs)}</strong>
+                </div>
+                <div className="ai-progress-bar">
+                  <div
+                    className="ai-progress-bar-fill"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        ((aiProgress.timeoutMs - aiProgress.remainingMs) /
+                          aiProgress.timeoutMs) *
+                          100
+                      )}%`,
+                    }}
+                  />
+                </div>
               </div>
-              <div className="ai-progress-row">
-                <span>Current model</span>
-                <strong>
-                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}:{" "}
-                  {aiProgress.modelName || "Waiting..."}
-                </strong>
-              </div>
-              <div className="ai-progress-row">
-                <span>Time remaining for this model</span>
-                <strong>{formatDuration(aiProgress.remainingMs)}</strong>
-              </div>
-              <div className="ai-progress-row">
-                <span>Total elapsed time</span>
-                <strong>{formatDuration(aiProgress.elapsedMs)}</strong>
-              </div>
-              <div className="ai-progress-bar">
-                <div
-                  className="ai-progress-bar-fill"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      ((aiProgress.timeoutMs - aiProgress.remainingMs) / aiProgress.timeoutMs) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+            )}
           {showSlowWarning && (
             <div className="flex items-center gap-x-2 text-amber-400 text-sm mb-1 px-3 py-1.5 bg-amber-400/10 border border-amber-400/20 rounded-lg animate-fade-in">
               <Info size={16} />
@@ -1140,7 +1254,8 @@ function Step3({
         </div>
       )}
       <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
-        AI enhancement is optional. If models are slow, deterministic report will be used automatically.
+        AI enhancement is optional. If models are slow, deterministic report
+        will be used automatically.
       </div>
     </div>
   );
@@ -1178,15 +1293,19 @@ function Step4({
     generatedReportData?.metadata?.providerUsed ||
     generatedReportData?.qcSummary?.providerUsed ||
     "";
-  const isFallbackMode = providerUsed === "deterministic-fallback" || providerUsed === "deterministic";
-  const reportData = generatedReportData || sampleCommercialBuildingEnergyAuditData;
+  const isFallbackMode =
+    providerUsed === "deterministic-fallback" ||
+    providerUsed === "deterministic";
+  const reportData =
+    generatedReportData || sampleCommercialBuildingEnergyAuditData;
   const showFieldFlags =
-    import.meta.env.DEV &&
-    import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
+    import.meta.env.DEV && import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
   const fieldFlags = reportData?.fieldFlags || {};
   const missingFieldSummary = reportData?.missingFieldSummary || [];
 
-  const isDev = import.meta.env.MODE === "development" || import.meta.env.VITE_ALLOW_DRAFT_EXPORT === "true";
+  const isDev =
+    import.meta.env.MODE === "development" ||
+    import.meta.env.VITE_ALLOW_DRAFT_EXPORT === "true";
 
   const handlePrint = useReactToPrint({
     content: () => reportRef.current,
@@ -1200,28 +1319,38 @@ function Step4({
     let failed = false;
     let errors = [];
     let hardErrors = 0;
-    
+
     try {
       const rd = JSON.parse(report.outputContent);
       const groups = rd.groupedProjects || [];
       const projectsForQC = getProjectsForQC(rd);
-      const validEcms = projectsForQC.filter(p => {
+      const validEcms = projectsForQC.filter((p) => {
         const title = p?.projectTitle || p?.ecmName || p?.title;
-        const normalized = String(title || "").toLowerCase().trim();
-        return title && normalized !== "data required" && normalized !== "[object object]" && !normalized.includes("project project");
+        const normalized = String(title || "")
+          .toLowerCase()
+          .trim();
+        return (
+          title &&
+          normalized !== "data required" &&
+          normalized !== "[object object]" &&
+          !normalized.includes("project project")
+        );
       }).length;
 
       if (groups.length === 0) {
-        errors.push({ message: "Report has no grouped projects.", path: "groupedProjects" });
+        errors.push({
+          message: "Report has no grouped projects.",
+          path: "groupedProjects",
+        });
         hardErrors++;
       }
-      
+
       if (validEcms === 0 || projectsForQC.length === 0) {
         errors.push({ message: "No valid ECMs found.", path: "projects" });
         hardErrors++;
       }
 
-      const shouldBlockExport = 
+      const shouldBlockExport =
         hardErrors > 0 ||
         validEcms === 0 ||
         groups.length === 0 ||
@@ -1229,12 +1358,11 @@ function Step4({
         !projectsForQC.length;
 
       failed = shouldBlockExport;
-
-    } catch(e) {
+    } catch (e) {
       failed = true;
       errors.push({ message: "Invalid report data", path: "report" });
     }
-    
+
     return { failed, errors };
   };
 
@@ -1262,7 +1390,9 @@ function Step4({
     setIsWordExporting(true);
     setWordExportMode(allowDraft ? "draft" : "final");
     wordExportToastRef.current = toast.loading(
-      allowDraft ? "Generating Draft Word document..." : "Generating Word document..."
+      allowDraft
+        ? "Generating Draft Word document..."
+        : "Generating Word document..."
     );
 
     try {
@@ -1283,7 +1413,8 @@ function Step4({
         if (res.qcFailed) {
           setQcResult(res);
           toast.update(wordExportToastRef.current, {
-            render: "Report requires review before final export. Please check QC details.",
+            render:
+              "Report requires review before final export. Please check QC details.",
             type: "error",
             isLoading: false,
             autoClose: 5000,
@@ -1291,7 +1422,8 @@ function Step4({
           });
         } else if (String(res.error || "").includes(".map is not a function")) {
           toast.update(wordExportToastRef.current, {
-            render: "Export failed because report data is not normalized. Please click Re-run Cleanup & QC.",
+            render:
+              "Export failed because report data is not normalized. Please click Re-run Cleanup & QC.",
             type: "error",
             isLoading: false,
             autoClose: 5000,
@@ -1299,7 +1431,8 @@ function Step4({
           });
         } else {
           toast.update(wordExportToastRef.current, {
-            render: "Failed to generate Word document. Please check QC details or backend logs.",
+            render:
+              "Failed to generate Word document. Please check QC details or backend logs.",
             type: "error",
             isLoading: false,
             autoClose: 5000,
@@ -1325,7 +1458,10 @@ function Step4({
     const qc = runFrontendQC();
     if (qc.failed) {
       setQcResult({ qcFailed: true, qcErrors: qc.errors });
-      showToast("Report requires review before final export. Please check QC details.", "error");
+      showToast(
+        "Report requires review before final export. Please check QC details.",
+        "error"
+      );
       return;
     }
 
@@ -1365,10 +1501,18 @@ function Step4({
     const res = await Reports.recheckQC(report.id);
     setRechecking(false);
     if (res.success) {
-      showToast(res.qcPassed ? "QC Passed! Data cleaned." : "QC still failing. Please review.", res.qcPassed ? "success" : "warning");
+      showToast(
+        res.qcPassed
+          ? "QC Passed! Data cleaned."
+          : "QC still failing. Please review.",
+        res.qcPassed ? "success" : "warning"
+      );
       setQcResult(res.qcPassed ? null : res);
       if (onReportUpdated && res.reportData) {
-        onReportUpdated({ ...report, outputContent: JSON.stringify(res.reportData) });
+        onReportUpdated({
+          ...report,
+          outputContent: JSON.stringify(res.reportData),
+        });
       }
     } else {
       showToast(res.error || "Failed to run QC.", "error");
@@ -1401,7 +1545,8 @@ function Step4({
             )}
           </div>
           <p className="report-ready-meta text-sm text-white/45">
-            {content.split("\n").length} lines generated • {(content.length / 1024).toFixed(1)} KB
+            {content.split("\n").length} lines generated •{" "}
+            {(content.length / 1024).toFixed(1)} KB
           </p>
           {isDev && report?.modelUsed && (
             <p className="text-xs text-white/30 mt-1">
@@ -1423,7 +1568,11 @@ function Step4({
                     : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
                 }`}
               >
-                {copied ? <CheckCircle size={13} weight="fill" /> : <Copy size={13} />}
+                {copied ? (
+                  <CheckCircle size={13} weight="fill" />
+                ) : (
+                  <Copy size={13} />
+                )}
                 {copied ? "Copied!" : "Copy"}
               </button>
               <button
@@ -1447,41 +1596,48 @@ function Step4({
 
           {shouldRenderEnergyAuditTemplate && (
             <>
-                <button
-                  type="button"
-                  onClick={onEnhanceWithAi}
-                  disabled={!canEnhanceWithAi || aiEnhancing || geminiCooldownSeconds > 0}
-                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Sparkle size={18} weight="fill" />
-                  {geminiCooldownSeconds > 0
-                    ? `Retry Gemini in ${geminiCooldownSeconds}s`
-                    : aiEnhancing
-                      ? "Enhancing..."
-                      : report?.aiEnhancementStatus || report?.aiEnhanced || (report?.providerAttempts && report.providerAttempts.length > 0)
-                        ? "Retry AI Enhancement"
-                        : "Enhance with AI"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadWord(true)}
-                  title="Download Word"
-                  disabled={isWordExporting}
-                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
-                >
-                  <FileDoc size={18} weight="fill" />
-                  {isWordExporting && wordExportMode === "draft" ? "Generating Word..." : "Download Word"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPdf}
-                  title="Print / Save as PDF"
-                  disabled={isPdfExporting}
-                  className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
-                >
-                  <FilePdf size={18} weight="fill" />
-                  {isPdfExporting ? "Preparing PDF..." : "Print / Save as PDF"}
-                </button>
+              <button
+                type="button"
+                onClick={onEnhanceWithAi}
+                disabled={
+                  !canEnhanceWithAi || aiEnhancing || geminiCooldownSeconds > 0
+                }
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkle size={18} weight="fill" />
+                {geminiCooldownSeconds > 0
+                  ? `Retry Gemini in ${geminiCooldownSeconds}s`
+                  : aiEnhancing
+                    ? "Enhancing..."
+                    : report?.aiEnhancementStatus ||
+                        report?.aiEnhanced ||
+                        (report?.providerAttempts &&
+                          report.providerAttempts.length > 0)
+                      ? "Retry AI Enhancement"
+                      : "Enhance with AI"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadWord(true)}
+                title="Download Word"
+                disabled={isWordExporting}
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
+              >
+                <FileDoc size={18} weight="fill" />
+                {isWordExporting && wordExportMode === "draft"
+                  ? "Generating Word..."
+                  : "Download Word"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                title="Print / Save as PDF"
+                disabled={isPdfExporting}
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
+              >
+                <FilePdf size={18} weight="fill" />
+                {isPdfExporting ? "Preparing PDF..." : "Print / Save as PDF"}
+              </button>
             </>
           )}
         </div>
@@ -1490,9 +1646,10 @@ function Step4({
       {shouldRenderEnergyAuditTemplate && (
         <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden">
           <p className="text-sm text-sky-100">
-            AI enhancement is optional. If models are slow, deterministic report will be used automatically.
+            AI enhancement is optional. If models are slow, deterministic report
+            will be used automatically.
           </p>
-          
+
           {isDev && (
             <details className="mt-4 rounded-lg bg-black/20 border border-white/10 p-3 animate-fade-in print:hidden">
               <summary className="cursor-pointer text-sm font-bold text-white/80 flex items-center gap-x-2">
@@ -1500,51 +1657,122 @@ function Step4({
                 AI Enhancement Debug (Dev Only)
               </summary>
               <div className="mt-3 text-xs text-white/70 space-y-2 font-mono">
-                <div><span className="font-bold opacity-80 text-white">Enhancement Status:</span> {report?.aiEnhancementStatus?.status || report?.aiEnhancementStatus || 'unknown'}</div>
-                <div><span className="font-bold opacity-80 text-white">Provider Chain:</span> {report?.aiProviderAttempted || report?.providerUsed || 'unknown'}</div>
-                <div><span className="font-bold opacity-80 text-white">Final Enhancer Used:</span> {report?.debug?.finalEnhancerUsed || report?.providerUsed || 'unknown'}</div>
-                <div><span className="font-bold opacity-80 text-white">Model Used:</span> {report?.modelUsed || report?.providerAttempts?.[0]?.model || 'none'}</div>
-                <div><span className="font-bold opacity-80 text-white">Report Status:</span> Ready</div>
-                
+                <div>
+                  <span className="font-bold opacity-80 text-white">
+                    Enhancement Status:
+                  </span>{" "}
+                  {report?.aiEnhancementStatus?.status ||
+                    report?.aiEnhancementStatus ||
+                    "unknown"}
+                </div>
+                <div>
+                  <span className="font-bold opacity-80 text-white">
+                    Provider Chain:
+                  </span>{" "}
+                  {report?.aiProviderAttempted ||
+                    report?.providerUsed ||
+                    "unknown"}
+                </div>
+                <div>
+                  <span className="font-bold opacity-80 text-white">
+                    Final Enhancer Used:
+                  </span>{" "}
+                  {report?.debug?.finalEnhancerUsed ||
+                    report?.providerUsed ||
+                    "unknown"}
+                </div>
+                <div>
+                  <span className="font-bold opacity-80 text-white">
+                    Model Used:
+                  </span>{" "}
+                  {report?.modelUsed ||
+                    report?.providerAttempts?.[0]?.model ||
+                    "none"}
+                </div>
+                <div>
+                  <span className="font-bold opacity-80 text-white">
+                    Report Status:
+                  </span>{" "}
+                  Ready
+                </div>
+
                 {report?.debug?.unmatchedEcmCount > 0 && (
-                  <div className="text-red-400"><span className="font-bold opacity-80">Unmatched ECMs:</span> {report.debug.unmatchedEcmCount}</div>
-                )}
-                
-                {typeof report?.retryAfterSeconds === "number" && report.retryAfterSeconds > 0 && (
-                  <div><span className="font-bold opacity-80 text-white">Retry After:</span> {report.retryAfterSeconds}s</div>
-                )}
-                
-                {report?.aiFailureReason && (
-                  <div className="text-red-400"><span className="font-bold opacity-80">Failure Reason:</span> {report.aiFailureReason}</div>
-                )}
-                
-                {report?.aiEnhancedFields && report.aiEnhancedFields.length > 0 && (
-                  <div>
-                    <span className="font-bold opacity-80 text-green-400">Total Fields Enhanced:</span> <span className="text-green-300">{report.aiEnhancedFields.length}</span>
-                    <br />
-                    <span className="font-bold opacity-80 text-green-400">AI Enhanced Fields (List):</span>
-                    <ul className="list-disc ml-5 mt-1 text-green-300/80 max-h-32 overflow-y-auto">
-                      {report.aiEnhancedFields.map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
+                  <div className="text-red-400">
+                    <span className="font-bold opacity-80">
+                      Unmatched ECMs:
+                    </span>{" "}
+                    {report.debug.unmatchedEcmCount}
                   </div>
                 )}
 
-                {report?.aiDroppedFields && report.aiDroppedFields.length > 0 && (
-                  <div>
-                    <span className="font-bold opacity-80 text-yellow-400">AI Dropped Fields:</span>
-                    <ul className="list-disc ml-5 mt-1 text-yellow-300/80">
-                      {report.aiDroppedFields.map((df, i) => (
-                        <li key={i}>
-                          <div>{df.field} <span className="opacity-75">({df.reason})</span></div>
-                          {df.preview && <div className="opacity-60 break-words">{df.preview}</div>}
-                        </li>
-                      ))}
-                    </ul>
+                {typeof report?.retryAfterSeconds === "number" &&
+                  report.retryAfterSeconds > 0 && (
+                    <div>
+                      <span className="font-bold opacity-80 text-white">
+                        Retry After:
+                      </span>{" "}
+                      {report.retryAfterSeconds}s
+                    </div>
+                  )}
+
+                {report?.aiFailureReason && (
+                  <div className="text-red-400">
+                    <span className="font-bold opacity-80">
+                      Failure Reason:
+                    </span>{" "}
+                    {report.aiFailureReason}
                   </div>
                 )}
+
+                {report?.aiEnhancedFields &&
+                  report.aiEnhancedFields.length > 0 && (
+                    <div>
+                      <span className="font-bold opacity-80 text-green-400">
+                        Total Fields Enhanced:
+                      </span>{" "}
+                      <span className="text-green-300">
+                        {report.aiEnhancedFields.length}
+                      </span>
+                      <br />
+                      <span className="font-bold opacity-80 text-green-400">
+                        AI Enhanced Fields (List):
+                      </span>
+                      <ul className="list-disc ml-5 mt-1 text-green-300/80 max-h-32 overflow-y-auto">
+                        {report.aiEnhancedFields.map((f, i) => (
+                          <li key={i}>{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                {report?.aiDroppedFields &&
+                  report.aiDroppedFields.length > 0 && (
+                    <div>
+                      <span className="font-bold opacity-80 text-yellow-400">
+                        AI Dropped Fields:
+                      </span>
+                      <ul className="list-disc ml-5 mt-1 text-yellow-300/80">
+                        {report.aiDroppedFields.map((df, i) => (
+                          <li key={i}>
+                            <div>
+                              {df.field}{" "}
+                              <span className="opacity-75">({df.reason})</span>
+                            </div>
+                            {df.preview && (
+                              <div className="opacity-60 break-words">
+                                {df.preview}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                 <div>
-                  <span className="font-bold opacity-80 text-white">Provider Attempts:</span>
+                  <span className="font-bold opacity-80 text-white">
+                    Provider Attempts:
+                  </span>
                   <pre className="mt-1 bg-black/50 p-2 rounded max-h-48 overflow-y-auto overflow-x-auto whitespace-pre-wrap text-white/60">
                     {JSON.stringify(report?.providerAttempts || [], null, 2)}
                   </pre>
@@ -1555,7 +1783,9 @@ function Step4({
 
           {aiEnhancing && (
             <div className="ai-generation-progress-card w-full animate-fade-in mt-4">
-              <div className="ai-progress-title">AI is enhancing your report...</div>
+              <div className="ai-progress-title">
+                AI is enhancing your report...
+              </div>
               <div className="ai-progress-row">
                 <span>Status</span>
                 <strong>{aiProgress.message}</strong>
@@ -1563,7 +1793,9 @@ function Step4({
               <div className="ai-progress-row">
                 <span>Current model</span>
                 <strong>
-                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/{aiProgress.totalModels}: {aiProgress.modelName || "Waiting..."}
+                  {Math.min(aiProgress.modelIndex + 1, aiProgress.totalModels)}/
+                  {aiProgress.totalModels}:{" "}
+                  {aiProgress.modelName || "Waiting..."}
                 </strong>
               </div>
               <div className="ai-progress-row">
@@ -1580,85 +1812,119 @@ function Step4({
                   style={{
                     width: `${Math.min(
                       100,
-                      ((aiProgress.timeoutMs - aiProgress.remainingMs) / aiProgress.timeoutMs) * 100
+                      ((aiProgress.timeoutMs - aiProgress.remainingMs) /
+                        aiProgress.timeoutMs) *
+                        100
                     )}%`,
                   }}
                 />
               </div>
               <p className="ai-progress-note">
-                Models are limited to 45 seconds each. Total expected wait is about 90 seconds.
+                Models are limited to 45 seconds each. Total expected wait is
+                about 90 seconds.
               </p>
             </div>
           )}
         </div>
       )}
 
-        {/* QC Failure Panel */}
-        {qcResult && qcResult.qcFailed && (
-          <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-5 mb-2 shadow-lg">
-            <h3 className="text-red-400 font-bold text-lg mb-2 flex items-center gap-2">
-              <WarningCircle size={20} weight="bold" />
-              Report Quality Check Required
-            </h3>
-            <p className="text-white/80 text-sm mb-4">
-              The report was generated, but export is blocked because some quality checks failed.
-            </p>
-            
-            {qcResult.qcErrors && qcResult.qcErrors.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-red-300 font-semibold text-sm mb-1">Critical Issues:</h4>
-                <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
-                  {qcResult.qcErrors.map((err, i) => (
-                    <li key={i}>
-                      <span className="font-medium text-white/90">{err.message}</span> 
-                      {err.path && <span className="opacity-50 ml-1">({err.path})</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      {/* QC Failure Panel */}
+      {qcResult && qcResult.qcFailed && (
+        <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-5 mb-2 shadow-lg">
+          <h3 className="text-red-400 font-bold text-lg mb-2 flex items-center gap-2">
+            <WarningCircle size={20} weight="bold" />
+            Report Quality Check Required
+          </h3>
+          <p className="text-white/80 text-sm mb-4">
+            The report was generated, but export is blocked because some quality
+            checks failed.
+          </p>
 
-            {qcResult.summary && (
-              <div className="mb-4 bg-black/20 rounded p-3 text-xs text-white/60">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>Valid ECMs: {qcResult.summary.validEcmCount ?? qcResult.summary.projectCount}</div>
-                  <div>Groups: {qcResult.summary.groupCount}</div>
-                  <div>Duplicate Titles: {qcResult.summary.duplicateTitleCount}</div>
-                  <div>Invalid Titles: {qcResult.summary.invalidTitleCount}</div>
-                  <div>Hard Errors: {qcResult.summary.hardErrorCount ?? qcResult.qcErrors?.length ?? 0}</div>
-                  <div>Warnings: {qcResult.summary.warningCount ?? qcResult.qcWarnings?.length ?? 0}</div>
+          {qcResult.qcErrors && qcResult.qcErrors.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-red-300 font-semibold text-sm mb-1">
+                Critical Issues:
+              </h4>
+              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
+                {qcResult.qcErrors.map((err, i) => (
+                  <li key={i}>
+                    <span className="font-medium text-white/90">
+                      {err.message}
+                    </span>
+                    {err.path && (
+                      <span className="opacity-50 ml-1">({err.path})</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {qcResult.summary && (
+            <div className="mb-4 bg-black/20 rounded p-3 text-xs text-white/60">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  Valid ECMs:{" "}
+                  {qcResult.summary.validEcmCount ??
+                    qcResult.summary.projectCount}
+                </div>
+                <div>Groups: {qcResult.summary.groupCount}</div>
+                <div>
+                  Duplicate Titles: {qcResult.summary.duplicateTitleCount}
+                </div>
+                <div>Invalid Titles: {qcResult.summary.invalidTitleCount}</div>
+                <div>
+                  Hard Errors:{" "}
+                  {qcResult.summary.hardErrorCount ??
+                    qcResult.qcErrors?.length ??
+                    0}
+                </div>
+                <div>
+                  Warnings:{" "}
+                  {qcResult.summary.warningCount ??
+                    qcResult.qcWarnings?.length ??
+                    0}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {qcResult.qcWarnings && qcResult.qcWarnings.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-yellow-300 font-semibold text-sm mb-1">Warnings:</h4>
-                <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
-                  {qcResult.qcWarnings.map((warn, i) => (
-                    <li key={i}>
-                      <span className="font-medium text-white/90">{warn.message}</span>
-                      {warn.path && <span className="opacity-50 ml-1">({warn.path})</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          {qcResult.qcWarnings && qcResult.qcWarnings.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-yellow-300 font-semibold text-sm mb-1">
+                Warnings:
+              </h4>
+              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
+                {qcResult.qcWarnings.map((warn, i) => (
+                  <li key={i}>
+                    <span className="font-medium text-white/90">
+                      {warn.message}
+                    </span>
+                    {warn.path && (
+                      <span className="opacity-50 ml-1">({warn.path})</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-            <button
-              onClick={handleRecheck}
-              disabled={rechecking}
-              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all"
-            >
-              {rechecking ? "Rechecking..." : "Re-run Cleanup & QC"}
-            </button>
-          </div>
-        )}
+          <button
+            onClick={handleRecheck}
+            disabled={rechecking}
+            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all"
+          >
+            {rechecking ? "Rechecking..." : "Re-run Cleanup & QC"}
+          </button>
+        </div>
+      )}
 
       {/* Missing fields warning */}
       {!shouldRenderEnergyAuditTemplate && missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-yellow-900/15 border border-yellow-500/20 rounded-xl">
-          <span className="text-xs font-semibold text-yellow-400 shrink-0">⚠ Missing fields:</span>
+          <span className="text-xs font-semibold text-yellow-400 shrink-0">
+            ⚠ Missing fields:
+          </span>
           {missing.map((field) => (
             <span
               key={field}
@@ -1673,7 +1939,9 @@ function Step4({
       {/* Preview panel */}
       <div
         className={`rounded-2xl border overflow-hidden ${
-          shouldRenderEnergyAuditTemplate ? "bg-white border-white shadow-xl" : "bg-[#0b0c10] border-white/8"
+          shouldRenderEnergyAuditTemplate
+            ? "bg-white border-white shadow-xl"
+            : "bg-[#0b0c10] border-white/8"
         }`}
       >
         {/* Fake terminal bar - hide for public structured report */}
@@ -1713,14 +1981,23 @@ function Step4({
             </p>
             <div className="max-h-72 overflow-y-auto space-y-1.5 tool-call-scrollbar">
               {Object.entries(fieldFlags).map(([path, meta]) => (
-                <div key={path} className="flex items-start justify-between gap-3 text-xs bg-white/5 p-2 rounded">
+                <div
+                  key={path}
+                  className="flex items-start justify-between gap-3 text-xs bg-white/5 p-2 rounded"
+                >
                   <div className="min-w-0">
-                    <div className="text-white/90 font-mono break-all">{path}</div>
+                    <div className="text-white/90 font-mono break-all">
+                      {path}
+                    </div>
                     <div className="text-white/45 mt-1">
                       {meta.label} · {meta.source} · {meta.message}
                     </div>
                   </div>
-                  <span className={`field-flag-badge flag-${meta.flag} shrink-0`}>{meta.flag}</span>
+                  <span
+                    className={`field-flag-badge flag-${meta.flag} shrink-0`}
+                  >
+                    {meta.flag}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1733,8 +2010,13 @@ function Step4({
             {missingFieldSummary.length > 0 ? (
               <div className="max-h-60 overflow-y-auto space-y-1.5 tool-call-scrollbar">
                 {missingFieldSummary.map((item) => (
-                  <div key={item.path} className="text-xs bg-white/5 p-2 rounded">
-                    <div className="text-white/90 font-mono break-all">{item.path}</div>
+                  <div
+                    key={item.path}
+                    className="text-xs bg-white/5 p-2 rounded"
+                  >
+                    <div className="text-white/90 font-mono break-all">
+                      {item.path}
+                    </div>
                     <div className="text-white/45 mt-1">
                       {item.label} · {item.sourceExpected} · {item.message}
                     </div>
@@ -1742,7 +2024,9 @@ function Step4({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-white/55">No missing flagged fields.</p>
+              <p className="text-xs text-white/55">
+                No missing flagged fields.
+              </p>
             )}
           </div>
         </>
@@ -1755,32 +2039,50 @@ function Step4({
             Provider Attempts Debug
           </p>
           {(() => {
-            const nonSkippedAttempts = (report.providerAttempts || []).filter((attempt) => attempt.status !== "skipped");
-            const skippedAttempts = (report.providerAttempts || []).filter((attempt) => attempt.status === "skipped");
+            const nonSkippedAttempts = (report.providerAttempts || []).filter(
+              (attempt) => attempt.status !== "skipped"
+            );
+            const skippedAttempts = (report.providerAttempts || []).filter(
+              (attempt) => attempt.status === "skipped"
+            );
 
             return (
               <>
                 <ul className="space-y-1.5">
                   {nonSkippedAttempts.map((attempt, idx) => (
-                    <li key={`attempt-${idx}`} className="flex flex-col text-xs bg-white/5 p-2 rounded">
+                    <li
+                      key={`attempt-${idx}`}
+                      className="flex flex-col text-xs bg-white/5 p-2 rounded"
+                    >
                       <div className="flex items-center gap-2">
                         <span className="text-white/50 font-medium">
                           {formatProviderAttemptLabel(attempt, idx)}:
                         </span>
-                        <span className={attempt.status === "success"
-                          ? "text-green-400 font-bold"
-                          : attempt.status === "quota_exceeded"
-                            ? "text-yellow-300 font-bold"
-                            : "text-red-400 font-bold"}>
+                        <span
+                          className={
+                            attempt.status === "success"
+                              ? "text-green-400 font-bold"
+                              : attempt.status === "quota_exceeded"
+                                ? "text-yellow-300 font-bold"
+                                : "text-red-400 font-bold"
+                          }
+                        >
                           {attempt.status.toUpperCase()}
                         </span>
-                        <span className="text-white/80 font-mono">{attempt.model}</span>
+                        <span className="text-white/80 font-mono">
+                          {attempt.model}
+                        </span>
                       </div>
-                      {typeof attempt.retryAfterSeconds === "number" && attempt.retryAfterSeconds > 0 && (
-                        <span className="text-white/50 text-[11px] mt-1">Retry after: {attempt.retryAfterSeconds}s</span>
-                      )}
+                      {typeof attempt.retryAfterSeconds === "number" &&
+                        attempt.retryAfterSeconds > 0 && (
+                          <span className="text-white/50 text-[11px] mt-1">
+                            Retry after: {attempt.retryAfterSeconds}s
+                          </span>
+                        )}
                       {attempt.reason && (
-                        <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+                        <span className="text-white/50 text-[11px] mt-1 break-words">
+                          {attempt.reason}
+                        </span>
                       )}
                     </li>
                   ))}
@@ -1792,14 +2094,25 @@ function Step4({
                     </summary>
                     <ul className="space-y-1.5 mt-2">
                       {skippedAttempts.map((attempt, idx) => (
-                        <li key={`skipped-${idx}`} className="flex flex-col text-xs bg-white/5 p-2 rounded">
+                        <li
+                          key={`skipped-${idx}`}
+                          className="flex flex-col text-xs bg-white/5 p-2 rounded"
+                        >
                           <div className="flex items-center gap-2">
-                            <span className="text-white/50 font-medium">Skipped:</span>
-                            <span className="text-yellow-300 font-bold">SKIPPED</span>
-                            <span className="text-white/80 font-mono">{attempt.model}</span>
+                            <span className="text-white/50 font-medium">
+                              Skipped:
+                            </span>
+                            <span className="text-yellow-300 font-bold">
+                              SKIPPED
+                            </span>
+                            <span className="text-white/80 font-mono">
+                              {attempt.model}
+                            </span>
                           </div>
                           {attempt.reason && (
-                            <span className="text-white/50 text-[11px] mt-1 break-words">{attempt.reason}</span>
+                            <span className="text-white/50 text-[11px] mt-1 break-words">
+                              {attempt.reason}
+                            </span>
                           )}
                         </li>
                       ))}
@@ -1841,7 +2154,10 @@ export default function PublicReports() {
   const [generatedReport, setGeneratedReport] = useState(null);
   const [generatedReportData, setGeneratedReportData] = useState(null);
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
-  const [allowGenerateWithSupportingFilesOnly, setAllowGenerateWithSupportingFilesOnly] = useState(false);
+  const [
+    allowGenerateWithSupportingFilesOnly,
+    setAllowGenerateWithSupportingFilesOnly,
+  ] = useState(false);
   const [geminiCooldownSeconds, setGeminiCooldownSeconds] = useState(0);
   const [pipelineDebugData, setPipelineDebugData] = useState({});
   const [isPipelineDebugOpen, setIsPipelineDebugOpen] = useState(false);
@@ -1849,7 +2165,9 @@ export default function PublicReports() {
   const safeUploadedFiles = Array.isArray(uploadedFiles) ? uploadedFiles : [];
   const safeValidationResults = []; // No longer a state variable
   const safePipelineDebug =
-    pipelineDebugData && typeof pipelineDebugData === "object" ? pipelineDebugData : {};
+    pipelineDebugData && typeof pipelineDebugData === "object"
+      ? pipelineDebugData
+      : {};
 
   const hasUsableUploadedFiles = safeUploadedFiles.some(isFileUsable);
   const hasFatalUploadErrors = safeUploadedFiles.some(hasFatalFileError);
@@ -1877,11 +2195,11 @@ export default function PublicReports() {
   function startAiCountdown() {
     const models = getAiModels();
     const timeoutMs = getAiTimeoutMs();
-  
+
     aiStartedAtRef.current = Date.now();
     aiModelStartedAtRef.current = Date.now();
     aiModelIndexRef.current = 0;
-  
+
     setAiProgress({
       active: true,
       modelIndex: 0,
@@ -1890,28 +2208,28 @@ export default function PublicReports() {
       remainingMs: timeoutMs,
       elapsedMs: 0,
       timeoutMs,
-      message: `Trying AI model 1/${models.length}`
+      message: `Trying AI model 1/${models.length}`,
     });
-  
+
     if (aiTimerRef.current) clearInterval(aiTimerRef.current);
-  
+
     aiTimerRef.current = setInterval(() => {
       const now = Date.now();
       const elapsedMs = now - aiStartedAtRef.current;
       const currentModelElapsedMs = now - aiModelStartedAtRef.current;
-  
+
       let modelIndex = aiModelIndexRef.current;
       let remainingMs = timeoutMs - currentModelElapsedMs;
-  
+
       if (remainingMs <= 0 && modelIndex < models.length - 1) {
         modelIndex += 1;
         aiModelIndexRef.current = modelIndex;
         aiModelStartedAtRef.current = now;
         remainingMs = timeoutMs;
       }
-  
+
       if (remainingMs < 0) remainingMs = 0;
-  
+
       setAiProgress({
         active: true,
         modelIndex,
@@ -1923,7 +2241,7 @@ export default function PublicReports() {
         message:
           remainingMs === 0 && modelIndex === models.length - 1
             ? "AI attempts completed. Finalizing report from deterministic data..."
-            : `Trying AI model ${modelIndex + 1}/${models.length}`
+            : `Trying AI model ${modelIndex + 1}/${models.length}`,
       });
     }, 1000);
   }
@@ -1933,10 +2251,10 @@ export default function PublicReports() {
       clearInterval(aiTimerRef.current);
       aiTimerRef.current = null;
     }
-  
+
     setAiProgress((prev) => ({
       ...prev,
-      active: false
+      active: false,
     }));
   }
 
@@ -1977,7 +2295,12 @@ export default function PublicReports() {
         const validationForm = new FormData();
         validationForm.append("files", file);
         const validationResponse = await Reports.validateUpload(validationForm);
-        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, validationResponse?.pipelineDebug || {}));
+        setPipelineDebugData((prev) =>
+          mergePipelineDebug(
+            prev || {},
+            validationResponse?.pipelineDebug || {}
+          )
+        );
         validation = validationResponse.files?.[0] || {
           filename: file.name,
           fileType: "excel",
@@ -1998,7 +2321,9 @@ export default function PublicReports() {
       fd.append("file", file);
       const res = await Reports.uploadFile(fd);
       if (res.success) {
-        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || {}));
+        setPipelineDebugData((prev) =>
+          mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
+        );
         const uploadedFile = {
           filename: res.filename,
           location: res.location,
@@ -2010,11 +2335,17 @@ export default function PublicReports() {
         };
         setUploadedFiles((prev) => [...prev, uploadedFile]);
         if (validation?.status === "error") {
-          showToast("Excel validation failed. Please fix or remove the file before generating.", "error");
+          showToast(
+            "Excel validation failed. Please fix or remove the file before generating.",
+            "error"
+          );
         } else if (validation?.status === "warning") {
           showToast("Excel uploaded with validation warnings.", "warning");
         } else if (validation?.status === "valid") {
-          showToast(`Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`, "success");
+          showToast(
+            `Excel validation passed. ${validation.projectRowsDetected || 0} project rows detected.`,
+            "success"
+          );
         } else if (res.warning) {
           showToast(res.warning, "warning");
         }
@@ -2034,10 +2365,15 @@ export default function PublicReports() {
 
   const handleGenerate = async () => {
     const hasInvalidExcel = safeUploadedFiles.some(
-      (file) => isExcelFileName(file.filename) && hasFatalFileError(file.validation || file)
+      (file) =>
+        isExcelFileName(file.filename) &&
+        hasFatalFileError(file.validation || file)
     );
     if (hasInvalidExcel) {
-      showToast("Please fix or remove the invalid Excel file before generating the report.", "error");
+      showToast(
+        "Please fix or remove the invalid Excel file before generating the report.",
+        "error"
+      );
       return;
     }
 
@@ -2061,49 +2397,74 @@ export default function PublicReports() {
       let extractedFacilityName = "";
       let extractedLocation = "";
       let extractedAuditPeriod = "";
-      
-      const projectFile = safeUploadedFiles.find(f => f.validation && f.validation.status !== "accepted_supporting_file");
+
+      const projectFile = safeUploadedFiles.find(
+        (f) =>
+          f.validation && f.validation.status !== "accepted_supporting_file"
+      );
       if (projectFile && projectFile.validation) {
         // If your validation object extracts this metadata, pull it here.
         // For now, we'll just check if it's there.
         extractedClientName = projectFile.validation.extractedClientName || "";
-        extractedFacilityName = projectFile.validation.extractedFacilityName || "";
+        extractedFacilityName =
+          projectFile.validation.extractedFacilityName || "";
         extractedLocation = projectFile.validation.extractedLocation || "";
-        extractedAuditPeriod = projectFile.validation.extractedAuditPeriod || "";
+        extractedAuditPeriod =
+          projectFile.validation.extractedAuditPeriod || "";
       }
 
       const reportDetails = {
         clientName: extractedClientName || "[Client / Facility Name]",
-        facilityName: extractedFacilityName || "[To be updated after site data verification]",
-        location: extractedLocation || "[To be updated after site data verification]",
-        auditPeriod: extractedAuditPeriod || "[To be updated after site data verification]",
+        facilityName:
+          extractedFacilityName ||
+          "[To be updated after site data verification]",
+        location:
+          extractedLocation || "[To be updated after site data verification]",
+        auditPeriod:
+          extractedAuditPeriod ||
+          "[To be updated after site data verification]",
         reportDate: new Date().toLocaleDateString("en-IN"),
         contactPerson: "[To be updated after site data verification]",
-        outputFormat: "docx"
+        outputFormat: "docx",
       };
 
       // Use slug (templateId) from the resolved catalog template.
       // Falls back to numeric DB id if slug not available.
       const res = await Reports.generateReport({
-        templateId:   selectedTemplate.templateId || selectedTemplate.slug || selectedTemplate.id,
-        publicForm:   reportDetails,   // camelCase; model.js converts to snake_case payload
+        templateId:
+          selectedTemplate.templateId ||
+          selectedTemplate.slug ||
+          selectedTemplate.id,
+        publicForm: reportDetails, // camelCase; model.js converts to snake_case payload
         uploadedFiles: safeUploadedFiles,
       });
       if (res.error) {
-        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || res?.data?.pipelineDebug || {}));
+        setPipelineDebugData((prev) =>
+          mergePipelineDebug(
+            prev || {},
+            res?.pipelineDebug || res?.data?.pipelineDebug || {}
+          )
+        );
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
         setGeneratedReport(res.report);
-        setPipelineDebugData((prev) => mergePipelineDebug(prev || {}, res?.pipelineDebug || {}));
+        setPipelineDebugData((prev) =>
+          mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
+        );
         let parsedData = null;
         try {
           if (res.report?.outputContent) {
             parsedData = JSON.parse(res.report.outputContent);
           }
         } catch (e) {
-          console.warn("Could not parse backend report JSON. Using mock mapper.");
+          console.warn(
+            "Could not parse backend report JSON. Using mock mapper."
+          );
         }
-        if (!parsedData && isCommercialBuildingEnergyAuditTemplate(selectedTemplate)) {
+        if (
+          !parsedData &&
+          isCommercialBuildingEnergyAuditTemplate(selectedTemplate)
+        ) {
           parsedData = {
             ...sampleCommercialBuildingEnergyAuditData,
             reportInfo: {
@@ -2116,7 +2477,7 @@ export default function PublicReports() {
             buildingProfile: {
               ...sampleCommercialBuildingEnergyAuditData.buildingProfile,
               facilityName: reportDetails.facilityName,
-            }
+            },
           };
         }
         setGeneratedReportData(parsedData);
@@ -2133,7 +2494,8 @@ export default function PublicReports() {
   };
 
   const handleEnhanceWithAi = async () => {
-    if (!generatedReport?.id || aiEnhancing || geminiCooldownSeconds > 0) return;
+    if (!generatedReport?.id || aiEnhancing || geminiCooldownSeconds > 0)
+      return;
 
     setAiEnhancing(true);
     startAiCountdown();
@@ -2141,7 +2503,10 @@ export default function PublicReports() {
     try {
       const res = await Reports.enhanceReportWithAi(generatedReport.id);
       if (res.error) {
-        showAiEnhancementToast({ status: "failed_non_blocking", failureReason: res.error }, showToast);
+        showAiEnhancementToast(
+          { status: "failed_non_blocking", failureReason: res.error },
+          showToast
+        );
         return;
       }
 
@@ -2163,7 +2528,10 @@ export default function PublicReports() {
         res.report?.aiEnhancementStatus ||
         null;
 
-      if (aiStatus?.status === "quota_exceeded" || res.report?.retryAfterSeconds) {
+      if (
+        aiStatus?.status === "quota_exceeded" ||
+        res.report?.retryAfterSeconds
+      ) {
         const seconds = res.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
@@ -2171,25 +2539,35 @@ export default function PublicReports() {
         if (aiStatus) {
           showAiEnhancementToast(aiStatus, showToast);
         } else {
-          toast.info("AI enhancement processed. Deterministic report is ready.");
+          toast.info(
+            "AI enhancement processed. Deterministic report is ready."
+          );
         }
       }
     } catch (err) {
-      const statusObj = err?.response?.data?.report?.aiEnhancementStatus || err?.response?.data?.aiEnhancementStatus;
-      if (statusObj?.status === "quota_exceeded" || err?.response?.data?.report?.retryAfterSeconds) {
+      const statusObj =
+        err?.response?.data?.report?.aiEnhancementStatus ||
+        err?.response?.data?.aiEnhancementStatus;
+      if (
+        statusObj?.status === "quota_exceeded" ||
+        err?.response?.data?.report?.retryAfterSeconds
+      ) {
         const seconds = err?.response?.data?.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
         return;
       }
-      
+
       if (statusObj) {
         showAiEnhancementToast(statusObj, showToast);
         return;
       }
-      
+
       const cleanReason = cleanAiFailureMessage(err.message);
-      showAiEnhancementToast({ status: "failed_non_blocking", failureReason: cleanReason }, showToast);
+      showAiEnhancementToast(
+        { status: "failed_non_blocking", failureReason: cleanReason },
+        showToast
+      );
     } finally {
       stopAiCountdown();
       setAiEnhancing(false);
@@ -2220,8 +2598,9 @@ export default function PublicReports() {
 
   // Navigation guards
   const canNext = () => {
-    if (step === 1) return !!selectedTemplate && selectedTemplate.meta?.status === "active";
-    
+    if (step === 1)
+      return !!selectedTemplate && selectedTemplate.meta?.status === "active";
+
     if (step === 2) {
       if (safeUploadedFiles.length === 0) return true; // Optional
       return canContinueFromUpload;
@@ -2232,7 +2611,9 @@ export default function PublicReports() {
   };
 
   const hasInvalidExcel = safeUploadedFiles.some(
-    (file) => isExcelFileName(file.filename) && hasFatalFileError(file.validation || file)
+    (file) =>
+      isExcelFileName(file.filename) &&
+      hasFatalFileError(file.validation || file)
   );
 
   return (
@@ -2247,7 +2628,8 @@ export default function PublicReports() {
         <div
           className="pointer-events-none absolute top-0 left-0 right-0 h-72 opacity-25"
           style={{
-            background: "radial-gradient(ellipse at 60% 0%, #46c8ff 0%, transparent 70%)",
+            background:
+              "radial-gradient(ellipse at 60% 0%, #46c8ff 0%, transparent 70%)",
           }}
         />
 
@@ -2260,14 +2642,19 @@ export default function PublicReports() {
           <div className="mb-8">
             <div className="flex items-center gap-x-3 mb-1">
               <div className="w-9 h-9 rounded-xl bg-primary-button/15 flex items-center justify-center">
-                <Sparkle size={18} weight="fill" className="text-primary-button" />
+                <Sparkle
+                  size={18}
+                  weight="fill"
+                  className="text-primary-button"
+                />
               </div>
               <h1 className="text-2xl font-extrabold text-white tracking-tight">
                 AI Report Generator
               </h1>
             </div>
             <p className="ml-12 text-sm text-white/40">
-              SEE-Tech Solutions · Generate professional engineering reports in minutes.
+              SEE-Tech Solutions · Generate professional engineering reports in
+              minutes.
             </p>
           </div>
 
@@ -2314,8 +2701,12 @@ export default function PublicReports() {
                       file.validation?.status === "valid" ||
                       file.validation?.status === "warning")
                 )}
-                allowGenerateWithSupportingFilesOnly={allowGenerateWithSupportingFilesOnly}
-                setAllowGenerateWithSupportingFilesOnly={setAllowGenerateWithSupportingFilesOnly}
+                allowGenerateWithSupportingFilesOnly={
+                  allowGenerateWithSupportingFilesOnly
+                }
+                setAllowGenerateWithSupportingFilesOnly={
+                  setAllowGenerateWithSupportingFilesOnly
+                }
               />
             )}
             {step === 4 && (
@@ -2330,7 +2721,7 @@ export default function PublicReports() {
                     if (updated.outputContent) {
                       setGeneratedReportData(JSON.parse(updated.outputContent));
                     }
-                  } catch(e) {}
+                  } catch (e) {}
                 }}
                 onEnhanceWithAi={handleEnhanceWithAi}
                 aiEnhancing={aiEnhancing}
@@ -2366,8 +2757,8 @@ export default function PublicReports() {
                       s === step
                         ? "w-5 h-1.5 bg-primary-button"
                         : step > s
-                        ? "w-3 h-1.5 bg-primary-button/40"
-                        : "w-3 h-1.5 bg-white/12"
+                          ? "w-3 h-1.5 bg-primary-button/40"
+                          : "w-3 h-1.5 bg-white/12"
                     }`}
                   />
                 ))}

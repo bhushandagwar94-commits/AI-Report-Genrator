@@ -4,7 +4,17 @@ import { isMobile } from "react-device-detect";
 import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
 import Preloader from "@/components/Preloader";
-import { Plus, Trash, PencilSimple, Clock, FileText, CheckCircle, XCircle, ArrowLeft, ArrowSquareOut } from "@phosphor-icons/react";
+import {
+  Plus,
+  Trash,
+  PencilSimple,
+  Clock,
+  FileText,
+  CheckCircle,
+  XCircle,
+  ArrowLeft,
+  ArrowSquareOut,
+} from "@phosphor-icons/react";
 
 function parseJsonSafe(value, fallback) {
   if (!value) return fallback;
@@ -72,7 +82,7 @@ export default function AdminReports() {
     );
     setModel("gemini-2.0-flash");
     setRules(
-      "1. Use the Indian Rupee symbol (₹) for all currency values.\n2. Always state engineering values with appropriate metric units (e.g. kW, MWh).\n3. Any field specified in the json schema that is missing from the document MUST be written as \"Data required\" in the final report. Do not invent any values."
+      '1. Use the Indian Rupee symbol (₹) for all currency values.\n2. Always state engineering values with appropriate metric units (e.g. kW, MWh).\n3. Any field specified in the json schema that is missing from the document MUST be written as "Data required" in the final report. Do not invent any values.'
     );
     setJsonSchema(
       JSON.stringify(
@@ -81,8 +91,14 @@ export default function AdminReports() {
           properties: {
             clientName: { type: "string", title: "Client Name" },
             auditDate: { type: "string", title: "Audit Date" },
-            transformerCapacity: { type: "string", title: "Transformer Capacity" },
-            annualEnergySavings: { type: "string", title: "Annual Energy Savings (₹)" },
+            transformerCapacity: {
+              type: "string",
+              title: "Transformer Capacity",
+            },
+            annualEnergySavings: {
+              type: "string",
+              title: "Annual Energy Savings (₹)",
+            },
           },
           required: ["clientName", "auditDate", "transformerCapacity"],
         },
@@ -114,18 +130,38 @@ export default function AdminReports() {
     setPrompt(t.prompt || "");
     setModel(t.model || "");
     setRules(t.rules || "");
-    setJsonSchema(t.jsonSchema ? JSON.stringify(parseJsonSafe(t.jsonSchema, {}), null, 2) : "");
+    setJsonSchema(
+      t.jsonSchema
+        ? JSON.stringify(parseJsonSafe(t.jsonSchema, {}), null, 2)
+        : ""
+    );
     setReportFormat(t.reportFormat || "");
     setComponentPath(t.componentPath || "");
     setStatus(t.status || "active");
     setShowInPublic(t.showInPublic !== false);
     setPublicBadge(t.publicBadge || "");
     setCategory(t.category || "");
-    setAllowedFileTypes(t.allowedFileTypes ? parseJsonSafe(t.allowedFileTypes, []).join(", ") : "");
-    setOutputFormats(t.outputFormats ? parseJsonSafe(t.outputFormats, []).join(", ") : "");
-    setInputRules(t.inputRules ? JSON.stringify(parseJsonSafe(t.inputRules, {}), null, 2) : "");
-    setSampleData(t.sampleData ? JSON.stringify(parseJsonSafe(t.sampleData, {}), null, 2) : "");
-    setVersionHistory(t.versionHistory ? JSON.stringify(parseJsonSafe(t.versionHistory, []), null, 2) : "");
+    setAllowedFileTypes(
+      t.allowedFileTypes ? parseJsonSafe(t.allowedFileTypes, []).join(", ") : ""
+    );
+    setOutputFormats(
+      t.outputFormats ? parseJsonSafe(t.outputFormats, []).join(", ") : ""
+    );
+    setInputRules(
+      t.inputRules
+        ? JSON.stringify(parseJsonSafe(t.inputRules, {}), null, 2)
+        : ""
+    );
+    setSampleData(
+      t.sampleData
+        ? JSON.stringify(parseJsonSafe(t.sampleData, {}), null, 2)
+        : ""
+    );
+    setVersionHistory(
+      t.versionHistory
+        ? JSON.stringify(parseJsonSafe(t.versionHistory, []), null, 2)
+        : ""
+    );
     setSchemaError("");
     setIsFormOpen(true);
   };
@@ -165,14 +201,26 @@ export default function AdminReports() {
       publicBadge: publicBadge || null,
       category: category || null,
       allowedFileTypes: allowedFileTypes
-        ? JSON.stringify(allowedFileTypes.split(",").map((item) => item.trim()).filter(Boolean))
+        ? JSON.stringify(
+            allowedFileTypes
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
         : null,
       outputFormats: outputFormats
-        ? JSON.stringify(outputFormats.split(",").map((item) => item.trim()).filter(Boolean))
+        ? JSON.stringify(
+            outputFormats
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
         : null,
       inputRules: inputRules ? JSON.stringify(JSON.parse(inputRules)) : null,
       sampleData: sampleData ? JSON.stringify(JSON.parse(sampleData)) : null,
-      versionHistory: versionHistory ? JSON.stringify(JSON.parse(versionHistory)) : null,
+      versionHistory: versionHistory
+        ? JSON.stringify(JSON.parse(versionHistory))
+        : null,
     };
 
     setLoading(true);
@@ -194,7 +242,12 @@ export default function AdminReports() {
   };
 
   const handleDeleteTemplate = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this template? All reports generated with it will remain but their parent template reference will be removed.")) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this template? All reports generated with it will remain but their parent template reference will be removed."
+      )
+    )
+      return;
     setLoading(true);
     const result = await Reports.deleteTemplate(id);
     if (result.success) {
@@ -207,7 +260,12 @@ export default function AdminReports() {
   };
 
   const handleDeleteReport = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this report from history? This cannot be undone.")) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this report from history? This cannot be undone."
+      )
+    )
+      return;
     setLoading(true);
     const result = await Reports.deleteReport(id);
     if (result.success) {
@@ -238,16 +296,24 @@ export default function AdminReports() {
             </button>
             <div className="w-full flex flex-col gap-y-1 pb-6 border-b border-white/10 mb-6">
               <h2 className="text-xl font-bold text-white">
-                {editingTemplate ? `Edit Template: ${editingTemplate.name}` : "Create Report Template"}
+                {editingTemplate
+                  ? `Edit Template: ${editingTemplate.name}`
+                  : "Create Report Template"}
               </h2>
               <p className="text-xs text-white/60">
-                Define the requirements, prompt parameters, rules, and layout constraints for AI report generation.
+                Define the requirements, prompt parameters, rules, and layout
+                constraints for AI report generation.
               </p>
             </div>
 
-            <form onSubmit={handleSaveTemplate} className="flex flex-col gap-y-6">
+            <form
+              onSubmit={handleSaveTemplate}
+              className="flex flex-col gap-y-6"
+            >
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Template Name</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Template Name
+                </label>
                 <input
                   type="text"
                   required
@@ -260,7 +326,9 @@ export default function AdminReports() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Template ID / Slug</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Template ID / Slug
+                  </label>
                   <input
                     type="text"
                     placeholder="commercial-building-energy-audit"
@@ -271,7 +339,9 @@ export default function AdminReports() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Category</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Category
+                  </label>
                   <input
                     type="text"
                     placeholder="Energy Audit"
@@ -283,7 +353,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Component Path</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Component Path
+                </label>
                 <input
                   type="text"
                   placeholder="components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx"
@@ -295,7 +367,9 @@ export default function AdminReports() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Status</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Status
+                  </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
@@ -308,7 +382,9 @@ export default function AdminReports() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Public Badge</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Public Badge
+                  </label>
                   <input
                     type="text"
                     placeholder="Available"
@@ -331,7 +407,9 @@ export default function AdminReports() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Allowed File Types</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Allowed File Types
+                  </label>
                   <input
                     type="text"
                     placeholder="xlsx, xls, pdf, docx, pptx, jpg, jpeg, png"
@@ -342,7 +420,9 @@ export default function AdminReports() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-white mb-2">Output Formats</label>
+                  <label className="block text-sm font-bold text-white mb-2">
+                    Output Formats
+                  </label>
                   <input
                     type="text"
                     placeholder="preview, pdf"
@@ -354,7 +434,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Target LLM Model</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Target LLM Model
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. gemini-2.0-flash (Leave blank to use system default model)"
@@ -365,7 +447,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Core System Instructions / Prompt</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Core System Instructions / Prompt
+                </label>
                 <textarea
                   required
                   rows={5}
@@ -377,7 +461,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Rules & Format Constraints</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Rules & Format Constraints
+                </label>
                 <textarea
                   rows={4}
                   placeholder="Enter generation rules (one per line)..."
@@ -388,7 +474,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Input Rules JSON</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Input Rules JSON
+                </label>
                 <textarea
                   rows={5}
                   placeholder='{ "required": ["reportInfo", "projects"] }'
@@ -400,8 +488,14 @@ export default function AdminReports() {
 
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-bold text-white">Extraction JSON Schema</label>
-                  {schemaError && <span className="text-xs text-red-400 font-semibold">{schemaError}</span>}
+                  <label className="block text-sm font-bold text-white">
+                    Extraction JSON Schema
+                  </label>
+                  {schemaError && (
+                    <span className="text-xs text-red-400 font-semibold">
+                      {schemaError}
+                    </span>
+                  )}
                 </div>
                 <textarea
                   rows={8}
@@ -413,7 +507,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Markdown Structure Layout</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Markdown Structure Layout
+                </label>
                 <textarea
                   rows={10}
                   placeholder="Define target markdown template structure..."
@@ -424,7 +520,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Sample Data JSON</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Sample Data JSON
+                </label>
                 <textarea
                   rows={8}
                   placeholder='{ "reportInfo": { ... }, "projects": [] }'
@@ -435,7 +533,9 @@ export default function AdminReports() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-white mb-2">Version History JSON</label>
+                <label className="block text-sm font-bold text-white mb-2">
+                  Version History JSON
+                </label>
                 <textarea
                   rows={5}
                   placeholder='[{ "version": "1.0.0", "date": "2026-05-20", "notes": "Initial release" }]'
@@ -475,10 +575,12 @@ export default function AdminReports() {
             <div className="w-full flex justify-between items-center pb-6 border-b border-white/10 mb-6">
               <div>
                 <h2 className="text-xl font-bold text-white">
-                  Report Detail: {selectedReport.template?.name || "Deleted Template"}
+                  Report Detail:{" "}
+                  {selectedReport.template?.name || "Deleted Template"}
                 </h2>
                 <p className="text-xs text-white/60">
-                  Generated on {new Date(selectedReport.createdAt).toLocaleString()}
+                  Generated on{" "}
+                  {new Date(selectedReport.createdAt).toLocaleString()}
                 </p>
               </div>
               <button
@@ -493,7 +595,9 @@ export default function AdminReports() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-y-4">
                 <div className="bg-theme-bg-sidebar p-4 rounded-xl border border-white/5">
-                  <h3 className="text-sm font-bold text-white mb-3">Report Content Preview</h3>
+                  <h3 className="text-sm font-bold text-white mb-3">
+                    Report Content Preview
+                  </h3>
                   <div className="bg-[#0b0c10] p-4 rounded-lg border border-white/5 font-mono text-sm overflow-x-auto whitespace-pre-wrap text-white min-h-[300px]">
                     {selectedReport.outputContent || "No content generated."}
                   </div>
@@ -502,28 +606,47 @@ export default function AdminReports() {
 
               <div className="flex flex-col gap-y-6">
                 <div className="bg-theme-bg-sidebar p-4 rounded-xl border border-white/5">
-                  <h3 className="text-sm font-bold text-white mb-3 font-semibold">User Input Details</h3>
+                  <h3 className="text-sm font-bold text-white mb-3 font-semibold">
+                    User Input Details
+                  </h3>
                   <pre className="bg-[#0b0c10] p-3 rounded-lg border border-white/5 text-xs text-green-400 font-mono overflow-x-auto">
-                    {JSON.stringify(JSON.parse(selectedReport.inputDetails || "{}"), null, 2)}
+                    {JSON.stringify(
+                      JSON.parse(selectedReport.inputDetails || "{}"),
+                      null,
+                      2
+                    )}
                   </pre>
                 </div>
 
                 <div className="bg-theme-bg-sidebar p-4 rounded-xl border border-white/5">
-                  <h3 className="text-sm font-bold text-white mb-3 font-semibold">Extracted Technical Data</h3>
+                  <h3 className="text-sm font-bold text-white mb-3 font-semibold">
+                    Extracted Technical Data
+                  </h3>
                   <pre className="bg-[#0b0c10] p-3 rounded-lg border border-white/5 text-xs text-blue-400 font-mono overflow-x-auto">
-                    {JSON.stringify(JSON.parse(selectedReport.extractedData || "{}"), null, 2)}
+                    {JSON.stringify(
+                      JSON.parse(selectedReport.extractedData || "{}"),
+                      null,
+                      2
+                    )}
                   </pre>
                 </div>
 
                 {selectedReport.missingData && (
                   <div className="bg-theme-bg-sidebar p-4 rounded-xl border border-white/5">
-                    <h3 className="text-sm font-bold text-white mb-3 font-semibold">Missing Required Fields</h3>
+                    <h3 className="text-sm font-bold text-white mb-3 font-semibold">
+                      Missing Required Fields
+                    </h3>
                     <div className="flex flex-wrap gap-2">
                       {JSON.parse(selectedReport.missingData).length === 0 ? (
-                        <span className="text-xs text-green-400">All required data points satisfied.</span>
+                        <span className="text-xs text-green-400">
+                          All required data points satisfied.
+                        </span>
                       ) : (
                         JSON.parse(selectedReport.missingData).map((field) => (
-                          <span key={field} className="text-xs bg-red-950/60 text-red-400 border border-red-500/20 px-2 py-0.5 rounded">
+                          <span
+                            key={field}
+                            className="text-xs bg-red-950/60 text-red-400 border border-red-500/20 px-2 py-0.5 rounded"
+                          >
                             {field}
                           </span>
                         ))
@@ -539,9 +662,12 @@ export default function AdminReports() {
             {/* Header Area */}
             <div className="w-full flex justify-between items-center pb-6 border-b border-white/10 mb-6">
               <div>
-                <h1 className="text-2xl font-bold text-white">AI Report Settings</h1>
+                <h1 className="text-2xl font-bold text-white">
+                  AI Report Settings
+                </h1>
                 <p className="text-xs text-theme-text-secondary mt-1">
-                  Configure custom engineering templates and monitor execution results.
+                  Configure custom engineering templates and monitor execution
+                  results.
                 </p>
               </div>
               <button
@@ -585,7 +711,9 @@ export default function AdminReports() {
               templates.length === 0 ? (
                 <div className="h-60 flex flex-col justify-center items-center gap-y-3 bg-theme-bg-sidebar rounded-xl border border-white/5">
                   <FileText size={40} className="text-white/20" />
-                  <p className="text-sm text-theme-text-secondary">No report templates defined yet.</p>
+                  <p className="text-sm text-theme-text-secondary">
+                    No report templates defined yet.
+                  </p>
                   <button
                     onClick={openCreateForm}
                     className="text-xs text-primary-button hover:underline font-semibold"
@@ -603,7 +731,9 @@ export default function AdminReports() {
                       <div>
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <h3 className="text-base font-bold text-white">{t.name}</h3>
+                            <h3 className="text-base font-bold text-white">
+                              {t.name}
+                            </h3>
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               {t.slug && (
                                 <span className="text-[10px] bg-theme-settings-input-bg text-theme-text-secondary px-2 py-0.5 rounded font-mono">
@@ -613,18 +743,22 @@ export default function AdminReports() {
                               <span className="text-[10px] bg-theme-settings-input-bg text-theme-text-secondary px-2 py-0.5 rounded">
                                 {t.category || "Uncategorized"}
                               </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
-                                t.status === "active"
-                                  ? "bg-green-950/50 text-green-400"
-                                  : "bg-yellow-950/50 text-yellow-400"
-                              }`}>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
+                                  t.status === "active"
+                                    ? "bg-green-950/50 text-green-400"
+                                    : "bg-yellow-950/50 text-yellow-400"
+                                }`}
+                              >
                                 {t.status || "active"}
                               </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
-                                t.showInPublic
-                                  ? "bg-blue-950/50 text-blue-400"
-                                  : "bg-white/5 text-white/35"
-                              }`}>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
+                                  t.showInPublic
+                                    ? "bg-blue-950/50 text-blue-400"
+                                    : "bg-white/5 text-white/35"
+                                }`}
+                              >
                                 {t.showInPublic ? "Public" : "Hidden"}
                               </span>
                             </div>
@@ -643,15 +777,23 @@ export default function AdminReports() {
                         )}
                         <div className="flex flex-wrap gap-2 mb-2">
                           {parseJsonSafe(t.outputFormats, []).map((format) => (
-                            <span key={format} className="text-[10px] px-2 py-0.5 rounded bg-primary-button/10 text-primary-button">
+                            <span
+                              key={format}
+                              className="text-[10px] px-2 py-0.5 rounded bg-primary-button/10 text-primary-button"
+                            >
                               {format}
                             </span>
                           ))}
-                          {parseJsonSafe(t.allowedFileTypes, []).slice(0, 6).map((ext) => (
-                            <span key={ext} className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/45">
-                              .{ext}
-                            </span>
-                          ))}
+                          {parseJsonSafe(t.allowedFileTypes, [])
+                            .slice(0, 6)
+                            .map((ext) => (
+                              <span
+                                key={ext}
+                                className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/45"
+                              >
+                                .{ext}
+                              </span>
+                            ))}
                         </div>
                       </div>
 
@@ -683,7 +825,9 @@ export default function AdminReports() {
             ) : history.length === 0 ? (
               <div className="h-60 flex flex-col justify-center items-center gap-y-2 bg-theme-bg-sidebar rounded-xl border border-white/5">
                 <Clock size={40} className="text-white/20" />
-                <p className="text-sm text-theme-text-secondary">No generation logs found.</p>
+                <p className="text-sm text-theme-text-secondary">
+                  No generation logs found.
+                </p>
               </div>
             ) : (
               <div className="bg-theme-bg-sidebar border border-white/5 rounded-xl overflow-hidden">
@@ -701,7 +845,10 @@ export default function AdminReports() {
                     {history.map((h) => {
                       const files = JSON.parse(h.uploadedFiles || "[]");
                       return (
-                        <tr key={h.id} className="border-b border-white/5 text-sm hover:bg-white/5 transition-all">
+                        <tr
+                          key={h.id}
+                          className="border-b border-white/5 text-sm hover:bg-white/5 transition-all"
+                        >
                           <td className="p-4 font-semibold text-white">
                             {h.template?.name || "Deleted Template"}
                           </td>
@@ -717,7 +864,10 @@ export default function AdminReports() {
                                 <CheckCircle size={14} /> Completed
                               </span>
                             ) : h.status === "failed" ? (
-                              <span className="flex items-center gap-x-1 text-xs text-red-400 font-semibold" title={h.error}>
+                              <span
+                                className="flex items-center gap-x-1 text-xs text-red-400 font-semibold"
+                                title={h.error}
+                              >
                                 <XCircle size={14} /> Failed
                               </span>
                             ) : (

@@ -75,7 +75,7 @@ export default function PromptInput({
       sendCommand({ text: "@agent " });
       textareaRef.current?.focus();
     }
-  }, [textareaRef.current]);
+  }, [textareaRef]);
 
   /**
    * To prevent too many re-renders we remotely listen for updates from the parent
@@ -116,6 +116,7 @@ export default function PromptInput({
       cursorPositionEnd: textareaRef.current.selectionEnd + adjustment,
     });
   }
+  // eslint-disable-next-line react-hooks/refs
   const debouncedSaveState = debounce(saveCurrentState, 250);
 
   function handleSubmit(e) {
