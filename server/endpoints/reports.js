@@ -1114,6 +1114,12 @@ function extractAuthoritativeExcelProjects(workbook) {
     const projectActivities = preferredFieldValue(rowMap, "projectActivities");
     const rowNumberText = preferredFieldValue(rowMap, "rowNumber");
 
+    // Engineering Context Extraction
+    const department = preferredFieldValue(rowMap, "department") || "";
+    const area = preferredFieldValue(rowMap, "area") || preferredFieldValue(rowMap, "location") || "";
+    const observation = preferredFieldValue(rowMap, "observation") || "";
+    const recommendation = preferredFieldValue(rowMap, "recommendation") || "";
+
     const audit = {
       rowNumber,
       projectTitleSourceColumn: bestHeader.mappedColumns.projectTitle || "",
@@ -1203,6 +1209,11 @@ function extractAuthoritativeExcelProjects(workbook) {
       simplePaybackPeriod: parseNumberCell(payback),
       implementationDuration: implementationDuration || "Data required",
       implementationPriority: priority || "Data required",
+      department,
+      area,
+      observation,
+      recommendation,
+      sheetName: bestSheet.name,
       projectActivitiesText: projectActivities || "Data required",
       scopeOfWork: buildStructuredList(projectActivities, "scopeItem"),
       keyActivities: buildStructuredList(projectActivities, "activity", [
@@ -2194,26 +2205,27 @@ function reportEndpoints(app) {
   }
 
   function buildLightweightReportData(projects, reportDetails) {
-    const { buildProjectGroups } = require("../services/llmProviderService");
-    
-    // Map lightweight properties to expected fields for classification engine
     const mappedProjects = projects.map((p, i) => ({
-      ...p,
-      projectNo: p.ecmNo || `ECM ${i + 1}`,
-      title: p.description || `Project ${i + 1}`,
+      projectNo: p.ecmNo || p.projectNo || `ECM ${i + 1}`,
+      projectTitle: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
+      title: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
       system: p.system || "Other",
-      projectTitle: p.description,
-      energySaving: Number(p.energySaving) || 0,
-      annualSaving: Number(p.annualSaving) || 0,
-      investment: Number(p.investment) || 0,
-      payback: Number(p.payback) || 0,
-      estimatedInvestment: Number(p.investment) || 0,
-      expectedAnnualCostSaving: Number(p.annualSaving) || 0,
-      expectedEnergySaving: Number(p.energySaving) || 0,
-      simplePaybackPeriod: Number(p.payback) || 0,
+      category: p.system || "Other",
+      expectedEnergySaving: p.energySaving || 0,
+      expectedAnnualCostSaving: p.annualSaving || 0,
+      estimatedInvestment: p.investment || 0,
+      simplePaybackPeriod: p.payback || 0,
+      equipmentCovered: p.equipmentCovered || p.equipment || "Various",
+      groupTitle: p.groupTitle || "",
+      sourceSheet: p.sheetName || "",
+      department: p.department || "",
+      area: p.area || "",
+      observation: p.observation || "",
+      recommendation: p.recommendation || "",
     }));
 
-    const grouped = buildProjectGroups(mappedProjects);
+    const cleaned = cleanAndDeduplicateProjects(mappedProjects);
+    const grouped = buildProjectGroups(cleaned);
 
     return {
       reportInfo: {
@@ -2224,7 +2236,7 @@ function reportEndpoints(app) {
         reportDate: reportDetails.reportDate || new Date().toISOString(),
       },
       groupedProjects: grouped,
-      projects: mappedProjects, // fallback
+      projects: cleaned, // fallback
     };
   }
 
@@ -2266,6 +2278,8 @@ function reportEndpoints(app) {
     "/reports/generate",
     [validatedRequest, flexUserRoleValid([ROLES.all])],
     async (request, response) => {
+      console.log("FUNCTION ENTERED:\nserver/endpoints/reports.js\napp.post(/reports/generate)");
+      console.log("CACHE MISS: report generation is always live.");
       const startedAt = Date.now();
       try {
         const body = reqBody(request);
@@ -2366,6 +2380,9 @@ function reportEndpoints(app) {
         );
 
         // 7. Return immediately. DO NOT CALL DOCX EXPORT OR AI.
+        console.log("API RESPONSE GROUPS");
+        console.log(JSON.stringify(reportData.groupedProjects?.map(g => ({ groupNo: g.groupNo, title: g.groupTitle, ecmCount: g.projects?.length })) || []));
+
         return response.json({
           success: true,
           previewReady: true,
@@ -2513,6 +2530,8 @@ function reportEndpoints(app) {
   );
 
   async function enhanceAiHandler(req, res) {
+    console.log("FUNCTION ENTERED:\nserver/endpoints/reports.js\nenhanceAiHandler");
+    console.log("CACHE MISS: AI Enhancement generates a new report.");
     try {
       const reportId = req.params.reportId || req.body.reportId || null;
 

@@ -21,10 +21,9 @@
     "simplePaybackPeriod": 1.83,
     "co2ReductionPotential": "Data required",
     "keyObservations": [
-      "Cooling System Performance Improvement includes 7 ECMs with combined annual saving of 2708873.8958999994.",
-      "Production Machines includes 8 ECMs with combined annual saving of 7918415.8314000005.",
-      "Air Compressors includes 2 ECMs with combined annual saving of 1159465.0019999999.",
-      "Auxiliary Systems & Machine Improvement includes 5 ECMs with combined annual saving of 1853357.526."
+      "Cooling System Performance Improvement includes 3 ECMs with combined annual saving of 2191380.723.",
+      "Production Machines includes 8 ECMs with combined annual saving of 6686609.8314000005.",
+      "Auxiliary Systems & Machine Improvement includes 11 ECMs with combined annual saving of 4762121.7009000005."
     ],
     "conclusionAndWayForward": [
       {
@@ -48,38 +47,29 @@
       {
         "groupNo": "GR-1",
         "groupTitle": "Cooling System Performance Improvement",
-        "projectCount": 7,
-        "totalEnergySaving": 377806.67999999993,
-        "totalAnnualCostSaving": 2708873.8958999994,
-        "totalEstimatedInvestment": 2876933,
-        "weightedPayback": "1.06"
+        "projectCount": 3,
+        "totalEnergySaving": 305631.9,
+        "totalAnnualCostSaving": 2191380.723,
+        "totalEstimatedInvestment": 1385000,
+        "weightedPayback": "0.63"
       },
       {
         "groupNo": "GR-2",
         "groupTitle": "Production Machines",
         "projectCount": 8,
-        "totalEnergySaving": 1104381.5664,
-        "totalAnnualCostSaving": 7918415.8314000005,
-        "totalEstimatedInvestment": 19400000,
-        "weightedPayback": "2.45"
-      },
-      {
-        "groupNo": "GR-3",
-        "groupTitle": "Air Compressors",
-        "projectCount": 2,
-        "totalEnergySaving": 161710.6,
-        "totalAnnualCostSaving": 1159465.0019999999,
-        "totalEstimatedInvestment": 1058867.7,
-        "weightedPayback": "0.91"
+        "totalEnergySaving": 932581.5664,
+        "totalAnnualCostSaving": 6686609.8314000005,
+        "totalEstimatedInvestment": 19148598.75,
+        "weightedPayback": "2.86"
       },
       {
         "groupNo": "GR-4",
         "groupTitle": "Auxiliary Systems & Machine Improvement",
-        "projectCount": 5,
-        "totalEnergySaving": 258487.8,
-        "totalAnnualCostSaving": 1853357.526,
-        "totalEstimatedInvestment": 1607348.75,
-        "weightedPayback": "0.87"
+        "projectCount": 11,
+        "totalEnergySaving": 664173.1799999999,
+        "totalAnnualCostSaving": 4762121.7009000005,
+        "totalEstimatedInvestment": 4409550.7,
+        "weightedPayback": "0.93"
       }
     ]
   },
@@ -108,12 +98,11 @@
     "expectedProjectCount": 22,
     "extractedProjectCount": 22,
     "finalProjectCount": 22,
-    "groupCount": 4,
+    "groupCount": 3,
     "groupWiseCount": {
-      "Cooling System Performance Improvement": 7,
+      "Cooling System Performance Improvement": 3,
       "Production Machines": 8,
-      "Air Compressors": 2,
-      "Auxiliary Systems & Machine Improvement": 5
+      "Auxiliary Systems & Machine Improvement": 11
     },
     "datasetProfile": {
       "datasetName": "MTL Baddi ECM",
@@ -396,8 +385,8 @@
     "excelTruthLocked": true,
     "componentWorkflow": true,
     "numericAuthority": "excel_form_calculation_only",
-    "componentCount": 31,
-    "llmEligibleComponentCount": 28,
+    "componentCount": 30,
+    "llmEligibleComponentCount": 27,
     "llmSuccessCount": 0,
     "llmFailureCount": 0,
     "componentRegistry": [
@@ -3577,67 +3566,67 @@
               "images": []
             },
             {
-              "sourceRowNumber": 10,
-              "projectNo": "8",
-              "projectTitle": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-              "equipmentCovered": "Chilled Water Secondary Pump No. 3",
-              "system": "Utility",
-              "groupTitle": "Cooling System Performance Improvement",
-              "proposedIntervention": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-              "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+              "sourceRowNumber": 16,
+              "projectNo": "14",
+              "projectTitle": "Insulation hot flexible ducts (72 Nos)",
+              "equipmentCovered": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine",
+              "system": "ISBM",
+              "groupTitle": "Production Machines",
+              "proposedIntervention": "Insulation hot flexible ducts (72 Nos)",
+              "proposedProjectDescription": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
               "rationale": "Data required",
-              "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-              "baselineDetails": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-              "existingOperatingCondition": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-              "existingSystemDescription": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-              "baselineConsumption": "170772",
-              "expectedEnergySaving": "25615.8",
-              "expectedAnnualCostSaving": "183665.286",
-              "estimatedInvestment": "270000",
-              "simplePaybackPeriod": "1.470065497",
+              "rationaleForEnergySaving": "Lower thermal losses reduce heater energy input while improving temperature retention and process stability.",
+              "baselineDetails": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+              "existingOperatingCondition": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+              "existingSystemDescription": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+              "baselineConsumption": "299700",
+              "expectedEnergySaving": "199800",
+              "expectedAnnualCostSaving": "1432566",
+              "estimatedInvestment": "740000",
+              "simplePaybackPeriod": "0.5165556072",
               "implementationDuration": "10 to 12 weeks",
               "implementationPriority": "Data required",
-              "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
+              "projectActivitiesText": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
               "scopeOfWork": [
-                "Implementation of IE5 Efficiency Motor Retrofit for CHW Secondary Pump adhering to industrial standards."
+                "Implementation of Insulation hot flexible ducts (72 Nos) adhering to industrial standards."
               ],
               "keyActivities": [
-                "IE-5 Efficiency Motor with existing vfd"
+                "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)"
               ],
               "baselineData": [
                 {
                   "parameter": "Baseline consumption",
                   "unit": "kWh/year",
-                  "value": "170772"
+                  "value": "299700"
                 }
               ],
-              "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+              "problemGapIdentified": "Uninsulated or poorly insulated hot ducts lose useful heat before it reaches the process, increasing electrical heating consumption.",
               "energySavingCalculation": [
                 {
                   "parameter": "Annual energy saving",
                   "unit": "kWh/year",
-                  "value": "25615.8"
+                  "value": "199800"
                 },
                 {
                   "parameter": "Annual cost saving",
                   "unit": "₹/year",
-                  "value": "183665.286"
+                  "value": "1432566"
                 },
                 {
                   "parameter": "Estimated investment",
                   "unit": "₹",
-                  "value": "270000"
+                  "value": "740000"
                 },
                 {
                   "parameter": "Simple payback",
                   "unit": "years",
-                  "value": "1.470065497"
+                  "value": "0.5165556072"
                 }
               ],
               "technicalSpecifications": [
                 {
                   "parameter": "Equipment covered",
-                  "details": "Chilled Water Secondary Pump No. 3"
+                  "details": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine"
                 },
                 {
                   "parameter": "Implementation duration",
@@ -3670,134 +3659,17 @@
               ],
               "caseStudies": [
                 {
-                  "title": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+                  "title": "Insulation hot flexible ducts (72 Nos)",
                   "clientType": "Industrial facility",
-                  "system": "Utility",
-                  "implementedMeasure": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-                  "result": "Expected energy saving of 25615.8.",
+                  "system": "ISBM",
+                  "implementedMeasure": "Insulation hot flexible ducts (72 Nos)",
+                  "result": "Expected energy saving of 199800.",
                   "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
                 }
               ],
               "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
               "carbonFootprint": {
-                "annualEnergySaving": "25615.8",
-                "emissionFactor": "Data required",
-                "estimatedCO2Reduction": "Data required",
-                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-                "remarks": "Data required"
-              },
-              "measurementData": [],
-              "typicalGapTable": [],
-              "savingRationaleTable": [],
-              "keyMetrics": [],
-              "schematicFramework": [],
-              "images": []
-            },
-            {
-              "sourceRowNumber": 11,
-              "projectNo": "9",
-              "projectTitle": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-              "equipmentCovered": "CT Secondary Pump No. 1, 2 & 3",
-              "system": "Utility",
-              "groupTitle": "Cooling System Performance Improvement",
-              "proposedIntervention": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-              "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-              "rationale": "Data required",
-              "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-              "baselineDetails": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-              "existingOperatingCondition": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-              "existingSystemDescription": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-              "baselineConsumption": "373413",
-              "expectedEnergySaving": "52277.82",
-              "expectedAnnualCostSaving": "374831.9694",
-              "estimatedInvestment": "1011933",
-              "simplePaybackPeriod": "2.699697685",
-              "implementationDuration": "10 to 12 weeks",
-              "implementationPriority": "Data required",
-              "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
-              "scopeOfWork": [
-                "Implementation of IE5 Efficiency Motor Retrofit for CT Water Secondary Pump adhering to industrial standards."
-              ],
-              "keyActivities": [
-                "IE-5 Efficiency Motor with existing vfd"
-              ],
-              "baselineData": [
-                {
-                  "parameter": "Baseline consumption",
-                  "unit": "kWh/year",
-                  "value": "373413"
-                }
-              ],
-              "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
-              "energySavingCalculation": [
-                {
-                  "parameter": "Annual energy saving",
-                  "unit": "kWh/year",
-                  "value": "52277.82"
-                },
-                {
-                  "parameter": "Annual cost saving",
-                  "unit": "₹/year",
-                  "value": "374831.9694"
-                },
-                {
-                  "parameter": "Estimated investment",
-                  "unit": "₹",
-                  "value": "1011933"
-                },
-                {
-                  "parameter": "Simple payback",
-                  "unit": "years",
-                  "value": "2.699697685"
-                }
-              ],
-              "technicalSpecifications": [
-                {
-                  "parameter": "Equipment covered",
-                  "details": "CT Secondary Pump No. 1, 2 & 3"
-                },
-                {
-                  "parameter": "Implementation duration",
-                  "details": "10 to 12 weeks"
-                }
-              ],
-              "precautions": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "aspectsToBeTakenCareOf": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "measurementVerificationPlan": [
-                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-              ],
-              "benefitsOtherThanEnergySaving": [
-                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-              ],
-              "implementationDurationTable": [
-                {
-                  "activity": "Engineering and procurement",
-                  "duration": "10 to 12 weeks"
-                },
-                {
-                  "activity": "Installation and commissioning",
-                  "duration": "10 to 12 weeks"
-                }
-              ],
-              "caseStudies": [
-                {
-                  "title": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-                  "clientType": "Industrial facility",
-                  "system": "Utility",
-                  "implementedMeasure": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-                  "result": "Expected energy saving of 52277.82.",
-                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-                }
-              ],
-              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-              "carbonFootprint": {
-                "annualEnergySaving": "52277.82",
+                "annualEnergySaving": "199800",
                 "emissionFactor": "Data required",
                 "estimatedCO2Reduction": "Data required",
                 "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -3811,24 +3683,137 @@
               "images": []
             }
           ],
-          "totalInvestment": 2876933,
-          "totalAnnualSaving": 2708873.8958999994,
-          "totalEnergySaving": 377806.67999999993,
-          "weightedPayback": "1.06",
+          "totalInvestment": 2335000,
+          "totalAnnualSaving": 3582942.6404999997,
+          "totalEnergySaving": 499713.05999999994,
+          "weightedPayback": "0.65",
           "technicalObservation": [
-            "EE Improvement in Chiller Using CT Segregation",
-            "Flow Optimization for CHW Secondary Pump",
-            "EE Improvement in Air Compressors & Pump Using CT Segregation",
             "Automatic Primary Pump Flow Control for Chiller kW/TR Optimization",
             "Free Cooling by Chiller Bypass in Winter",
-            "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-            "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump"
+            "Insulation hot flexible ducts (72 Nos)"
           ]
         },
         {
           "groupNo": "GR-2",
           "groupTitle": "Production Machines",
           "projects": [
+            {
+              "sourceRowNumber": 12,
+              "projectNo": "10",
+              "projectTitle": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "equipmentCovered": "Cutting Grinders",
+              "system": "Process",
+              "groupTitle": "Auxiliary Systems & Machine Improvement",
+              "proposedIntervention": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "proposedProjectDescription": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "rationale": "Data required",
+              "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
+              "baselineDetails": "Data required",
+              "existingOperatingCondition": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
+              "existingSystemDescription": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
+              "baselineConsumption": "140000",
+              "expectedEnergySaving": "28000",
+              "expectedAnnualCostSaving": "200760",
+              "estimatedInvestment": "488598.75",
+              "simplePaybackPeriod": "2.433745517",
+              "implementationDuration": "10 to 12 weeks",
+              "implementationPriority": "Data required",
+              "projectActivitiesText": "IE-5 Efficiency Motor, Pulley Change, Cogged belt",
+              "scopeOfWork": [
+                "Implementation of Cutting Grinders Retrofit with IE5 Motor & Cogged belt adhering to industrial standards."
+              ],
+              "keyActivities": [
+                "IE-5 Efficiency Motor, Pulley Change, Cogged belt"
+              ],
+              "baselineData": [
+                {
+                  "parameter": "Baseline consumption",
+                  "unit": "kWh/year",
+                  "value": "140000"
+                }
+              ],
+              "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+              "energySavingCalculation": [
+                {
+                  "parameter": "Annual energy saving",
+                  "unit": "kWh/year",
+                  "value": "28000"
+                },
+                {
+                  "parameter": "Annual cost saving",
+                  "unit": "₹/year",
+                  "value": "200760"
+                },
+                {
+                  "parameter": "Estimated investment",
+                  "unit": "₹",
+                  "value": "488598.75"
+                },
+                {
+                  "parameter": "Simple payback",
+                  "unit": "years",
+                  "value": "2.433745517"
+                }
+              ],
+              "technicalSpecifications": [
+                {
+                  "parameter": "Equipment covered",
+                  "details": "Cutting Grinders"
+                },
+                {
+                  "parameter": "Implementation duration",
+                  "details": "10 to 12 weeks"
+                }
+              ],
+              "precautions": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "aspectsToBeTakenCareOf": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "measurementVerificationPlan": [
+                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+              ],
+              "benefitsOtherThanEnergySaving": [
+                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+              ],
+              "implementationDurationTable": [
+                {
+                  "activity": "Engineering and procurement",
+                  "duration": "10 to 12 weeks"
+                },
+                {
+                  "activity": "Installation and commissioning",
+                  "duration": "10 to 12 weeks"
+                }
+              ],
+              "caseStudies": [
+                {
+                  "title": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+                  "clientType": "Industrial facility",
+                  "system": "Process",
+                  "implementedMeasure": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+                  "result": "Expected energy saving of 28000.",
+                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+                }
+              ],
+              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+              "carbonFootprint": {
+                "annualEnergySaving": "28000",
+                "emissionFactor": "Data required",
+                "estimatedCO2Reduction": "Data required",
+                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+                "remarks": "Data required"
+              },
+              "measurementData": [],
+              "typicalGapTable": [],
+              "savingRationaleTable": [],
+              "keyMetrics": [],
+              "schematicFramework": [],
+              "images": []
+            },
             {
               "sourceRowNumber": 15,
               "projectNo": "13",
@@ -3934,123 +3919,6 @@
               "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
               "carbonFootprint": {
                 "annualEnergySaving": "54720",
-                "emissionFactor": "Data required",
-                "estimatedCO2Reduction": "Data required",
-                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-                "remarks": "Data required"
-              },
-              "measurementData": [],
-              "typicalGapTable": [],
-              "savingRationaleTable": [],
-              "keyMetrics": [],
-              "schematicFramework": [],
-              "images": []
-            },
-            {
-              "sourceRowNumber": 16,
-              "projectNo": "14",
-              "projectTitle": "Insulation hot flexible ducts (72 Nos)",
-              "equipmentCovered": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine",
-              "system": "ISBM",
-              "groupTitle": "Production Machines",
-              "proposedIntervention": "Insulation hot flexible ducts (72 Nos)",
-              "proposedProjectDescription": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
-              "rationale": "Data required",
-              "rationaleForEnergySaving": "Lower thermal losses reduce heater energy input while improving temperature retention and process stability.",
-              "baselineDetails": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-              "existingOperatingCondition": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-              "existingSystemDescription": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-              "baselineConsumption": "299700",
-              "expectedEnergySaving": "199800",
-              "expectedAnnualCostSaving": "1432566",
-              "estimatedInvestment": "740000",
-              "simplePaybackPeriod": "0.5165556072",
-              "implementationDuration": "10 to 12 weeks",
-              "implementationPriority": "Data required",
-              "projectActivitiesText": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
-              "scopeOfWork": [
-                "Implementation of Insulation hot flexible ducts (72 Nos) adhering to industrial standards."
-              ],
-              "keyActivities": [
-                "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)"
-              ],
-              "baselineData": [
-                {
-                  "parameter": "Baseline consumption",
-                  "unit": "kWh/year",
-                  "value": "299700"
-                }
-              ],
-              "problemGapIdentified": "Uninsulated or poorly insulated hot ducts lose useful heat before it reaches the process, increasing electrical heating consumption.",
-              "energySavingCalculation": [
-                {
-                  "parameter": "Annual energy saving",
-                  "unit": "kWh/year",
-                  "value": "199800"
-                },
-                {
-                  "parameter": "Annual cost saving",
-                  "unit": "₹/year",
-                  "value": "1432566"
-                },
-                {
-                  "parameter": "Estimated investment",
-                  "unit": "₹",
-                  "value": "740000"
-                },
-                {
-                  "parameter": "Simple payback",
-                  "unit": "years",
-                  "value": "0.5165556072"
-                }
-              ],
-              "technicalSpecifications": [
-                {
-                  "parameter": "Equipment covered",
-                  "details": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine"
-                },
-                {
-                  "parameter": "Implementation duration",
-                  "details": "10 to 12 weeks"
-                }
-              ],
-              "precautions": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "aspectsToBeTakenCareOf": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "measurementVerificationPlan": [
-                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-              ],
-              "benefitsOtherThanEnergySaving": [
-                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-              ],
-              "implementationDurationTable": [
-                {
-                  "activity": "Engineering and procurement",
-                  "duration": "10 to 12 weeks"
-                },
-                {
-                  "activity": "Installation and commissioning",
-                  "duration": "10 to 12 weeks"
-                }
-              ],
-              "caseStudies": [
-                {
-                  "title": "Insulation hot flexible ducts (72 Nos)",
-                  "clientType": "Industrial facility",
-                  "system": "ISBM",
-                  "implementedMeasure": "Insulation hot flexible ducts (72 Nos)",
-                  "result": "Expected energy saving of 199800.",
-                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-                }
-              ],
-              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-              "carbonFootprint": {
-                "annualEnergySaving": "199800",
                 "emissionFactor": "Data required",
                 "estimatedCO2Reduction": "Data required",
                 "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -4766,267 +4634,19 @@
               "images": []
             }
           ],
-          "totalInvestment": 19400000,
-          "totalAnnualSaving": 7918415.8314000005,
-          "totalEnergySaving": 1104381.5664,
-          "weightedPayback": "2.45",
+          "totalInvestment": 19148598.75,
+          "totalAnnualSaving": 6686609.8314000005,
+          "totalEnergySaving": 932581.5664,
+          "weightedPayback": "2.86",
           "technicalObservation": [
+            "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
             "Energy Saving through Exhaust Heat Recovery in ASB 70 DPH Dryers",
-            "Insulation hot flexible ducts (72 Nos)",
             "Replacement of Band Heater with IR heaters of Barrel Heating (8 Nos)",
             "ASB 70 DPH (7 Nos) Servo Motor Project",
             "ASB 50 MB (18 Nos) Servo Motor Project",
             "EBM CMP old 7.5 kW each (5 Nos) Servo Motor Project",
             "EBM CMP old 5.5 kW each (4 Nos) Servo Motor Project",
             "EBM CMP old 3.7 kW each (7 Nos) Servo Motor Project"
-          ]
-        },
-        {
-          "groupNo": "GR-3",
-          "groupTitle": "Air Compressors",
-          "projects": [
-            {
-              "sourceRowNumber": 23,
-              "projectNo": "21",
-              "projectTitle": "Compressed Air Measurement & Management",
-              "equipmentCovered": "Air Compressors (4 Nos: 1 LP, 3 HP)",
-              "system": "Utility",
-              "groupTitle": "Air Compressors",
-              "proposedIntervention": "Compressed Air Measurement & Management",
-              "proposedProjectDescription": "Compressed Air Measurement & Management",
-              "rationale": "Data required",
-              "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
-              "baselineDetails": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-              "existingOperatingCondition": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-              "existingSystemDescription": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-              "baselineConsumption": "2940492",
-              "expectedEnergySaving": "147024.6",
-              "expectedAnnualCostSaving": "1054166.382",
-              "estimatedInvestment": "800000",
-              "simplePaybackPeriod": "0.7588934856",
-              "implementationDuration": "10 to 12 weeks",
-              "implementationPriority": "I",
-              "projectActivitiesText": "Installing CFM meter for every compressor and closely monitoring, taking corrective actions",
-              "scopeOfWork": [
-                "Implementation of Compressed Air Measurement & Management adhering to industrial standards."
-              ],
-              "keyActivities": [
-                "Installing CFM meter for every compressor and closely monitoring, taking corrective actions"
-              ],
-              "baselineData": [
-                {
-                  "parameter": "Baseline consumption",
-                  "unit": "kWh/year",
-                  "value": "2940492"
-                }
-              ],
-              "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
-              "energySavingCalculation": [
-                {
-                  "parameter": "Annual energy saving",
-                  "unit": "kWh/year",
-                  "value": "147024.6"
-                },
-                {
-                  "parameter": "Annual cost saving",
-                  "unit": "₹/year",
-                  "value": "1054166.382"
-                },
-                {
-                  "parameter": "Estimated investment",
-                  "unit": "₹",
-                  "value": "800000"
-                },
-                {
-                  "parameter": "Simple payback",
-                  "unit": "years",
-                  "value": "0.7588934856"
-                }
-              ],
-              "technicalSpecifications": [
-                {
-                  "parameter": "Equipment covered",
-                  "details": "Air Compressors (4 Nos: 1 LP, 3 HP)"
-                },
-                {
-                  "parameter": "Implementation duration",
-                  "details": "10 to 12 weeks"
-                }
-              ],
-              "precautions": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "aspectsToBeTakenCareOf": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "measurementVerificationPlan": [
-                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-              ],
-              "benefitsOtherThanEnergySaving": [
-                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-              ],
-              "implementationDurationTable": [
-                {
-                  "activity": "Engineering and procurement",
-                  "duration": "10 to 12 weeks"
-                },
-                {
-                  "activity": "Installation and commissioning",
-                  "duration": "10 to 12 weeks"
-                }
-              ],
-              "caseStudies": [
-                {
-                  "title": "Compressed Air Measurement & Management",
-                  "clientType": "Industrial facility",
-                  "system": "Utility",
-                  "implementedMeasure": "Compressed Air Measurement & Management",
-                  "result": "Expected energy saving of 147024.6.",
-                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-                }
-              ],
-              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-              "carbonFootprint": {
-                "annualEnergySaving": "147024.6",
-                "emissionFactor": "Data required",
-                "estimatedCO2Reduction": "Data required",
-                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-                "remarks": "Data required"
-              },
-              "measurementData": [],
-              "typicalGapTable": [],
-              "savingRationaleTable": [],
-              "keyMetrics": [],
-              "schematicFramework": [],
-              "images": []
-            },
-            {
-              "sourceRowNumber": 24,
-              "projectNo": "22",
-              "projectTitle": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-              "equipmentCovered": "HP Booster Compressor",
-              "system": "Utility",
-              "groupTitle": "Air Compressors",
-              "proposedIntervention": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-              "proposedProjectDescription": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-              "rationale": "Data required",
-              "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
-              "baselineDetails": "IE5 Motor with VFD and PID automation using pressure transmitter",
-              "existingOperatingCondition": "IE5 Motor with VFD and PID automation using pressure transmitter",
-              "existingSystemDescription": "IE5 Motor with VFD and PID automation using pressure transmitter",
-              "baselineConsumption": "41960",
-              "expectedEnergySaving": "14686",
-              "expectedAnnualCostSaving": "105298.62",
-              "estimatedInvestment": "258867.7",
-              "simplePaybackPeriod": "2.458414935",
-              "implementationDuration": "10 to 12 weeks",
-              "implementationPriority": "Data required",
-              "projectActivitiesText": "IE5 Motor with VFD and PID automation using pressure transmitter",
-              "scopeOfWork": [
-                "Implementation of Booster Compressor retrofit with IE5 Efficiency motor & automation adhering to industrial standards."
-              ],
-              "keyActivities": [
-                "IE5 Motor with VFD and PID automation using pressure transmitter"
-              ],
-              "baselineData": [
-                {
-                  "parameter": "Baseline consumption",
-                  "unit": "kWh/year",
-                  "value": "41960"
-                }
-              ],
-              "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
-              "energySavingCalculation": [
-                {
-                  "parameter": "Annual energy saving",
-                  "unit": "kWh/year",
-                  "value": "14686"
-                },
-                {
-                  "parameter": "Annual cost saving",
-                  "unit": "₹/year",
-                  "value": "105298.62"
-                },
-                {
-                  "parameter": "Estimated investment",
-                  "unit": "₹",
-                  "value": "258867.7"
-                },
-                {
-                  "parameter": "Simple payback",
-                  "unit": "years",
-                  "value": "2.458414935"
-                }
-              ],
-              "technicalSpecifications": [
-                {
-                  "parameter": "Equipment covered",
-                  "details": "HP Booster Compressor"
-                },
-                {
-                  "parameter": "Implementation duration",
-                  "details": "10 to 12 weeks"
-                }
-              ],
-              "precautions": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "aspectsToBeTakenCareOf": [
-                "Ensure safe shutdown and isolation before modification work.",
-                "Verify mechanical and electrical compatibility before commissioning."
-              ],
-              "measurementVerificationPlan": [
-                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-              ],
-              "benefitsOtherThanEnergySaving": [
-                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-              ],
-              "implementationDurationTable": [
-                {
-                  "activity": "Engineering and procurement",
-                  "duration": "10 to 12 weeks"
-                },
-                {
-                  "activity": "Installation and commissioning",
-                  "duration": "10 to 12 weeks"
-                }
-              ],
-              "caseStudies": [
-                {
-                  "title": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-                  "clientType": "Industrial facility",
-                  "system": "Utility",
-                  "implementedMeasure": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-                  "result": "Expected energy saving of 14686.",
-                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-                }
-              ],
-              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-              "carbonFootprint": {
-                "annualEnergySaving": "14686",
-                "emissionFactor": "Data required",
-                "estimatedCO2Reduction": "Data required",
-                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-                "remarks": "Data required"
-              },
-              "measurementData": [],
-              "typicalGapTable": [],
-              "savingRationaleTable": [],
-              "keyMetrics": [],
-              "schematicFramework": [],
-              "images": []
-            }
-          ],
-          "totalInvestment": 1058867.7,
-          "totalAnnualSaving": 1159465.0019999999,
-          "totalEnergySaving": 161710.6,
-          "weightedPayback": "0.91",
-          "technicalObservation": [
-            "Compressed Air Measurement & Management",
-            "Booster Compressor retrofit with IE5 Efficiency motor & automation"
           ]
         },
         {
@@ -5268,38 +4888,38 @@
               "images": []
             },
             {
-              "sourceRowNumber": 12,
-              "projectNo": "10",
-              "projectTitle": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-              "equipmentCovered": "Cutting Grinders",
-              "system": "Process",
-              "groupTitle": "Auxiliary Systems & Machine Improvement",
-              "proposedIntervention": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-              "proposedProjectDescription": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "sourceRowNumber": 10,
+              "projectNo": "8",
+              "projectTitle": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+              "equipmentCovered": "Chilled Water Secondary Pump No. 3",
+              "system": "Utility",
+              "groupTitle": "Cooling System Performance Improvement",
+              "proposedIntervention": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+              "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
               "rationale": "Data required",
               "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-              "baselineDetails": "Data required",
-              "existingOperatingCondition": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
-              "existingSystemDescription": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
-              "baselineConsumption": "140000",
-              "expectedEnergySaving": "28000",
-              "expectedAnnualCostSaving": "200760",
-              "estimatedInvestment": "488598.75",
-              "simplePaybackPeriod": "2.433745517",
+              "baselineDetails": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+              "existingOperatingCondition": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+              "existingSystemDescription": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+              "baselineConsumption": "170772",
+              "expectedEnergySaving": "25615.8",
+              "expectedAnnualCostSaving": "183665.286",
+              "estimatedInvestment": "270000",
+              "simplePaybackPeriod": "1.470065497",
               "implementationDuration": "10 to 12 weeks",
               "implementationPriority": "Data required",
-              "projectActivitiesText": "IE-5 Efficiency Motor, Pulley Change, Cogged belt",
+              "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
               "scopeOfWork": [
-                "Implementation of Cutting Grinders Retrofit with IE5 Motor & Cogged belt adhering to industrial standards."
+                "Implementation of IE5 Efficiency Motor Retrofit for CHW Secondary Pump adhering to industrial standards."
               ],
               "keyActivities": [
-                "IE-5 Efficiency Motor, Pulley Change, Cogged belt"
+                "IE-5 Efficiency Motor with existing vfd"
               ],
               "baselineData": [
                 {
                   "parameter": "Baseline consumption",
                   "unit": "kWh/year",
-                  "value": "140000"
+                  "value": "170772"
                 }
               ],
               "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
@@ -5307,28 +4927,28 @@
                 {
                   "parameter": "Annual energy saving",
                   "unit": "kWh/year",
-                  "value": "28000"
+                  "value": "25615.8"
                 },
                 {
                   "parameter": "Annual cost saving",
                   "unit": "₹/year",
-                  "value": "200760"
+                  "value": "183665.286"
                 },
                 {
                   "parameter": "Estimated investment",
                   "unit": "₹",
-                  "value": "488598.75"
+                  "value": "270000"
                 },
                 {
                   "parameter": "Simple payback",
                   "unit": "years",
-                  "value": "2.433745517"
+                  "value": "1.470065497"
                 }
               ],
               "technicalSpecifications": [
                 {
                   "parameter": "Equipment covered",
-                  "details": "Cutting Grinders"
+                  "details": "Chilled Water Secondary Pump No. 3"
                 },
                 {
                   "parameter": "Implementation duration",
@@ -5361,17 +4981,134 @@
               ],
               "caseStudies": [
                 {
-                  "title": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+                  "title": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
                   "clientType": "Industrial facility",
-                  "system": "Process",
-                  "implementedMeasure": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-                  "result": "Expected energy saving of 28000.",
+                  "system": "Utility",
+                  "implementedMeasure": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+                  "result": "Expected energy saving of 25615.8.",
                   "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
                 }
               ],
               "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
               "carbonFootprint": {
-                "annualEnergySaving": "28000",
+                "annualEnergySaving": "25615.8",
+                "emissionFactor": "Data required",
+                "estimatedCO2Reduction": "Data required",
+                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+                "remarks": "Data required"
+              },
+              "measurementData": [],
+              "typicalGapTable": [],
+              "savingRationaleTable": [],
+              "keyMetrics": [],
+              "schematicFramework": [],
+              "images": []
+            },
+            {
+              "sourceRowNumber": 11,
+              "projectNo": "9",
+              "projectTitle": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+              "equipmentCovered": "CT Secondary Pump No. 1, 2 & 3",
+              "system": "Utility",
+              "groupTitle": "Cooling System Performance Improvement",
+              "proposedIntervention": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+              "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+              "rationale": "Data required",
+              "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
+              "baselineDetails": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+              "existingOperatingCondition": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+              "existingSystemDescription": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+              "baselineConsumption": "373413",
+              "expectedEnergySaving": "52277.82",
+              "expectedAnnualCostSaving": "374831.9694",
+              "estimatedInvestment": "1011933",
+              "simplePaybackPeriod": "2.699697685",
+              "implementationDuration": "10 to 12 weeks",
+              "implementationPriority": "Data required",
+              "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
+              "scopeOfWork": [
+                "Implementation of IE5 Efficiency Motor Retrofit for CT Water Secondary Pump adhering to industrial standards."
+              ],
+              "keyActivities": [
+                "IE-5 Efficiency Motor with existing vfd"
+              ],
+              "baselineData": [
+                {
+                  "parameter": "Baseline consumption",
+                  "unit": "kWh/year",
+                  "value": "373413"
+                }
+              ],
+              "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+              "energySavingCalculation": [
+                {
+                  "parameter": "Annual energy saving",
+                  "unit": "kWh/year",
+                  "value": "52277.82"
+                },
+                {
+                  "parameter": "Annual cost saving",
+                  "unit": "₹/year",
+                  "value": "374831.9694"
+                },
+                {
+                  "parameter": "Estimated investment",
+                  "unit": "₹",
+                  "value": "1011933"
+                },
+                {
+                  "parameter": "Simple payback",
+                  "unit": "years",
+                  "value": "2.699697685"
+                }
+              ],
+              "technicalSpecifications": [
+                {
+                  "parameter": "Equipment covered",
+                  "details": "CT Secondary Pump No. 1, 2 & 3"
+                },
+                {
+                  "parameter": "Implementation duration",
+                  "details": "10 to 12 weeks"
+                }
+              ],
+              "precautions": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "aspectsToBeTakenCareOf": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "measurementVerificationPlan": [
+                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+              ],
+              "benefitsOtherThanEnergySaving": [
+                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+              ],
+              "implementationDurationTable": [
+                {
+                  "activity": "Engineering and procurement",
+                  "duration": "10 to 12 weeks"
+                },
+                {
+                  "activity": "Installation and commissioning",
+                  "duration": "10 to 12 weeks"
+                }
+              ],
+              "caseStudies": [
+                {
+                  "title": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+                  "clientType": "Industrial facility",
+                  "system": "Utility",
+                  "implementedMeasure": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+                  "result": "Expected energy saving of 52277.82.",
+                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+                }
+              ],
+              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+              "carbonFootprint": {
+                "annualEnergySaving": "52277.82",
                 "emissionFactor": "Data required",
                 "estimatedCO2Reduction": "Data required",
                 "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -5617,18 +5354,258 @@
               "keyMetrics": [],
               "schematicFramework": [],
               "images": []
+            },
+            {
+              "sourceRowNumber": 23,
+              "projectNo": "21",
+              "projectTitle": "Compressed Air Measurement & Management",
+              "equipmentCovered": "Air Compressors (4 Nos: 1 LP, 3 HP)",
+              "system": "Utility",
+              "groupTitle": "Air Compressors",
+              "proposedIntervention": "Compressed Air Measurement & Management",
+              "proposedProjectDescription": "Compressed Air Measurement & Management",
+              "rationale": "Data required",
+              "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
+              "baselineDetails": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+              "existingOperatingCondition": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+              "existingSystemDescription": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+              "baselineConsumption": "2940492",
+              "expectedEnergySaving": "147024.6",
+              "expectedAnnualCostSaving": "1054166.382",
+              "estimatedInvestment": "800000",
+              "simplePaybackPeriod": "0.7588934856",
+              "implementationDuration": "10 to 12 weeks",
+              "implementationPriority": "I",
+              "projectActivitiesText": "Installing CFM meter for every compressor and closely monitoring, taking corrective actions",
+              "scopeOfWork": [
+                "Implementation of Compressed Air Measurement & Management adhering to industrial standards."
+              ],
+              "keyActivities": [
+                "Installing CFM meter for every compressor and closely monitoring, taking corrective actions"
+              ],
+              "baselineData": [
+                {
+                  "parameter": "Baseline consumption",
+                  "unit": "kWh/year",
+                  "value": "2940492"
+                }
+              ],
+              "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
+              "energySavingCalculation": [
+                {
+                  "parameter": "Annual energy saving",
+                  "unit": "kWh/year",
+                  "value": "147024.6"
+                },
+                {
+                  "parameter": "Annual cost saving",
+                  "unit": "₹/year",
+                  "value": "1054166.382"
+                },
+                {
+                  "parameter": "Estimated investment",
+                  "unit": "₹",
+                  "value": "800000"
+                },
+                {
+                  "parameter": "Simple payback",
+                  "unit": "years",
+                  "value": "0.7588934856"
+                }
+              ],
+              "technicalSpecifications": [
+                {
+                  "parameter": "Equipment covered",
+                  "details": "Air Compressors (4 Nos: 1 LP, 3 HP)"
+                },
+                {
+                  "parameter": "Implementation duration",
+                  "details": "10 to 12 weeks"
+                }
+              ],
+              "precautions": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "aspectsToBeTakenCareOf": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "measurementVerificationPlan": [
+                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+              ],
+              "benefitsOtherThanEnergySaving": [
+                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+              ],
+              "implementationDurationTable": [
+                {
+                  "activity": "Engineering and procurement",
+                  "duration": "10 to 12 weeks"
+                },
+                {
+                  "activity": "Installation and commissioning",
+                  "duration": "10 to 12 weeks"
+                }
+              ],
+              "caseStudies": [
+                {
+                  "title": "Compressed Air Measurement & Management",
+                  "clientType": "Industrial facility",
+                  "system": "Utility",
+                  "implementedMeasure": "Compressed Air Measurement & Management",
+                  "result": "Expected energy saving of 147024.6.",
+                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+                }
+              ],
+              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+              "carbonFootprint": {
+                "annualEnergySaving": "147024.6",
+                "emissionFactor": "Data required",
+                "estimatedCO2Reduction": "Data required",
+                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+                "remarks": "Data required"
+              },
+              "measurementData": [],
+              "typicalGapTable": [],
+              "savingRationaleTable": [],
+              "keyMetrics": [],
+              "schematicFramework": [],
+              "images": []
+            },
+            {
+              "sourceRowNumber": 24,
+              "projectNo": "22",
+              "projectTitle": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+              "equipmentCovered": "HP Booster Compressor",
+              "system": "Utility",
+              "groupTitle": "Air Compressors",
+              "proposedIntervention": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+              "proposedProjectDescription": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+              "rationale": "Data required",
+              "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
+              "baselineDetails": "IE5 Motor with VFD and PID automation using pressure transmitter",
+              "existingOperatingCondition": "IE5 Motor with VFD and PID automation using pressure transmitter",
+              "existingSystemDescription": "IE5 Motor with VFD and PID automation using pressure transmitter",
+              "baselineConsumption": "41960",
+              "expectedEnergySaving": "14686",
+              "expectedAnnualCostSaving": "105298.62",
+              "estimatedInvestment": "258867.7",
+              "simplePaybackPeriod": "2.458414935",
+              "implementationDuration": "10 to 12 weeks",
+              "implementationPriority": "Data required",
+              "projectActivitiesText": "IE5 Motor with VFD and PID automation using pressure transmitter",
+              "scopeOfWork": [
+                "Implementation of Booster Compressor retrofit with IE5 Efficiency motor & automation adhering to industrial standards."
+              ],
+              "keyActivities": [
+                "IE5 Motor with VFD and PID automation using pressure transmitter"
+              ],
+              "baselineData": [
+                {
+                  "parameter": "Baseline consumption",
+                  "unit": "kWh/year",
+                  "value": "41960"
+                }
+              ],
+              "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
+              "energySavingCalculation": [
+                {
+                  "parameter": "Annual energy saving",
+                  "unit": "kWh/year",
+                  "value": "14686"
+                },
+                {
+                  "parameter": "Annual cost saving",
+                  "unit": "₹/year",
+                  "value": "105298.62"
+                },
+                {
+                  "parameter": "Estimated investment",
+                  "unit": "₹",
+                  "value": "258867.7"
+                },
+                {
+                  "parameter": "Simple payback",
+                  "unit": "years",
+                  "value": "2.458414935"
+                }
+              ],
+              "technicalSpecifications": [
+                {
+                  "parameter": "Equipment covered",
+                  "details": "HP Booster Compressor"
+                },
+                {
+                  "parameter": "Implementation duration",
+                  "details": "10 to 12 weeks"
+                }
+              ],
+              "precautions": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "aspectsToBeTakenCareOf": [
+                "Ensure safe shutdown and isolation before modification work.",
+                "Verify mechanical and electrical compatibility before commissioning."
+              ],
+              "measurementVerificationPlan": [
+                "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+              ],
+              "benefitsOtherThanEnergySaving": [
+                "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+              ],
+              "implementationDurationTable": [
+                {
+                  "activity": "Engineering and procurement",
+                  "duration": "10 to 12 weeks"
+                },
+                {
+                  "activity": "Installation and commissioning",
+                  "duration": "10 to 12 weeks"
+                }
+              ],
+              "caseStudies": [
+                {
+                  "title": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+                  "clientType": "Industrial facility",
+                  "system": "Utility",
+                  "implementedMeasure": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+                  "result": "Expected energy saving of 14686.",
+                  "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+                }
+              ],
+              "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+              "carbonFootprint": {
+                "annualEnergySaving": "14686",
+                "emissionFactor": "Data required",
+                "estimatedCO2Reduction": "Data required",
+                "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+                "remarks": "Data required"
+              },
+              "measurementData": [],
+              "typicalGapTable": [],
+              "savingRationaleTable": [],
+              "keyMetrics": [],
+              "schematicFramework": [],
+              "images": []
             }
           ],
-          "totalInvestment": 1607348.75,
-          "totalAnnualSaving": 1853357.526,
-          "totalEnergySaving": 258487.8,
-          "weightedPayback": "0.87",
+          "totalInvestment": 3459550.7,
+          "totalAnnualSaving": 3370559.7834,
+          "totalEnergySaving": 470092.02,
+          "weightedPayback": "1.03",
           "technicalObservation": [
+            "EE Improvement in Chiller Using CT Segregation",
+            "Flow Optimization for CHW Secondary Pump",
+            "EE Improvement in Air Compressors & Pump Using CT Segregation",
             "CT No. 2 Fan System Efficiency Upgrade: PMSM Motor + Direct-Mount Fan Retrofit",
             "Energy Optimization of Clean Room and IM AHUs Using High-Efficiency Plug Fans",
-            "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+            "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+            "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
             "PD blower Direct Mounting with IE5 motor with existing VFD",
-            "APFC relay for 600 kVAr Panel"
+            "APFC relay for 600 kVAr Panel",
+            "Compressed Air Measurement & Management",
+            "Booster Compressor retrofit with IE5 Efficiency motor & automation"
           ]
         }
       ],
@@ -5643,38 +5620,29 @@
         {
           "groupNo": "GR-1",
           "groupTitle": "Cooling System Performance Improvement",
-          "projectCount": 7,
-          "totalInvestment": 2876933,
-          "totalSaving": 2708873.8958999994,
-          "totalEnergySaving": 377806.67999999993,
-          "averagePayback": "1.06"
+          "projectCount": 6,
+          "totalInvestment": 2335000,
+          "totalSaving": 3582942.6404999997,
+          "totalEnergySaving": 499713.05999999994,
+          "averagePayback": "0.65"
         },
         {
           "groupNo": "GR-2",
           "groupTitle": "Production Machines",
           "projectCount": 8,
-          "totalInvestment": 19400000,
-          "totalSaving": 7918415.8314000005,
-          "totalEnergySaving": 1104381.5664,
-          "averagePayback": "2.45"
-        },
-        {
-          "groupNo": "GR-3",
-          "groupTitle": "Air Compressors",
-          "projectCount": 2,
-          "totalInvestment": 1058867.7,
-          "totalSaving": 1159465.0019999999,
-          "totalEnergySaving": 161710.6,
-          "averagePayback": "0.91"
+          "totalInvestment": 19148598.75,
+          "totalSaving": 6686609.8314000005,
+          "totalEnergySaving": 932581.5664,
+          "averagePayback": "2.86"
         },
         {
           "groupNo": "GR-4",
           "groupTitle": "Auxiliary Systems & Machine Improvement",
-          "projectCount": 5,
-          "totalInvestment": 1607348.75,
-          "totalSaving": 1853357.526,
-          "totalEnergySaving": 258487.8,
-          "averagePayback": "0.87"
+          "projectCount": 8,
+          "totalInvestment": 3459550.7,
+          "totalSaving": 3370559.7834,
+          "totalEnergySaving": 470092.02,
+          "averagePayback": "1.03"
         }
       ],
       "annualElectricityConsumption": "[Calculation pending due to missing input data]",
@@ -8851,67 +8819,67 @@
           "images": []
         },
         {
-          "sourceRowNumber": 10,
-          "projectNo": "8",
-          "projectTitle": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-          "equipmentCovered": "Chilled Water Secondary Pump No. 3",
-          "system": "Utility",
-          "groupTitle": "Cooling System Performance Improvement",
-          "proposedIntervention": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-          "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+          "sourceRowNumber": 16,
+          "projectNo": "14",
+          "projectTitle": "Insulation hot flexible ducts (72 Nos)",
+          "equipmentCovered": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine",
+          "system": "ISBM",
+          "groupTitle": "Production Machines",
+          "proposedIntervention": "Insulation hot flexible ducts (72 Nos)",
+          "proposedProjectDescription": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
           "rationale": "Data required",
-          "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-          "baselineDetails": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-          "existingOperatingCondition": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-          "existingSystemDescription": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
-          "baselineConsumption": "170772",
-          "expectedEnergySaving": "25615.8",
-          "expectedAnnualCostSaving": "183665.286",
-          "estimatedInvestment": "270000",
-          "simplePaybackPeriod": "1.470065497",
+          "rationaleForEnergySaving": "Lower thermal losses reduce heater energy input while improving temperature retention and process stability.",
+          "baselineDetails": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+          "existingOperatingCondition": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+          "existingSystemDescription": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
+          "baselineConsumption": "299700",
+          "expectedEnergySaving": "199800",
+          "expectedAnnualCostSaving": "1432566",
+          "estimatedInvestment": "740000",
+          "simplePaybackPeriod": "0.5165556072",
           "implementationDuration": "10 to 12 weeks",
           "implementationPriority": "Data required",
-          "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
+          "projectActivitiesText": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
           "scopeOfWork": [
-            "Implementation of IE5 Efficiency Motor Retrofit for CHW Secondary Pump adhering to industrial standards."
+            "Implementation of Insulation hot flexible ducts (72 Nos) adhering to industrial standards."
           ],
           "keyActivities": [
-            "IE-5 Efficiency Motor with existing vfd"
+            "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)"
           ],
           "baselineData": [
             {
               "parameter": "Baseline consumption",
               "unit": "kWh/year",
-              "value": "170772"
+              "value": "299700"
             }
           ],
-          "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+          "problemGapIdentified": "Uninsulated or poorly insulated hot ducts lose useful heat before it reaches the process, increasing electrical heating consumption.",
           "energySavingCalculation": [
             {
               "parameter": "Annual energy saving",
               "unit": "kWh/year",
-              "value": "25615.8"
+              "value": "199800"
             },
             {
               "parameter": "Annual cost saving",
               "unit": "₹/year",
-              "value": "183665.286"
+              "value": "1432566"
             },
             {
               "parameter": "Estimated investment",
               "unit": "₹",
-              "value": "270000"
+              "value": "740000"
             },
             {
               "parameter": "Simple payback",
               "unit": "years",
-              "value": "1.470065497"
+              "value": "0.5165556072"
             }
           ],
           "technicalSpecifications": [
             {
               "parameter": "Equipment covered",
-              "details": "Chilled Water Secondary Pump No. 3"
+              "details": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine"
             },
             {
               "parameter": "Implementation duration",
@@ -8944,134 +8912,17 @@
           ],
           "caseStudies": [
             {
-              "title": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+              "title": "Insulation hot flexible ducts (72 Nos)",
               "clientType": "Industrial facility",
-              "system": "Utility",
-              "implementedMeasure": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-              "result": "Expected energy saving of 25615.8.",
+              "system": "ISBM",
+              "implementedMeasure": "Insulation hot flexible ducts (72 Nos)",
+              "result": "Expected energy saving of 199800.",
               "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
             }
           ],
           "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
           "carbonFootprint": {
-            "annualEnergySaving": "25615.8",
-            "emissionFactor": "Data required",
-            "estimatedCO2Reduction": "Data required",
-            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-            "remarks": "Data required"
-          },
-          "measurementData": [],
-          "typicalGapTable": [],
-          "savingRationaleTable": [],
-          "keyMetrics": [],
-          "schematicFramework": [],
-          "images": []
-        },
-        {
-          "sourceRowNumber": 11,
-          "projectNo": "9",
-          "projectTitle": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-          "equipmentCovered": "CT Secondary Pump No. 1, 2 & 3",
-          "system": "Utility",
-          "groupTitle": "Cooling System Performance Improvement",
-          "proposedIntervention": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-          "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-          "rationale": "Data required",
-          "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-          "baselineDetails": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-          "existingOperatingCondition": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-          "existingSystemDescription": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
-          "baselineConsumption": "373413",
-          "expectedEnergySaving": "52277.82",
-          "expectedAnnualCostSaving": "374831.9694",
-          "estimatedInvestment": "1011933",
-          "simplePaybackPeriod": "2.699697685",
-          "implementationDuration": "10 to 12 weeks",
-          "implementationPriority": "Data required",
-          "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
-          "scopeOfWork": [
-            "Implementation of IE5 Efficiency Motor Retrofit for CT Water Secondary Pump adhering to industrial standards."
-          ],
-          "keyActivities": [
-            "IE-5 Efficiency Motor with existing vfd"
-          ],
-          "baselineData": [
-            {
-              "parameter": "Baseline consumption",
-              "unit": "kWh/year",
-              "value": "373413"
-            }
-          ],
-          "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
-          "energySavingCalculation": [
-            {
-              "parameter": "Annual energy saving",
-              "unit": "kWh/year",
-              "value": "52277.82"
-            },
-            {
-              "parameter": "Annual cost saving",
-              "unit": "₹/year",
-              "value": "374831.9694"
-            },
-            {
-              "parameter": "Estimated investment",
-              "unit": "₹",
-              "value": "1011933"
-            },
-            {
-              "parameter": "Simple payback",
-              "unit": "years",
-              "value": "2.699697685"
-            }
-          ],
-          "technicalSpecifications": [
-            {
-              "parameter": "Equipment covered",
-              "details": "CT Secondary Pump No. 1, 2 & 3"
-            },
-            {
-              "parameter": "Implementation duration",
-              "details": "10 to 12 weeks"
-            }
-          ],
-          "precautions": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "aspectsToBeTakenCareOf": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "measurementVerificationPlan": [
-            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-          ],
-          "benefitsOtherThanEnergySaving": [
-            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-          ],
-          "implementationDurationTable": [
-            {
-              "activity": "Engineering and procurement",
-              "duration": "10 to 12 weeks"
-            },
-            {
-              "activity": "Installation and commissioning",
-              "duration": "10 to 12 weeks"
-            }
-          ],
-          "caseStudies": [
-            {
-              "title": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-              "clientType": "Industrial facility",
-              "system": "Utility",
-              "implementedMeasure": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
-              "result": "Expected energy saving of 52277.82.",
-              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-            }
-          ],
-          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-          "carbonFootprint": {
-            "annualEnergySaving": "52277.82",
+            "annualEnergySaving": "199800",
             "emissionFactor": "Data required",
             "estimatedCO2Reduction": "Data required",
             "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -9085,24 +8936,137 @@
           "images": []
         }
       ],
-      "totalInvestment": 2876933,
-      "totalAnnualSaving": 2708873.8958999994,
-      "totalEnergySaving": 377806.67999999993,
-      "weightedPayback": "1.06",
+      "totalInvestment": 2335000,
+      "totalAnnualSaving": 3582942.6404999997,
+      "totalEnergySaving": 499713.05999999994,
+      "weightedPayback": "0.65",
       "technicalObservation": [
-        "EE Improvement in Chiller Using CT Segregation",
-        "Flow Optimization for CHW Secondary Pump",
-        "EE Improvement in Air Compressors & Pump Using CT Segregation",
         "Automatic Primary Pump Flow Control for Chiller kW/TR Optimization",
         "Free Cooling by Chiller Bypass in Winter",
-        "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
-        "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump"
+        "Insulation hot flexible ducts (72 Nos)"
       ]
     },
     {
       "groupNo": "GR-2",
       "groupTitle": "Production Machines",
       "projects": [
+        {
+          "sourceRowNumber": 12,
+          "projectNo": "10",
+          "projectTitle": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+          "equipmentCovered": "Cutting Grinders",
+          "system": "Process",
+          "groupTitle": "Auxiliary Systems & Machine Improvement",
+          "proposedIntervention": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+          "proposedProjectDescription": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+          "rationale": "Data required",
+          "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
+          "baselineDetails": "Data required",
+          "existingOperatingCondition": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
+          "existingSystemDescription": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
+          "baselineConsumption": "140000",
+          "expectedEnergySaving": "28000",
+          "expectedAnnualCostSaving": "200760",
+          "estimatedInvestment": "488598.75",
+          "simplePaybackPeriod": "2.433745517",
+          "implementationDuration": "10 to 12 weeks",
+          "implementationPriority": "Data required",
+          "projectActivitiesText": "IE-5 Efficiency Motor, Pulley Change, Cogged belt",
+          "scopeOfWork": [
+            "Implementation of Cutting Grinders Retrofit with IE5 Motor & Cogged belt adhering to industrial standards."
+          ],
+          "keyActivities": [
+            "IE-5 Efficiency Motor, Pulley Change, Cogged belt"
+          ],
+          "baselineData": [
+            {
+              "parameter": "Baseline consumption",
+              "unit": "kWh/year",
+              "value": "140000"
+            }
+          ],
+          "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+          "energySavingCalculation": [
+            {
+              "parameter": "Annual energy saving",
+              "unit": "kWh/year",
+              "value": "28000"
+            },
+            {
+              "parameter": "Annual cost saving",
+              "unit": "₹/year",
+              "value": "200760"
+            },
+            {
+              "parameter": "Estimated investment",
+              "unit": "₹",
+              "value": "488598.75"
+            },
+            {
+              "parameter": "Simple payback",
+              "unit": "years",
+              "value": "2.433745517"
+            }
+          ],
+          "technicalSpecifications": [
+            {
+              "parameter": "Equipment covered",
+              "details": "Cutting Grinders"
+            },
+            {
+              "parameter": "Implementation duration",
+              "details": "10 to 12 weeks"
+            }
+          ],
+          "precautions": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "aspectsToBeTakenCareOf": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "measurementVerificationPlan": [
+            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+          ],
+          "benefitsOtherThanEnergySaving": [
+            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+          ],
+          "implementationDurationTable": [
+            {
+              "activity": "Engineering and procurement",
+              "duration": "10 to 12 weeks"
+            },
+            {
+              "activity": "Installation and commissioning",
+              "duration": "10 to 12 weeks"
+            }
+          ],
+          "caseStudies": [
+            {
+              "title": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "clientType": "Industrial facility",
+              "system": "Process",
+              "implementedMeasure": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "result": "Expected energy saving of 28000.",
+              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+            }
+          ],
+          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+          "carbonFootprint": {
+            "annualEnergySaving": "28000",
+            "emissionFactor": "Data required",
+            "estimatedCO2Reduction": "Data required",
+            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+            "remarks": "Data required"
+          },
+          "measurementData": [],
+          "typicalGapTable": [],
+          "savingRationaleTable": [],
+          "keyMetrics": [],
+          "schematicFramework": [],
+          "images": []
+        },
         {
           "sourceRowNumber": 15,
           "projectNo": "13",
@@ -9208,123 +9172,6 @@
           "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
           "carbonFootprint": {
             "annualEnergySaving": "54720",
-            "emissionFactor": "Data required",
-            "estimatedCO2Reduction": "Data required",
-            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-            "remarks": "Data required"
-          },
-          "measurementData": [],
-          "typicalGapTable": [],
-          "savingRationaleTable": [],
-          "keyMetrics": [],
-          "schematicFramework": [],
-          "images": []
-        },
-        {
-          "sourceRowNumber": 16,
-          "projectNo": "14",
-          "projectTitle": "Insulation hot flexible ducts (72 Nos)",
-          "equipmentCovered": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine",
-          "system": "ISBM",
-          "groupTitle": "Production Machines",
-          "proposedIntervention": "Insulation hot flexible ducts (72 Nos)",
-          "proposedProjectDescription": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
-          "rationale": "Data required",
-          "rationaleForEnergySaving": "Lower thermal losses reduce heater energy input while improving temperature retention and process stability.",
-          "baselineDetails": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-          "existingOperatingCondition": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-          "existingSystemDescription": "0.75 KW/machine loss prevention, working hours 300 per year, 24 hrs/day",
-          "baselineConsumption": "299700",
-          "expectedEnergySaving": "199800",
-          "expectedAnnualCostSaving": "1432566",
-          "estimatedInvestment": "740000",
-          "simplePaybackPeriod": "0.5165556072",
-          "implementationDuration": "10 to 12 weeks",
-          "implementationPriority": "Data required",
-          "projectActivitiesText": "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)",
-          "scopeOfWork": [
-            "Implementation of Insulation hot flexible ducts (72 Nos) adhering to industrial standards."
-          ],
-          "keyActivities": [
-            "Insulating hot ducts for machines: ASB 70 DPH (11 Nos.), 12M (8 Nos.), 50 MB (18 Nos.): 2 ducts per machine (total: 37 machines, 74 Ducts)"
-          ],
-          "baselineData": [
-            {
-              "parameter": "Baseline consumption",
-              "unit": "kWh/year",
-              "value": "299700"
-            }
-          ],
-          "problemGapIdentified": "Uninsulated or poorly insulated hot ducts lose useful heat before it reaches the process, increasing electrical heating consumption.",
-          "energySavingCalculation": [
-            {
-              "parameter": "Annual energy saving",
-              "unit": "kWh/year",
-              "value": "199800"
-            },
-            {
-              "parameter": "Annual cost saving",
-              "unit": "₹/year",
-              "value": "1432566"
-            },
-            {
-              "parameter": "Estimated investment",
-              "unit": "₹",
-              "value": "740000"
-            },
-            {
-              "parameter": "Simple payback",
-              "unit": "years",
-              "value": "0.5165556072"
-            }
-          ],
-          "technicalSpecifications": [
-            {
-              "parameter": "Equipment covered",
-              "details": "ASB 70 DPH (11), 12M (8), 50 MB (18) : 2 ducts per machine"
-            },
-            {
-              "parameter": "Implementation duration",
-              "details": "10 to 12 weeks"
-            }
-          ],
-          "precautions": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "aspectsToBeTakenCareOf": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "measurementVerificationPlan": [
-            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-          ],
-          "benefitsOtherThanEnergySaving": [
-            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-          ],
-          "implementationDurationTable": [
-            {
-              "activity": "Engineering and procurement",
-              "duration": "10 to 12 weeks"
-            },
-            {
-              "activity": "Installation and commissioning",
-              "duration": "10 to 12 weeks"
-            }
-          ],
-          "caseStudies": [
-            {
-              "title": "Insulation hot flexible ducts (72 Nos)",
-              "clientType": "Industrial facility",
-              "system": "ISBM",
-              "implementedMeasure": "Insulation hot flexible ducts (72 Nos)",
-              "result": "Expected energy saving of 199800.",
-              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-            }
-          ],
-          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-          "carbonFootprint": {
-            "annualEnergySaving": "199800",
             "emissionFactor": "Data required",
             "estimatedCO2Reduction": "Data required",
             "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -10040,267 +9887,19 @@
           "images": []
         }
       ],
-      "totalInvestment": 19400000,
-      "totalAnnualSaving": 7918415.8314000005,
-      "totalEnergySaving": 1104381.5664,
-      "weightedPayback": "2.45",
+      "totalInvestment": 19148598.75,
+      "totalAnnualSaving": 6686609.8314000005,
+      "totalEnergySaving": 932581.5664,
+      "weightedPayback": "2.86",
       "technicalObservation": [
+        "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
         "Energy Saving through Exhaust Heat Recovery in ASB 70 DPH Dryers",
-        "Insulation hot flexible ducts (72 Nos)",
         "Replacement of Band Heater with IR heaters of Barrel Heating (8 Nos)",
         "ASB 70 DPH (7 Nos) Servo Motor Project",
         "ASB 50 MB (18 Nos) Servo Motor Project",
         "EBM CMP old 7.5 kW each (5 Nos) Servo Motor Project",
         "EBM CMP old 5.5 kW each (4 Nos) Servo Motor Project",
         "EBM CMP old 3.7 kW each (7 Nos) Servo Motor Project"
-      ]
-    },
-    {
-      "groupNo": "GR-3",
-      "groupTitle": "Air Compressors",
-      "projects": [
-        {
-          "sourceRowNumber": 23,
-          "projectNo": "21",
-          "projectTitle": "Compressed Air Measurement & Management",
-          "equipmentCovered": "Air Compressors (4 Nos: 1 LP, 3 HP)",
-          "system": "Utility",
-          "groupTitle": "Air Compressors",
-          "proposedIntervention": "Compressed Air Measurement & Management",
-          "proposedProjectDescription": "Compressed Air Measurement & Management",
-          "rationale": "Data required",
-          "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
-          "baselineDetails": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-          "existingOperatingCondition": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-          "existingSystemDescription": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
-          "baselineConsumption": "2940492",
-          "expectedEnergySaving": "147024.6",
-          "expectedAnnualCostSaving": "1054166.382",
-          "estimatedInvestment": "800000",
-          "simplePaybackPeriod": "0.7588934856",
-          "implementationDuration": "10 to 12 weeks",
-          "implementationPriority": "I",
-          "projectActivitiesText": "Installing CFM meter for every compressor and closely monitoring, taking corrective actions",
-          "scopeOfWork": [
-            "Implementation of Compressed Air Measurement & Management adhering to industrial standards."
-          ],
-          "keyActivities": [
-            "Installing CFM meter for every compressor and closely monitoring, taking corrective actions"
-          ],
-          "baselineData": [
-            {
-              "parameter": "Baseline consumption",
-              "unit": "kWh/year",
-              "value": "2940492"
-            }
-          ],
-          "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
-          "energySavingCalculation": [
-            {
-              "parameter": "Annual energy saving",
-              "unit": "kWh/year",
-              "value": "147024.6"
-            },
-            {
-              "parameter": "Annual cost saving",
-              "unit": "₹/year",
-              "value": "1054166.382"
-            },
-            {
-              "parameter": "Estimated investment",
-              "unit": "₹",
-              "value": "800000"
-            },
-            {
-              "parameter": "Simple payback",
-              "unit": "years",
-              "value": "0.7588934856"
-            }
-          ],
-          "technicalSpecifications": [
-            {
-              "parameter": "Equipment covered",
-              "details": "Air Compressors (4 Nos: 1 LP, 3 HP)"
-            },
-            {
-              "parameter": "Implementation duration",
-              "details": "10 to 12 weeks"
-            }
-          ],
-          "precautions": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "aspectsToBeTakenCareOf": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "measurementVerificationPlan": [
-            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-          ],
-          "benefitsOtherThanEnergySaving": [
-            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-          ],
-          "implementationDurationTable": [
-            {
-              "activity": "Engineering and procurement",
-              "duration": "10 to 12 weeks"
-            },
-            {
-              "activity": "Installation and commissioning",
-              "duration": "10 to 12 weeks"
-            }
-          ],
-          "caseStudies": [
-            {
-              "title": "Compressed Air Measurement & Management",
-              "clientType": "Industrial facility",
-              "system": "Utility",
-              "implementedMeasure": "Compressed Air Measurement & Management",
-              "result": "Expected energy saving of 147024.6.",
-              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-            }
-          ],
-          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-          "carbonFootprint": {
-            "annualEnergySaving": "147024.6",
-            "emissionFactor": "Data required",
-            "estimatedCO2Reduction": "Data required",
-            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-            "remarks": "Data required"
-          },
-          "measurementData": [],
-          "typicalGapTable": [],
-          "savingRationaleTable": [],
-          "keyMetrics": [],
-          "schematicFramework": [],
-          "images": []
-        },
-        {
-          "sourceRowNumber": 24,
-          "projectNo": "22",
-          "projectTitle": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-          "equipmentCovered": "HP Booster Compressor",
-          "system": "Utility",
-          "groupTitle": "Air Compressors",
-          "proposedIntervention": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-          "proposedProjectDescription": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-          "rationale": "Data required",
-          "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
-          "baselineDetails": "IE5 Motor with VFD and PID automation using pressure transmitter",
-          "existingOperatingCondition": "IE5 Motor with VFD and PID automation using pressure transmitter",
-          "existingSystemDescription": "IE5 Motor with VFD and PID automation using pressure transmitter",
-          "baselineConsumption": "41960",
-          "expectedEnergySaving": "14686",
-          "expectedAnnualCostSaving": "105298.62",
-          "estimatedInvestment": "258867.7",
-          "simplePaybackPeriod": "2.458414935",
-          "implementationDuration": "10 to 12 weeks",
-          "implementationPriority": "Data required",
-          "projectActivitiesText": "IE5 Motor with VFD and PID automation using pressure transmitter",
-          "scopeOfWork": [
-            "Implementation of Booster Compressor retrofit with IE5 Efficiency motor & automation adhering to industrial standards."
-          ],
-          "keyActivities": [
-            "IE5 Motor with VFD and PID automation using pressure transmitter"
-          ],
-          "baselineData": [
-            {
-              "parameter": "Baseline consumption",
-              "unit": "kWh/year",
-              "value": "41960"
-            }
-          ],
-          "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
-          "energySavingCalculation": [
-            {
-              "parameter": "Annual energy saving",
-              "unit": "kWh/year",
-              "value": "14686"
-            },
-            {
-              "parameter": "Annual cost saving",
-              "unit": "₹/year",
-              "value": "105298.62"
-            },
-            {
-              "parameter": "Estimated investment",
-              "unit": "₹",
-              "value": "258867.7"
-            },
-            {
-              "parameter": "Simple payback",
-              "unit": "years",
-              "value": "2.458414935"
-            }
-          ],
-          "technicalSpecifications": [
-            {
-              "parameter": "Equipment covered",
-              "details": "HP Booster Compressor"
-            },
-            {
-              "parameter": "Implementation duration",
-              "details": "10 to 12 weeks"
-            }
-          ],
-          "precautions": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "aspectsToBeTakenCareOf": [
-            "Ensure safe shutdown and isolation before modification work.",
-            "Verify mechanical and electrical compatibility before commissioning."
-          ],
-          "measurementVerificationPlan": [
-            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
-          ],
-          "benefitsOtherThanEnergySaving": [
-            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
-          ],
-          "implementationDurationTable": [
-            {
-              "activity": "Engineering and procurement",
-              "duration": "10 to 12 weeks"
-            },
-            {
-              "activity": "Installation and commissioning",
-              "duration": "10 to 12 weeks"
-            }
-          ],
-          "caseStudies": [
-            {
-              "title": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-              "clientType": "Industrial facility",
-              "system": "Utility",
-              "implementedMeasure": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
-              "result": "Expected energy saving of 14686.",
-              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
-            }
-          ],
-          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
-          "carbonFootprint": {
-            "annualEnergySaving": "14686",
-            "emissionFactor": "Data required",
-            "estimatedCO2Reduction": "Data required",
-            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
-            "remarks": "Data required"
-          },
-          "measurementData": [],
-          "typicalGapTable": [],
-          "savingRationaleTable": [],
-          "keyMetrics": [],
-          "schematicFramework": [],
-          "images": []
-        }
-      ],
-      "totalInvestment": 1058867.7,
-      "totalAnnualSaving": 1159465.0019999999,
-      "totalEnergySaving": 161710.6,
-      "weightedPayback": "0.91",
-      "technicalObservation": [
-        "Compressed Air Measurement & Management",
-        "Booster Compressor retrofit with IE5 Efficiency motor & automation"
       ]
     },
     {
@@ -10542,38 +10141,38 @@
           "images": []
         },
         {
-          "sourceRowNumber": 12,
-          "projectNo": "10",
-          "projectTitle": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-          "equipmentCovered": "Cutting Grinders",
-          "system": "Process",
-          "groupTitle": "Auxiliary Systems & Machine Improvement",
-          "proposedIntervention": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-          "proposedProjectDescription": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+          "sourceRowNumber": 10,
+          "projectNo": "8",
+          "projectTitle": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+          "equipmentCovered": "Chilled Water Secondary Pump No. 3",
+          "system": "Utility",
+          "groupTitle": "Cooling System Performance Improvement",
+          "proposedIntervention": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+          "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
           "rationale": "Data required",
           "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
-          "baselineDetails": "Data required",
-          "existingOperatingCondition": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
-          "existingSystemDescription": "The existing motor-driven system operates with standard-efficiency equipment and associated losses that are higher than currently available premium-efficiency alternatives.",
-          "baselineConsumption": "140000",
-          "expectedEnergySaving": "28000",
-          "expectedAnnualCostSaving": "200760",
-          "estimatedInvestment": "488598.75",
-          "simplePaybackPeriod": "2.433745517",
+          "baselineDetails": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+          "existingOperatingCondition": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+          "existingSystemDescription": "Measured power of chilled water secondary pump no. 3 is 20.33 kW",
+          "baselineConsumption": "170772",
+          "expectedEnergySaving": "25615.8",
+          "expectedAnnualCostSaving": "183665.286",
+          "estimatedInvestment": "270000",
+          "simplePaybackPeriod": "1.470065497",
           "implementationDuration": "10 to 12 weeks",
           "implementationPriority": "Data required",
-          "projectActivitiesText": "IE-5 Efficiency Motor, Pulley Change, Cogged belt",
+          "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
           "scopeOfWork": [
-            "Implementation of Cutting Grinders Retrofit with IE5 Motor & Cogged belt adhering to industrial standards."
+            "Implementation of IE5 Efficiency Motor Retrofit for CHW Secondary Pump adhering to industrial standards."
           ],
           "keyActivities": [
-            "IE-5 Efficiency Motor, Pulley Change, Cogged belt"
+            "IE-5 Efficiency Motor with existing vfd"
           ],
           "baselineData": [
             {
               "parameter": "Baseline consumption",
               "unit": "kWh/year",
-              "value": "140000"
+              "value": "170772"
             }
           ],
           "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
@@ -10581,28 +10180,28 @@
             {
               "parameter": "Annual energy saving",
               "unit": "kWh/year",
-              "value": "28000"
+              "value": "25615.8"
             },
             {
               "parameter": "Annual cost saving",
               "unit": "₹/year",
-              "value": "200760"
+              "value": "183665.286"
             },
             {
               "parameter": "Estimated investment",
               "unit": "₹",
-              "value": "488598.75"
+              "value": "270000"
             },
             {
               "parameter": "Simple payback",
               "unit": "years",
-              "value": "2.433745517"
+              "value": "1.470065497"
             }
           ],
           "technicalSpecifications": [
             {
               "parameter": "Equipment covered",
-              "details": "Cutting Grinders"
+              "details": "Chilled Water Secondary Pump No. 3"
             },
             {
               "parameter": "Implementation duration",
@@ -10635,17 +10234,134 @@
           ],
           "caseStudies": [
             {
-              "title": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+              "title": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
               "clientType": "Industrial facility",
-              "system": "Process",
-              "implementedMeasure": "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
-              "result": "Expected energy saving of 28000.",
+              "system": "Utility",
+              "implementedMeasure": "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+              "result": "Expected energy saving of 25615.8.",
               "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
             }
           ],
           "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
           "carbonFootprint": {
-            "annualEnergySaving": "28000",
+            "annualEnergySaving": "25615.8",
+            "emissionFactor": "Data required",
+            "estimatedCO2Reduction": "Data required",
+            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+            "remarks": "Data required"
+          },
+          "measurementData": [],
+          "typicalGapTable": [],
+          "savingRationaleTable": [],
+          "keyMetrics": [],
+          "schematicFramework": [],
+          "images": []
+        },
+        {
+          "sourceRowNumber": 11,
+          "projectNo": "9",
+          "projectTitle": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+          "equipmentCovered": "CT Secondary Pump No. 1, 2 & 3",
+          "system": "Utility",
+          "groupTitle": "Cooling System Performance Improvement",
+          "proposedIntervention": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+          "proposedProjectDescription": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+          "rationale": "Data required",
+          "rationaleForEnergySaving": "Higher motor efficiency reduces electrical losses at the same load output and supports lower lifecycle energy cost.",
+          "baselineDetails": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+          "existingOperatingCondition": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+          "existingSystemDescription": "1. CT secondary pump no. 1 baseline consumption is 1,14,672 kWh/year\n2. CT secondary pump no. 2 baseline consumption is 1,14,499  kWh/year\n3. CT secondary pump no. 3 baseline consumption is 1,44,242   kWh/year",
+          "baselineConsumption": "373413",
+          "expectedEnergySaving": "52277.82",
+          "expectedAnnualCostSaving": "374831.9694",
+          "estimatedInvestment": "1011933",
+          "simplePaybackPeriod": "2.699697685",
+          "implementationDuration": "10 to 12 weeks",
+          "implementationPriority": "Data required",
+          "projectActivitiesText": "IE-5 Efficiency Motor with existing vfd",
+          "scopeOfWork": [
+            "Implementation of IE5 Efficiency Motor Retrofit for CT Water Secondary Pump adhering to industrial standards."
+          ],
+          "keyActivities": [
+            "IE-5 Efficiency Motor with existing vfd"
+          ],
+          "baselineData": [
+            {
+              "parameter": "Baseline consumption",
+              "unit": "kWh/year",
+              "value": "373413"
+            }
+          ],
+          "problemGapIdentified": "Motor losses and drive inefficiencies increase running energy consumption across the operating profile.",
+          "energySavingCalculation": [
+            {
+              "parameter": "Annual energy saving",
+              "unit": "kWh/year",
+              "value": "52277.82"
+            },
+            {
+              "parameter": "Annual cost saving",
+              "unit": "₹/year",
+              "value": "374831.9694"
+            },
+            {
+              "parameter": "Estimated investment",
+              "unit": "₹",
+              "value": "1011933"
+            },
+            {
+              "parameter": "Simple payback",
+              "unit": "years",
+              "value": "2.699697685"
+            }
+          ],
+          "technicalSpecifications": [
+            {
+              "parameter": "Equipment covered",
+              "details": "CT Secondary Pump No. 1, 2 & 3"
+            },
+            {
+              "parameter": "Implementation duration",
+              "details": "10 to 12 weeks"
+            }
+          ],
+          "precautions": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "aspectsToBeTakenCareOf": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "measurementVerificationPlan": [
+            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+          ],
+          "benefitsOtherThanEnergySaving": [
+            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+          ],
+          "implementationDurationTable": [
+            {
+              "activity": "Engineering and procurement",
+              "duration": "10 to 12 weeks"
+            },
+            {
+              "activity": "Installation and commissioning",
+              "duration": "10 to 12 weeks"
+            }
+          ],
+          "caseStudies": [
+            {
+              "title": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+              "clientType": "Industrial facility",
+              "system": "Utility",
+              "implementedMeasure": "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
+              "result": "Expected energy saving of 52277.82.",
+              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+            }
+          ],
+          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+          "carbonFootprint": {
+            "annualEnergySaving": "52277.82",
             "emissionFactor": "Data required",
             "estimatedCO2Reduction": "Data required",
             "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
@@ -10891,18 +10607,258 @@
           "keyMetrics": [],
           "schematicFramework": [],
           "images": []
+        },
+        {
+          "sourceRowNumber": 23,
+          "projectNo": "21",
+          "projectTitle": "Compressed Air Measurement & Management",
+          "equipmentCovered": "Air Compressors (4 Nos: 1 LP, 3 HP)",
+          "system": "Utility",
+          "groupTitle": "Air Compressors",
+          "proposedIntervention": "Compressed Air Measurement & Management",
+          "proposedProjectDescription": "Compressed Air Measurement & Management",
+          "rationale": "Data required",
+          "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
+          "baselineDetails": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+          "existingOperatingCondition": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+          "existingSystemDescription": "1. LP Air Compressor Consumption is 13,74,572 kWh/Year, 2. HP Air Compressor consumption is 15,65,920 kWh/Year",
+          "baselineConsumption": "2940492",
+          "expectedEnergySaving": "147024.6",
+          "expectedAnnualCostSaving": "1054166.382",
+          "estimatedInvestment": "800000",
+          "simplePaybackPeriod": "0.7588934856",
+          "implementationDuration": "10 to 12 weeks",
+          "implementationPriority": "I",
+          "projectActivitiesText": "Installing CFM meter for every compressor and closely monitoring, taking corrective actions",
+          "scopeOfWork": [
+            "Implementation of Compressed Air Measurement & Management adhering to industrial standards."
+          ],
+          "keyActivities": [
+            "Installing CFM meter for every compressor and closely monitoring, taking corrective actions"
+          ],
+          "baselineData": [
+            {
+              "parameter": "Baseline consumption",
+              "unit": "kWh/year",
+              "value": "2940492"
+            }
+          ],
+          "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
+          "energySavingCalculation": [
+            {
+              "parameter": "Annual energy saving",
+              "unit": "kWh/year",
+              "value": "147024.6"
+            },
+            {
+              "parameter": "Annual cost saving",
+              "unit": "₹/year",
+              "value": "1054166.382"
+            },
+            {
+              "parameter": "Estimated investment",
+              "unit": "₹",
+              "value": "800000"
+            },
+            {
+              "parameter": "Simple payback",
+              "unit": "years",
+              "value": "0.7588934856"
+            }
+          ],
+          "technicalSpecifications": [
+            {
+              "parameter": "Equipment covered",
+              "details": "Air Compressors (4 Nos: 1 LP, 3 HP)"
+            },
+            {
+              "parameter": "Implementation duration",
+              "details": "10 to 12 weeks"
+            }
+          ],
+          "precautions": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "aspectsToBeTakenCareOf": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "measurementVerificationPlan": [
+            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+          ],
+          "benefitsOtherThanEnergySaving": [
+            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+          ],
+          "implementationDurationTable": [
+            {
+              "activity": "Engineering and procurement",
+              "duration": "10 to 12 weeks"
+            },
+            {
+              "activity": "Installation and commissioning",
+              "duration": "10 to 12 weeks"
+            }
+          ],
+          "caseStudies": [
+            {
+              "title": "Compressed Air Measurement & Management",
+              "clientType": "Industrial facility",
+              "system": "Utility",
+              "implementedMeasure": "Compressed Air Measurement & Management",
+              "result": "Expected energy saving of 147024.6.",
+              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+            }
+          ],
+          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+          "carbonFootprint": {
+            "annualEnergySaving": "147024.6",
+            "emissionFactor": "Data required",
+            "estimatedCO2Reduction": "Data required",
+            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+            "remarks": "Data required"
+          },
+          "measurementData": [],
+          "typicalGapTable": [],
+          "savingRationaleTable": [],
+          "keyMetrics": [],
+          "schematicFramework": [],
+          "images": []
+        },
+        {
+          "sourceRowNumber": 24,
+          "projectNo": "22",
+          "projectTitle": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+          "equipmentCovered": "HP Booster Compressor",
+          "system": "Utility",
+          "groupTitle": "Air Compressors",
+          "proposedIntervention": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+          "proposedProjectDescription": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+          "rationale": "Data required",
+          "rationaleForEnergySaving": "Better compressor efficiency and air-demand management reduce specific energy consumption while maintaining required pressure and flow reliability.",
+          "baselineDetails": "IE5 Motor with VFD and PID automation using pressure transmitter",
+          "existingOperatingCondition": "IE5 Motor with VFD and PID automation using pressure transmitter",
+          "existingSystemDescription": "IE5 Motor with VFD and PID automation using pressure transmitter",
+          "baselineConsumption": "41960",
+          "expectedEnergySaving": "14686",
+          "expectedAnnualCostSaving": "105298.62",
+          "estimatedInvestment": "258867.7",
+          "simplePaybackPeriod": "2.458414935",
+          "implementationDuration": "10 to 12 weeks",
+          "implementationPriority": "Data required",
+          "projectActivitiesText": "IE5 Motor with VFD and PID automation using pressure transmitter",
+          "scopeOfWork": [
+            "Implementation of Booster Compressor retrofit with IE5 Efficiency motor & automation adhering to industrial standards."
+          ],
+          "keyActivities": [
+            "IE5 Motor with VFD and PID automation using pressure transmitter"
+          ],
+          "baselineData": [
+            {
+              "parameter": "Baseline consumption",
+              "unit": "kWh/year",
+              "value": "41960"
+            }
+          ],
+          "problemGapIdentified": "Insufficient system measurement and control can increase specific power consumption, leakage losses, and unloaded compressor operation.",
+          "energySavingCalculation": [
+            {
+              "parameter": "Annual energy saving",
+              "unit": "kWh/year",
+              "value": "14686"
+            },
+            {
+              "parameter": "Annual cost saving",
+              "unit": "₹/year",
+              "value": "105298.62"
+            },
+            {
+              "parameter": "Estimated investment",
+              "unit": "₹",
+              "value": "258867.7"
+            },
+            {
+              "parameter": "Simple payback",
+              "unit": "years",
+              "value": "2.458414935"
+            }
+          ],
+          "technicalSpecifications": [
+            {
+              "parameter": "Equipment covered",
+              "details": "HP Booster Compressor"
+            },
+            {
+              "parameter": "Implementation duration",
+              "details": "10 to 12 weeks"
+            }
+          ],
+          "precautions": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "aspectsToBeTakenCareOf": [
+            "Ensure safe shutdown and isolation before modification work.",
+            "Verify mechanical and electrical compatibility before commissioning."
+          ],
+          "measurementVerificationPlan": [
+            "1. Record baseline power/fuel consumption and operating parameters.\\n2. Measure post-implementation consumption under identical load conditions.\\n3. Calculate normalized energy savings."
+          ],
+          "benefitsOtherThanEnergySaving": [
+            "1. Enhanced system reliability.\\n2. Reduced maintenance requirements.\\n3. Improved operational control."
+          ],
+          "implementationDurationTable": [
+            {
+              "activity": "Engineering and procurement",
+              "duration": "10 to 12 weeks"
+            },
+            {
+              "activity": "Installation and commissioning",
+              "duration": "10 to 12 weeks"
+            }
+          ],
+          "caseStudies": [
+            {
+              "title": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+              "clientType": "Industrial facility",
+              "system": "Utility",
+              "implementedMeasure": "Booster Compressor retrofit with IE5 Efficiency motor & automation",
+              "result": "Expected energy saving of 14686.",
+              "relevance": "Prepared directly from the uploaded ECM workbook and aligned to the proposed intervention."
+            }
+          ],
+          "finalConclusion": "This ECM is recommended for implementation because it addresses an observed operating inefficiency, supports more stable and efficient system operation, and can be carried forward through disciplined engineering, commissioning, and post-implementation verification.",
+          "carbonFootprint": {
+            "annualEnergySaving": "14686",
+            "emissionFactor": "Data required",
+            "estimatedCO2Reduction": "Data required",
+            "calculationBasis": "Annual energy saving from Excel x applicable grid emission factor",
+            "remarks": "Data required"
+          },
+          "measurementData": [],
+          "typicalGapTable": [],
+          "savingRationaleTable": [],
+          "keyMetrics": [],
+          "schematicFramework": [],
+          "images": []
         }
       ],
-      "totalInvestment": 1607348.75,
-      "totalAnnualSaving": 1853357.526,
-      "totalEnergySaving": 258487.8,
-      "weightedPayback": "0.87",
+      "totalInvestment": 3459550.7,
+      "totalAnnualSaving": 3370559.7834,
+      "totalEnergySaving": 470092.02,
+      "weightedPayback": "1.03",
       "technicalObservation": [
+        "EE Improvement in Chiller Using CT Segregation",
+        "Flow Optimization for CHW Secondary Pump",
+        "EE Improvement in Air Compressors & Pump Using CT Segregation",
         "CT No. 2 Fan System Efficiency Upgrade: PMSM Motor + Direct-Mount Fan Retrofit",
         "Energy Optimization of Clean Room and IM AHUs Using High-Efficiency Plug Fans",
-        "Cutting Grinders Retrofit with IE5 Motor & Cogged belt",
+        "IE5 Efficiency Motor Retrofit for CHW Secondary Pump",
+        "IE5 Efficiency Motor Retrofit for CT Water Secondary Pump",
         "PD blower Direct Mounting with IE5 motor with existing VFD",
-        "APFC relay for 600 kVAr Panel"
+        "APFC relay for 600 kVAr Panel",
+        "Compressed Air Measurement & Management",
+        "Booster Compressor retrofit with IE5 Efficiency motor & automation"
       ]
     }
   ]
