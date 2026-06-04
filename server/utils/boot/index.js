@@ -28,10 +28,15 @@ function bootSSL(app, port = 3001) {
     const certificate = fs.readFileSync(process.env.HTTPS_CERT_PATH);
     const credentials = { key: privateKey, cert: certificate };
     const server = https.createServer(credentials, app);
-    const requestTimeoutMs = Number(process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000);
+    const requestTimeoutMs = Number(
+      process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000
+    );
     server.requestTimeout = requestTimeoutMs;
     server.headersTimeout = Math.max(requestTimeoutMs + 5000, 65000);
-    server.keepAliveTimeout = Math.max(Math.min(requestTimeoutMs, 120000), 5000);
+    server.keepAliveTimeout = Math.max(
+      Math.min(requestTimeoutMs, 120000),
+      5000
+    );
 
     server
       .listen(port, async () => {
@@ -45,10 +50,16 @@ function bootSSL(app, port = 3001) {
         await TelegramBotService.bootIfActive();
         const hasGemini = !!process.env.GEMINI_API_KEY ? "yes" : "no";
         const hasOpenRouter = !!process.env.OPENROUTER_API_KEY ? "yes" : "no";
-        const hasDebug = (process.env.ENABLE_PIPELINE_DEBUG === 'true' || process.env.ENABLE_PIPELINE_DEBUG === '1') ? "yes" : "no";
+        const hasDebug =
+          process.env.ENABLE_PIPELINE_DEBUG === "true" ||
+          process.env.ENABLE_PIPELINE_DEBUG === "1"
+            ? "yes"
+            : "no";
         console.log(`Backend server running on http://localhost:${port}`);
         console.log(`Health check: http://localhost:${port}/api/health`);
-        console.log(`AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`);
+        console.log(
+          `AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`
+        );
         console.log(`Pipeline debug enabled ${hasDebug}`);
       })
       .on("error", catchSigTerms);
@@ -84,15 +95,23 @@ function bootHTTP(app, port = 3001) {
       await TelegramBotService.bootIfActive();
       const hasGemini = !!process.env.GEMINI_API_KEY ? "yes" : "no";
       const hasOpenRouter = !!process.env.OPENROUTER_API_KEY ? "yes" : "no";
-      const hasDebug = (process.env.ENABLE_PIPELINE_DEBUG === 'true' || process.env.ENABLE_PIPELINE_DEBUG === '1') ? "yes" : "no";
+      const hasDebug =
+        process.env.ENABLE_PIPELINE_DEBUG === "true" ||
+        process.env.ENABLE_PIPELINE_DEBUG === "1"
+          ? "yes"
+          : "no";
       console.log(`Backend server running on http://localhost:${port}`);
       console.log(`Health check: http://localhost:${port}/api/health`);
-      console.log(`AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`);
+      console.log(
+        `AI keys: Gemini configured ${hasGemini}, OpenRouter configured ${hasOpenRouter}`
+      );
       console.log(`Pipeline debug enabled ${hasDebug}`);
     })
     .on("error", catchSigTerms);
 
-  const requestTimeoutMs = Number(process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000);
+  const requestTimeoutMs = Number(
+    process.env.REPORT_GENERATION_REQUEST_TIMEOUT_MS || 600000
+  );
   server.requestTimeout = requestTimeoutMs;
   server.headersTimeout = Math.max(requestTimeoutMs + 5000, 65000);
   server.keepAliveTimeout = Math.max(Math.min(requestTimeoutMs, 120000), 5000);

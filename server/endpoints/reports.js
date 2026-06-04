@@ -1,9 +1,14 @@
 const { reqBody, userFromSession } = require("../utils/http");
 const { validatedRequest } = require("../utils/middleware/validatedRequest");
-const { flexUserRoleValid, ROLES } = require("../utils/middleware/multiUserProtected");
+const {
+  flexUserRoleValid,
+  ROLES,
+} = require("../utils/middleware/multiUserProtected");
 const { handleFileUpload } = require("../utils/files/multer");
 const { CollectorApi } = require("../utils/collectorApi");
-const { buildCommercialBuildingEnergyAuditDocx } = require("../services/docxExportService");
+const {
+  buildCommercialBuildingEnergyAuditDocx,
+} = require("../services/docxExportService");
 const prisma = require("../utils/prisma");
 const { getLLMProvider } = require("../utils/helpers");
 const { getModelTag } = require("./utils");
@@ -13,8 +18,12 @@ const { hotdirPath } = require("../utils/files");
 const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
 const multer = require("multer");
-const { createPipelineDebugCollector } = require("../utils/pipelineDebugCollector");
-const { ensureAiReportGeneratorSeeded } = require("../utils/aiReportGeneratorSeed");
+const {
+  createPipelineDebugCollector,
+} = require("../utils/pipelineDebugCollector");
+const {
+  ensureAiReportGeneratorSeeded,
+} = require("../utils/aiReportGeneratorSeed");
 const {
   generateWithProvider,
   groupAndSortProjects,
@@ -35,7 +44,9 @@ const {
   generateCommercialAuditComponentReport,
 } = require("../services/reportPipeline");
 const { getGeminiApiKeys } = require("../services/geminiProviderService");
-const { extractSupportingContext } = require("../services/supportingFileExtractor");
+const {
+  extractSupportingContext,
+} = require("../services/supportingFileExtractor");
 
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
@@ -56,9 +67,10 @@ const MTL_BADDI_SIGNATURE_TITLES = [
 function isValidProjectTitle(titleStr) {
   if (!titleStr || titleStr === "Data required") return false;
   const t = String(titleStr).toLowerCase().trim();
-  
+
   // Rule 1: Reject pure duration patterns (e.g. "10 to 12 weeks", "2-4 months", "1 week")
-  const durationPattern = /^(\d+([-\s]+to\s+\d+)?\s*(weeks?|months?|days?|yrs?|years?))$/i;
+  const durationPattern =
+    /^(\d+([-\s]+to\s+\d+)?\s*(weeks?|months?|days?|yrs?|years?))$/i;
   if (durationPattern.test(t)) return false;
 
   // Rule 2: Reject known duration headers mapped as titles
@@ -68,10 +80,10 @@ function isValidProjectTitle(titleStr) {
     "payback",
     "investment",
     "total",
-    "notes"
+    "notes",
   ];
   if (forbiddenTitles.includes(t)) return false;
-  
+
   return true;
 }
 
@@ -113,7 +125,9 @@ function buildCommercialAuditArtifacts({
     { inputDetails, extractedExcelData },
     { providerUsed }
   );
-  finalData.missingFieldSummary = buildMissingFieldSummary(finalData.fieldFlags);
+  finalData.missingFieldSummary = buildMissingFieldSummary(
+    finalData.fieldFlags
+  );
 
   return {
     finalData,
@@ -209,77 +223,193 @@ function normaliseGenerateBody(body) {
     const pf = body.public_form || {};
     // Merge public_form into inputDetails (camelCase for internal pipeline)
     const inputDetails = {
-      clientName:    pf.client_name    || pf.clientName    || "[Client / Facility Name]",
-      facilityName:  pf.facility_name  || pf.facilityName  || "[To be updated after site data verification]",
-      location:      pf.location       || "[To be updated after site data verification]",
-      auditPeriod:   pf.audit_period   || pf.auditPeriod   || "[To be updated after site data verification]",
-      reportDate:    pf.report_date    || pf.reportDate     || new Date().toLocaleDateString("en-IN"),
-      contactPerson: pf.contact_person || pf.contactPerson  || "[To be updated after site data verification]",
-      outputFormat:  pf.output_format  || pf.outputFormat   || "docx",
+      clientName: pf.client_name || pf.clientName || "[Client / Facility Name]",
+      facilityName:
+        pf.facility_name ||
+        pf.facilityName ||
+        "[To be updated after site data verification]",
+      location: pf.location || "[To be updated after site data verification]",
+      auditPeriod:
+        pf.audit_period ||
+        pf.auditPeriod ||
+        "[To be updated after site data verification]",
+      reportDate:
+        pf.report_date ||
+        pf.reportDate ||
+        new Date().toLocaleDateString("en-IN"),
+      contactPerson:
+        pf.contact_person ||
+        pf.contactPerson ||
+        "[To be updated after site data verification]",
+      outputFormat: pf.output_format || pf.outputFormat || "docx",
     };
     return {
-      templateId:     body.template_id,
+      templateId: body.template_id,
       inputDetails,
-      uploadedFiles:  body.uploaded_files  || [],
+      uploadedFiles: body.uploaded_files || [],
       generationMode: body.generation_mode || "public",
-      publicForm:     pf,
-      status:         body.status          || "submitted",
+      publicForm: pf,
+      status: body.status || "submitted",
     };
   }
 
   // Legacy payload — pass through unchanged
   return {
-    templateId:     body.templateId,
-    inputDetails:   {
-      clientName:    body.inputDetails?.clientName    || "[Client / Facility Name]",
-      facilityName:  body.inputDetails?.facilityName  || "[To be updated after site data verification]",
-      location:      body.inputDetails?.location      || "[To be updated after site data verification]",
-      auditPeriod:   body.inputDetails?.auditPeriod   || "[To be updated after site data verification]",
-      reportDate:    body.inputDetails?.reportDate    || new Date().toLocaleDateString("en-IN"),
-      contactPerson: body.inputDetails?.contactPerson || "[To be updated after site data verification]",
-      outputFormat:  body.inputDetails?.outputFormat  || "docx",
+    templateId: body.templateId,
+    inputDetails: {
+      clientName: body.inputDetails?.clientName || "[Client / Facility Name]",
+      facilityName:
+        body.inputDetails?.facilityName ||
+        "[To be updated after site data verification]",
+      location:
+        body.inputDetails?.location ||
+        "[To be updated after site data verification]",
+      auditPeriod:
+        body.inputDetails?.auditPeriod ||
+        "[To be updated after site data verification]",
+      reportDate:
+        body.inputDetails?.reportDate || new Date().toLocaleDateString("en-IN"),
+      contactPerson:
+        body.inputDetails?.contactPerson ||
+        "[To be updated after site data verification]",
+      outputFormat: body.inputDetails?.outputFormat || "docx",
     },
-    uploadedFiles:  body.uploadedFiles || [],
+    uploadedFiles: body.uploadedFiles || [],
     generationMode: body.generationMode || "public",
-    publicForm:     null,
-    status:         "submitted",
+    publicForm: null,
+    status: "submitted",
   };
 }
 
-const excelUpload = multer({ 
+const excelUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024, files: 20 }
+  limits: { fileSize: 100 * 1024 * 1024, files: 20 },
 }).array("files");
 
 const EXCEL_FIELD_SYNONYMS = {
   rowNumber: ["sr", "srno", "sr no", "ecm no", "ecmno"],
   projectTitle: [
-    "project name", "energy saving project", "ecm name", "project title", "recommendation", "saving opportunity", "project", "ecm"
+    "project name",
+    "energy saving project",
+    "ecm name",
+    "project title",
+    "recommendation",
+    "saving opportunity",
+    "project",
+    "ecm",
   ],
   proposedIntervention: [
-    "energy saving project", "project description", "description"
+    "energy saving project",
+    "project description",
+    "description",
   ],
   projectActivities: ["project activities", "activities", "scope of work"],
-  system: ["section", "4 category", "category", "system", "area", "utility", "equipment type", "department", "project category"],
-  investment: ["investment, rs.", "investment", "estimated investment", "project cost", "capex", "implementation cost", "investment rs", "cost", "inr"],
+  system: [
+    "section",
+    "4 category",
+    "category",
+    "system",
+    "area",
+    "utility",
+    "equipment type",
+    "department",
+    "project category",
+  ],
+  investment: [
+    "investment, rs.",
+    "investment",
+    "estimated investment",
+    "project cost",
+    "capex",
+    "implementation cost",
+    "investment rs",
+    "cost",
+    "inr",
+  ],
   annualSaving: [
-    "savings in rs/year", "annual saving", "cost saving", "monetary saving", "yearly saving",
-    "saving rs", "rs/year", "annual benefit", "annual savings"
+    "savings in rs/year",
+    "annual saving",
+    "cost saving",
+    "monetary saving",
+    "yearly saving",
+    "saving rs",
+    "rs/year",
+    "annual benefit",
+    "annual savings",
   ],
   energySaving: [
-    "saving kwh/year", "energy saving kwh/year", "saving kwh", "electricity saving", "annual energy saving",
-    "energy savings (kwh/year)", "units saving"
+    "saving kwh/year",
+    "energy saving kwh/year",
+    "saving kwh",
+    "electricity saving",
+    "annual energy saving",
+    "energy savings (kwh/year)",
+    "units saving",
   ],
-  payback: ["payback period, years", "payback period", "simple payback", "roi", "payback", "years", "months"],
-  priority: ["priority", "preority", "implementation priority", "ranking", "action priority", "priority phase i/ii/iii", "priority phase"],
+  payback: [
+    "payback period, years",
+    "payback period",
+    "simple payback",
+    "roi",
+    "payback",
+    "years",
+    "months",
+  ],
+  priority: [
+    "priority",
+    "preority",
+    "implementation priority",
+    "ranking",
+    "action priority",
+    "priority phase i/ii/iii",
+    "priority phase",
+  ],
   location: ["location", "area", "plant room", "floor", "building area"],
-  equipmentCovered: ["equipment name", "equipment covered", "equipment", "machine", "asset", "load"],
-  implementationDuration: ["project lead time", "implementation duration", "duration", "timeline", "weeks", "months"],
-  co2Reduction: ["co2", "carbon", "emission", "emission reduction", "tco2", "tco2/year"],
+  equipmentCovered: [
+    "equipment name",
+    "equipment covered",
+    "equipment",
+    "machine",
+    "asset",
+    "load",
+  ],
+  implementationDuration: [
+    "project lead time",
+    "implementation duration",
+    "duration",
+    "timeline",
+    "weeks",
+    "months",
+  ],
+  co2Reduction: [
+    "co2",
+    "carbon",
+    "emission",
+    "emission reduction",
+    "tco2",
+    "tco2/year",
+  ],
   emissionFactor: ["emission factor", "grid emission", "grid emission factor"],
-  rationale: ["rational for energy saving project", "rationale", "rational", "saving principle"],
-  baselineDetails: ["notes (baseline details & others)", "baseline details", "baseline", "existing condition", "notes"],
-  baselineConsumption: ["baseline consumption", "baseline kwhyear", "baselinekwhyear", "baseline kwh year", "baseline, kwh/year"]
+  rationale: [
+    "rational for energy saving project",
+    "rationale",
+    "rational",
+    "saving principle",
+  ],
+  baselineDetails: [
+    "notes (baseline details & others)",
+    "baseline details",
+    "baseline",
+    "existing condition",
+    "notes",
+  ],
+  baselineConsumption: [
+    "baseline consumption",
+    "baseline kwhyear",
+    "baselinekwhyear",
+    "baseline kwh year",
+    "baseline, kwh/year",
+  ],
 };
 
 const RECOMMENDED_EXCEL_COLUMNS = [
@@ -295,7 +425,7 @@ const RECOMMENDED_EXCEL_COLUMNS = [
   "implementationDuration",
   "co2Reduction",
   "rationale",
-  "baselineDetails"
+  "baselineDetails",
 ];
 
 const EXCEL_COLUMN_LABELS = {
@@ -332,7 +462,7 @@ const EXCEL_FIELD_MATCH_ORDER = [
   "projectActivities",
   "rationale",
   "baselineConsumption",
-  "baselineDetails"
+  "baselineDetails",
 ];
 
 function normalizeExcelHeader(value) {
@@ -348,7 +478,8 @@ function cellText(cell) {
   if (typeof cell === "object") {
     if (cell.text) return String(cell.text);
     if (cell.result !== undefined) return String(cell.result);
-    if (cell.richText) return cell.richText.map((part) => part.text || "").join("");
+    if (cell.richText)
+      return cell.richText.map((part) => part.text || "").join("");
     if (cell.hyperlink && cell.text) return String(cell.text);
   }
   return String(cell);
@@ -363,7 +494,10 @@ function mapHeaderToField(header) {
     if (
       synonyms.some((synonym) => {
         const normalizedSynonym = normalizeExcelHeader(synonym);
-        return normalized === normalizedSynonym || normalized.includes(normalizedSynonym);
+        return (
+          normalized === normalizedSynonym ||
+          normalized.includes(normalizedSynonym)
+        );
       })
     ) {
       return field;
@@ -419,7 +553,10 @@ function getHeaderMatchForField(header, field) {
     if (normalizedHeader === normalizedSynonym) {
       confidence = 100;
       matchType = "exact";
-    } else if (normalizedHeader.includes(normalizedSynonym) || normalizedSynonym.includes(normalizedHeader)) {
+    } else if (
+      normalizedHeader.includes(normalizedSynonym) ||
+      normalizedSynonym.includes(normalizedHeader)
+    ) {
       confidence = 90;
       matchType = "synonym";
     } else {
@@ -458,18 +595,30 @@ function analyzeColumnSampleType(values = []) {
     if (/^-?[\d,]+(\.\d+)?$/.test(value.replace(/,/g, ""))) {
       numericCount++;
       const numericValue = Number(value.replace(/,/g, ""));
-      if (Number.isFinite(numericValue) && numericValue > 0 && numericValue < 100) {
+      if (
+        Number.isFinite(numericValue) &&
+        numericValue > 0 &&
+        numericValue < 100
+      ) {
         smallIntegerCount++;
       }
     } else {
       textCount++;
     }
 
-    if (/^\d+\s*(to|-)?\s*\d*\s*(weeks|months|days|hrs|hours|yrs|years)$/i.test(lower)) {
+    if (
+      /^\d+\s*(to|-)?\s*\d*\s*(weeks|months|days|hrs|hours|yrs|years)$/i.test(
+        lower
+      )
+    ) {
       durationCount++;
     }
 
-    if (/(project|retrofit|improvement|optimization|saving|heater|compressor|pump|motor|chiller|fan|blower|dryer|insulation|servo|apfc)/i.test(lower)) {
+    if (
+      /(project|retrofit|improvement|optimization|saving|heater|compressor|pump|motor|chiller|fan|blower|dryer|insulation|servo|apfc)/i.test(
+        lower
+      )
+    ) {
       projectStyleCount++;
     }
   });
@@ -488,63 +637,128 @@ function analyzeColumnSampleType(values = []) {
 function validateColumnAgainstField(field, analysis) {
   const samples = analysis.totalSamples || 0;
   if (!samples) {
-    return { accepted: false, reason: "No usable sample values found for mapped column." };
+    return {
+      accepted: false,
+      reason: "No usable sample values found for mapped column.",
+    };
   }
 
-  const mostlyNumeric = analysis.numericCount >= Math.max(2, Math.ceil(samples * 0.6));
-  const mostlyText = analysis.textCount >= Math.max(2, Math.ceil(samples * 0.6));
+  const mostlyNumeric =
+    analysis.numericCount >= Math.max(2, Math.ceil(samples * 0.6));
+  const mostlyText =
+    analysis.textCount >= Math.max(2, Math.ceil(samples * 0.6));
 
   switch (field) {
     case "projectTitle":
-      if (!mostlyText || analysis.projectStyleCount === 0 || analysis.durationCount >= Math.ceil(samples / 2)) {
-        return { accepted: false, reason: "Project title column does not look like ECM/project titles." };
+      if (
+        !mostlyText ||
+        analysis.projectStyleCount === 0 ||
+        analysis.durationCount >= Math.ceil(samples / 2)
+      ) {
+        return {
+          accepted: false,
+          reason: "Project title column does not look like ECM/project titles.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like ECM titles." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like ECM titles.",
+      };
     case "system":
       if (!mostlyText || analysis.numericCount > analysis.textCount) {
-        return { accepted: false, reason: "System/category column appears numeric or financially typed." };
+        return {
+          accepted: false,
+          reason:
+            "System/category column appears numeric or financially typed.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like system/category text." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like system/category text.",
+      };
     case "energySaving":
       if (!mostlyNumeric) {
-        return { accepted: false, reason: "Energy saving column is not predominantly numeric." };
+        return {
+          accepted: false,
+          reason: "Energy saving column is not predominantly numeric.",
+        };
       }
       if (analysis.smallIntegerCount >= Math.ceil(samples / 2)) {
-        return { accepted: false, reason: "Energy saving column resembles ECM numbers or serial numbers." };
+        return {
+          accepted: false,
+          reason:
+            "Energy saving column resembles ECM numbers or serial numbers.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like annual kWh savings." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like annual kWh savings.",
+      };
     case "annualSaving":
     case "investment":
       if (!mostlyNumeric) {
-        return { accepted: false, reason: `${field} column is not predominantly numeric.` };
+        return {
+          accepted: false,
+          reason: `${field} column is not predominantly numeric.`,
+        };
       }
-      return { accepted: true, reason: "Column sample values look like financial figures." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like financial figures.",
+      };
     case "payback":
       if (!mostlyNumeric) {
-        return { accepted: false, reason: "Payback column is not predominantly numeric." };
+        return {
+          accepted: false,
+          reason: "Payback column is not predominantly numeric.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like payback values." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like payback values.",
+      };
     case "equipmentCovered":
       if (!mostlyText) {
-        return { accepted: false, reason: "Equipment column is not predominantly text." };
+        return {
+          accepted: false,
+          reason: "Equipment column is not predominantly text.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like equipment names." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like equipment names.",
+      };
     case "implementationDuration":
       if (analysis.durationCount === 0 && !mostlyText) {
-        return { accepted: false, reason: "Implementation duration column does not resemble duration text." };
+        return {
+          accepted: false,
+          reason:
+            "Implementation duration column does not resemble duration text.",
+        };
       }
-      return { accepted: true, reason: "Column sample values look like duration text." };
+      return {
+        accepted: true,
+        reason: "Column sample values look like duration text.",
+      };
     default:
-      return { accepted: true, reason: "No additional type restrictions failed." };
+      return {
+        accepted: true,
+        reason: "No additional type restrictions failed.",
+      };
   }
 }
 
 function getColumnSampleValues(worksheet, headerRowNumber, columnIndex) {
   const values = [];
-  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount && values.length < 8; rowNumber++) {
+  for (
+    let rowNumber = headerRowNumber + 1;
+    rowNumber <= worksheet.rowCount && values.length < 8;
+    rowNumber++
+  ) {
     const row = worksheet.getRow(rowNumber);
     const cellValue = row.values?.[columnIndex];
-    if (isBlankExcelRow(row.values || []) || isTotalExcelRow(row.values || [])) continue;
+    if (isBlankExcelRow(row.values || []) || isTotalExcelRow(row.values || []))
+      continue;
     if (cellText(cellValue).trim()) values.push(cellValue);
   }
   return values;
@@ -572,14 +786,20 @@ function buildHeaderConfidenceReport(worksheet, rowNumber, values) {
 
     const sampleValues = getColumnSampleValues(worksheet, rowNumber, index);
     const analysis = analyzeColumnSampleType(sampleValues);
-    const fieldValidation = validateColumnAgainstField(bestCandidate.fieldName, analysis);
+    const fieldValidation = validateColumnAgainstField(
+      bestCandidate.fieldName,
+      analysis
+    );
     const threshold = HIGH_RISK_FIELDS.has(bestCandidate.fieldName) ? 85 : 70;
-    const accepted = bestCandidate.confidence >= threshold && fieldValidation.accepted;
+    const accepted =
+      bestCandidate.confidence >= threshold && fieldValidation.accepted;
 
     const report = {
       fieldName: bestCandidate.fieldName,
       matchedColumn: header,
-      confidence: accepted ? bestCandidate.confidence : Math.min(bestCandidate.confidence, threshold - 1),
+      confidence: accepted
+        ? bestCandidate.confidence
+        : Math.min(bestCandidate.confidence, threshold - 1),
       matchType: bestCandidate.matchType,
       sampleValues: analysis.sampleValues,
       accepted,
@@ -588,7 +808,10 @@ function buildHeaderConfidenceReport(worksheet, rowNumber, values) {
       approvedSynonym: bestCandidate.approvedSynonym,
     };
 
-    if (!fieldReports[bestCandidate.fieldName] || report.confidence > fieldReports[bestCandidate.fieldName].confidence) {
+    if (
+      !fieldReports[bestCandidate.fieldName] ||
+      report.confidence > fieldReports[bestCandidate.fieldName].confidence
+    ) {
       fieldReports[bestCandidate.fieldName] = report;
       fieldBestIndexes[bestCandidate.fieldName] = index;
     }
@@ -678,7 +901,9 @@ function preferredFieldValue(rowMap, ...fields) {
 }
 
 function buildStructuredList(text, primaryKey, secondaryKeys = []) {
-  const cleaned = String(text || "").replace(/\r/g, "\n").trim();
+  const cleaned = String(text || "")
+    .replace(/\r/g, "\n")
+    .trim();
   if (!cleaned) return [];
 
   const segments = cleaned
@@ -686,25 +911,30 @@ function buildStructuredList(text, primaryKey, secondaryKeys = []) {
     .map((segment) => segment.replace(/^\d+[).\s-]*/, "").trim())
     .filter(Boolean);
 
-  const rows = (segments.length ? segments : [cleaned]).map((segment, index) => {
-    const row = { [primaryKey]: segment };
-    secondaryKeys.forEach((key) => {
-      row[key] = segment;
-    });
-    if (!row.srNo) row.srNo = index + 1;
-    return row;
-  });
+  const rows = (segments.length ? segments : [cleaned]).map(
+    (segment, index) => {
+      const row = { [primaryKey]: segment };
+      secondaryKeys.forEach((key) => {
+        row[key] = segment;
+      });
+      if (!row.srNo) row.srNo = index + 1;
+      return row;
+    }
+  );
 
   return rows;
 }
 
 function normalizeGroupTitle(rawValue) {
-  const text = String(rawValue || "").toLowerCase().trim();
+  const text = String(rawValue || "")
+    .toLowerCase()
+    .trim();
   if (!text) return "";
   if (text.includes("cooling")) return "Cooling System Performance Improvement";
   if (text.includes("production")) return "Production Machines";
   if (text.includes("air compressor")) return "Air Compressors";
-  if (text.includes("auxiliary")) return "Auxiliary Systems & Machine Improvement";
+  if (text.includes("auxiliary"))
+    return "Auxiliary Systems & Machine Improvement";
   return String(rawValue || "").trim();
 }
 
@@ -716,16 +946,23 @@ function extractGroupTitleMap(workbook) {
     let inGroupTable = false;
 
     worksheet.eachRow((row) => {
-      const values = (row.values || []).slice(1).map((value) => cellText(value).trim());
+      const values = (row.values || [])
+        .slice(1)
+        .map((value) => cellText(value).trim());
       const joined = values.join(" ").toLowerCase();
 
       if (joined.includes("energy saving projects for")) {
-        currentGroupTitle = normalizeGroupTitle(values.find((value) => /energy saving projects for/i.test(value)));
+        currentGroupTitle = normalizeGroupTitle(
+          values.find((value) => /energy saving projects for/i.test(value))
+        );
         inGroupTable = false;
         return;
       }
 
-      if (values.some((value) => /ecm name/i.test(value)) && values.some((value) => /investment/i.test(value))) {
+      if (
+        values.some((value) => /ecm name/i.test(value)) &&
+        values.some((value) => /investment/i.test(value))
+      ) {
         inGroupTable = true;
         return;
       }
@@ -746,21 +983,41 @@ function extractGroupTitleMap(workbook) {
 }
 
 function scoreAuthoritativeHeader(mapping) {
-  const required = ["projectTitle", "equipmentCovered", "system", "energySaving", "annualSaving", "investment", "payback"];
-  const optional = ["baselineDetails", "rationale", "implementationDuration", "priority", "proposedIntervention"];
+  const required = [
+    "projectTitle",
+    "equipmentCovered",
+    "system",
+    "energySaving",
+    "annualSaving",
+    "investment",
+    "payback",
+  ];
+  const optional = [
+    "baselineDetails",
+    "rationale",
+    "implementationDuration",
+    "priority",
+    "proposedIntervention",
+  ];
   let score = required.reduce((sum, field) => {
-    const confidence = mapping.fieldReports?.[field]?.accepted ? mapping.fieldReports[field].confidence : 0;
+    const confidence = mapping.fieldReports?.[field]?.accepted
+      ? mapping.fieldReports[field].confidence
+      : 0;
     return sum + Math.round(confidence / 10);
   }, 0);
   score += optional.reduce((sum, field) => {
-    const confidence = mapping.fieldReports?.[field]?.accepted ? mapping.fieldReports[field].confidence : 0;
+    const confidence = mapping.fieldReports?.[field]?.accepted
+      ? mapping.fieldReports[field].confidence
+      : 0;
     return sum + Math.round(confidence / 25);
   }, 0);
   return score;
 }
 
 function detectDatasetProfile(projects = []) {
-  const normalizedTitles = projects.map((project) => normalizeProjectAuditTitle(project.projectTitle));
+  const normalizedTitles = projects.map((project) =>
+    normalizeProjectAuditTitle(project.projectTitle)
+  );
   const matchedSignatureCount = MTL_BADDI_SIGNATURE_TITLES.filter((title) =>
     normalizedTitles.some((projectTitle) => projectTitle.includes(title))
   ).length;
@@ -827,18 +1084,32 @@ function extractAuthoritativeExcelProjects(workbook) {
       rowMap[field] = values[Number(idx)];
     });
 
-    const projectTitle = preferredFieldValue(rowMap, "projectTitle", "proposedIntervention");
+    const projectTitle = preferredFieldValue(
+      rowMap,
+      "projectTitle",
+      "proposedIntervention"
+    );
     const equipmentCovered = preferredFieldValue(rowMap, "equipmentCovered");
     const system = preferredFieldValue(rowMap, "system");
-    const proposedIntervention = preferredFieldValue(rowMap, "proposedIntervention", "projectTitle");
+    const proposedIntervention = preferredFieldValue(
+      rowMap,
+      "proposedIntervention",
+      "projectTitle"
+    );
     const rationale = preferredFieldValue(rowMap, "rationale");
     const baselineDetails = preferredFieldValue(rowMap, "baselineDetails");
-    const baselineConsumption = preferredFieldValue(rowMap, "baselineConsumption");
+    const baselineConsumption = preferredFieldValue(
+      rowMap,
+      "baselineConsumption"
+    );
     const energySaving = preferredFieldValue(rowMap, "energySaving");
     const annualSaving = preferredFieldValue(rowMap, "annualSaving");
     const investment = preferredFieldValue(rowMap, "investment");
     const payback = preferredFieldValue(rowMap, "payback");
-    const implementationDuration = preferredFieldValue(rowMap, "implementationDuration");
+    const implementationDuration = preferredFieldValue(
+      rowMap,
+      "implementationDuration"
+    );
     const priority = preferredFieldValue(rowMap, "priority");
     const projectActivities = preferredFieldValue(rowMap, "projectActivities");
     const rowNumberText = preferredFieldValue(rowMap, "rowNumber");
@@ -849,7 +1120,10 @@ function extractAuthoritativeExcelProjects(workbook) {
       projectTitle,
       equipmentName: equipmentCovered,
       systemCategory: system,
-      confidence: Object.values(bestHeader.fieldReports || {}).reduce((sum, item) => sum + (item.accepted ? item.confidence : 0), 0),
+      confidence: Object.values(bestHeader.fieldReports || {}).reduce(
+        (sum, item) => sum + (item.accepted ? item.confidence : 0),
+        0
+      ),
       missingCriticalFields: [],
       investment,
       annualSaving,
@@ -898,7 +1172,8 @@ function extractAuthoritativeExcelProjects(workbook) {
     }
 
     if (!energySaving && !annualSaving && !investment && !payback) {
-      audit.reason = "Row does not contain any usable saving or financial value.";
+      audit.reason =
+        "Row does not contain any usable saving or financial value.";
       auditRows.push(audit);
       removedRows.push(audit);
       return;
@@ -930,9 +1205,17 @@ function extractAuthoritativeExcelProjects(workbook) {
       implementationPriority: priority || "Data required",
       projectActivitiesText: projectActivities || "Data required",
       scopeOfWork: buildStructuredList(projectActivities, "scopeItem"),
-      keyActivities: buildStructuredList(projectActivities, "activity", ["details"]),
+      keyActivities: buildStructuredList(projectActivities, "activity", [
+        "details",
+      ]),
       baselineData: baselineConsumption
-        ? [{ parameter: "Baseline consumption", unit: "kWh/year", value: parseNumberCell(baselineConsumption) }]
+        ? [
+            {
+              parameter: "Baseline consumption",
+              unit: "kWh/year",
+              value: parseNumberCell(baselineConsumption),
+            },
+          ]
         : [],
     };
 
@@ -971,16 +1254,22 @@ function generateRecommendations(mappedColumns) {
   const recommendations = {
     highPriority: [],
     mediumPriority: [],
-    optional: []
+    optional: [],
   };
 
   if (!mappedColumns.system) {
     recommendations.highPriority.push({
       field: "System / Category",
       priority: "high",
-      whyItMatters: "Helps the report group ECMs correctly under the category-wise financial summary.",
-      suggestedColumnNames: ["System", "Category", "Utility", "Project Category"],
-      exampleValues: ["HVAC", "Lighting", "Pumps", "Electrical", "Solar"]
+      whyItMatters:
+        "Helps the report group ECMs correctly under the category-wise financial summary.",
+      suggestedColumnNames: [
+        "System",
+        "Category",
+        "Utility",
+        "Project Category",
+      ],
+      exampleValues: ["HVAC", "Lighting", "Pumps", "Electrical", "Solar"],
     });
   }
 
@@ -990,7 +1279,7 @@ function generateRecommendations(mappedColumns) {
       priority: "high",
       whyItMatters: "Required for financial summary and payback calculation.",
       suggestedColumnNames: ["Investment", "Estimated Cost", "Project Cost"],
-      exampleValues: ["100000", "50000"]
+      exampleValues: ["100000", "50000"],
     });
   }
 
@@ -1000,7 +1289,7 @@ function generateRecommendations(mappedColumns) {
       priority: "high",
       whyItMatters: "Required for management summary and ROI evaluation.",
       suggestedColumnNames: ["Annual Saving", "Cost Saving", "Monetary Saving"],
-      exampleValues: ["50000", "20000"]
+      exampleValues: ["50000", "20000"],
     });
   }
 
@@ -1008,9 +1297,14 @@ function generateRecommendations(mappedColumns) {
     recommendations.highPriority.push({
       field: "Energy Saving kWh/year",
       priority: "high",
-      whyItMatters: "Required for energy saving calculation, key metrics and carbon footprint estimation.",
-      suggestedColumnNames: ["Energy Saving kWh/year", "Saving kWh", "Electricity Saving"],
-      exampleValues: ["10000", "5000"]
+      whyItMatters:
+        "Required for energy saving calculation, key metrics and carbon footprint estimation.",
+      suggestedColumnNames: [
+        "Energy Saving kWh/year",
+        "Saving kWh",
+        "Electricity Saving",
+      ],
+      exampleValues: ["10000", "5000"],
     });
   }
 
@@ -1018,9 +1312,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.highPriority.push({
       field: "Payback Period",
       priority: "high",
-      whyItMatters: "Helps the report rank projects and justify implementation priority.",
+      whyItMatters:
+        "Helps the report rank projects and justify implementation priority.",
       suggestedColumnNames: ["Payback", "Simple Payback", "ROI"],
-      exampleValues: ["2.5", "1.2"]
+      exampleValues: ["2.5", "1.2"],
     });
   }
 
@@ -1028,9 +1323,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.highPriority.push({
       field: "Implementation Priority",
       priority: "high",
-      whyItMatters: "Helps generate the Recommended Implementation Priority section.",
+      whyItMatters:
+        "Helps generate the Recommended Implementation Priority section.",
       suggestedColumnNames: ["Priority", "Phase", "Implementation Priority"],
-      exampleValues: ["High", "Medium", "Low"]
+      exampleValues: ["High", "Medium", "Low"],
     });
   }
 
@@ -1038,9 +1334,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.highPriority.push({
       field: "Equipment Covered",
       priority: "high",
-      whyItMatters: "Improves Project Summary, Existing System Description and Technical Specifications.",
+      whyItMatters:
+        "Improves Project Summary, Existing System Description and Technical Specifications.",
       suggestedColumnNames: ["Equipment Covered", "Asset", "Machine"],
-      exampleValues: ["AHU-1", "Chiller 2"]
+      exampleValues: ["AHU-1", "Chiller 2"],
     });
   }
 
@@ -1048,9 +1345,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.highPriority.push({
       field: "Baseline / Existing Condition",
       priority: "high",
-      whyItMatters: "Crucial for describing the current state before the proposed measure.",
+      whyItMatters:
+        "Crucial for describing the current state before the proposed measure.",
       suggestedColumnNames: ["Baseline", "Existing Condition", "Notes"],
-      exampleValues: ["Old 15W CFL bulbs currently installed"]
+      exampleValues: ["Old 15W CFL bulbs currently installed"],
     });
   }
 
@@ -1058,9 +1356,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.mediumPriority.push({
       field: "Location",
       priority: "medium",
-      whyItMatters: "Improves the project summary and implementation planning sections.",
+      whyItMatters:
+        "Improves the project summary and implementation planning sections.",
       suggestedColumnNames: ["Location", "Plant Room", "Floor"],
-      exampleValues: ["AHU Room", "Ground Floor"]
+      exampleValues: ["AHU Room", "Ground Floor"],
     });
   }
 
@@ -1069,8 +1368,12 @@ function generateRecommendations(mappedColumns) {
       field: "Implementation Duration",
       priority: "medium",
       whyItMatters: "Improves the implementation roadmap section.",
-      suggestedColumnNames: ["Implementation Duration", "Project Lead Time", "Timeline"],
-      exampleValues: ["2 weeks", "3 months"]
+      suggestedColumnNames: [
+        "Implementation Duration",
+        "Project Lead Time",
+        "Timeline",
+      ],
+      exampleValues: ["2 weeks", "3 months"],
     });
   }
 
@@ -1078,9 +1381,10 @@ function generateRecommendations(mappedColumns) {
     recommendations.mediumPriority.push({
       field: "CO2 Reduction",
       priority: "medium",
-      whyItMatters: "Highlights environmental impact. (If not provided, the system will try to calculate it).",
+      whyItMatters:
+        "Highlights environmental impact. (If not provided, the system will try to calculate it).",
       suggestedColumnNames: ["CO2 Reduction", "tCO2/year", "Carbon Saving"],
-      exampleValues: ["15.5", "120"]
+      exampleValues: ["15.5", "120"],
     });
   }
 
@@ -1090,27 +1394,29 @@ function generateRecommendations(mappedColumns) {
       priority: "medium",
       whyItMatters: "Explains the engineering logic behind the savings.",
       suggestedColumnNames: ["Rationale", "Saving Principle"],
-      exampleValues: ["VFD optimizes part load efficiency"]
+      exampleValues: ["VFD optimizes part load efficiency"],
     });
   }
 
   recommendations.optional.push({
     field: "Additional Fields",
     priority: "optional",
-    whyItMatters: "Adding fields like 'Case study reference', 'Measurement data', or 'Implementation risks' will enhance report depth.",
+    whyItMatters:
+      "Adding fields like 'Case study reference', 'Measurement data', or 'Implementation risks' will enhance report depth.",
     suggestedColumnNames: [],
-    exampleValues: []
+    exampleValues: [],
   });
 
   return recommendations;
 }
 
 function classifyUploadedFile(detectedColumns = []) {
-  const headers = detectedColumns.map(h => String(h).toLowerCase());
+  const headers = detectedColumns.map((h) => String(h).toLowerCase());
 
-  const hasAny = (keywords) => keywords.some(keyword =>
-    headers.some(header => header.includes(keyword))
-  );
+  const hasAny = (keywords) =>
+    keywords.some((keyword) =>
+      headers.some((header) => header.includes(keyword))
+    );
 
   const hasProjectHeaders = hasAny([
     "project name",
@@ -1118,7 +1424,7 @@ function classifyUploadedFile(detectedColumns = []) {
     "ecm",
     "measure",
     "recommendation",
-    "proposal"
+    "proposal",
   ]);
 
   const hasFinancialHeaders = hasAny([
@@ -1127,50 +1433,47 @@ function classifyUploadedFile(detectedColumns = []) {
     "annual saving",
     "payback",
     "cost saving",
-    "kwh saving"
+    "kwh saving",
   ]);
 
   if (hasProjectHeaders && hasFinancialHeaders) {
     return "ecm_project_sheet";
   }
 
-  if (hasAny([
-    "name of equipment",
-    "m/c no",
-    "make",
-    "type/model",
-    "capacity",
-    "connected load",
-    "rpm",
-    "section",
-    "location",
-    "equipment"
-  ])) {
+  if (
+    hasAny([
+      "name of equipment",
+      "m/c no",
+      "make",
+      "type/model",
+      "capacity",
+      "connected load",
+      "rpm",
+      "section",
+      "location",
+      "equipment",
+    ])
+  ) {
     return "equipment_master";
   }
 
-  if (hasAny([
-    "machine units",
-    "chiller units",
-    "cooling tower units",
-    "ahu units",
-    "total units",
-    "m/c u/kg",
-    "utility u/kg",
-    "production kg",
-    "month"
-  ])) {
+  if (
+    hasAny([
+      "machine units",
+      "chiller units",
+      "cooling tower units",
+      "ahu units",
+      "total units",
+      "m/c u/kg",
+      "utility u/kg",
+      "production kg",
+      "month",
+    ])
+  ) {
     return "energy_consumption_data";
   }
 
-  if (hasAny([
-    "load",
-    "kw",
-    "tr",
-    "phase",
-    "voltage",
-    "specification"
-  ])) {
+  if (hasAny(["load", "kw", "tr", "phase", "voltage", "specification"])) {
     return "specification_data";
   }
 
@@ -1202,7 +1505,7 @@ async function validateExcelBuffer(file) {
       implementationDuration: "",
       co2Reduction: "",
       rationale: "",
-      baselineDetails: ""
+      baselineDetails: "",
     },
     projectRowsDetected: 0,
     criticalIssues: [],
@@ -1227,14 +1530,23 @@ async function validateExcelBuffer(file) {
         const values = row.values || [];
         const mapping = mappedColumnsFromRow(values);
         const score = Object.keys(mapping.mappedColumns).length;
-        if (score > (localBest?.score || 0) || (mapping.detectedColumns.length > (localBest?.detectedColumns?.length || 0))) {
+        if (
+          score > (localBest?.score || 0) ||
+          mapping.detectedColumns.length >
+            (localBest?.detectedColumns?.length || 0)
+        ) {
           localBest = { worksheet, rowNumber, score, ...mapping };
         }
       });
 
       if (!localBest) return;
       sheetHeaders.push(localBest);
-      if (!bestHeader || localBest.score > bestHeader.score || (!bestHeader.score && localBest.detectedColumns.length > bestHeader.detectedColumns.length)) {
+      if (
+        !bestHeader ||
+        localBest.score > bestHeader.score ||
+        (!bestHeader.score &&
+          localBest.detectedColumns.length > bestHeader.detectedColumns.length)
+      ) {
         bestHeader = localBest;
       }
     });
@@ -1243,31 +1555,39 @@ async function validateExcelBuffer(file) {
       result.errors.push("No usable header row was detected.");
       result.criticalIssues.push("No usable header row was detected.");
       result.status = "error";
-      result.professionalSummary = "Excel validation failed. The file could not be parsed.";
+      result.professionalSummary =
+        "Excel validation failed. The file could not be parsed.";
       return result;
     }
 
     result.headerRow = bestHeader.rowNumber;
     result.detectedColumns = bestHeader.detectedColumns;
-    result.mappedColumns = { ...result.mappedColumns, ...bestHeader.mappedColumns };
+    result.mappedColumns = {
+      ...result.mappedColumns,
+      ...bestHeader.mappedColumns,
+    };
     result.role = classifyUploadedFile(result.detectedColumns);
 
     if (result.role !== "ecm_project_sheet") {
       result.status = "accepted_supporting_file";
       result.canGenerate = false;
-      
-      switch(result.role) {
+
+      switch (result.role) {
         case "equipment_master":
-          result.professionalSummary = "Equipment master detected. Used as supporting context.";
+          result.professionalSummary =
+            "Equipment master detected. Used as supporting context.";
           break;
         case "energy_consumption_data":
-          result.professionalSummary = "Energy consumption data detected. Used for energy profile and supporting analysis.";
+          result.professionalSummary =
+            "Energy consumption data detected. Used for energy profile and supporting analysis.";
           break;
         case "specification_data":
-          result.professionalSummary = "Technical specification data detected. Used as supporting context.";
+          result.professionalSummary =
+            "Technical specification data detected. Used as supporting context.";
           break;
         default:
-          result.professionalSummary = "Supporting file detected. Used as narrative context only.";
+          result.professionalSummary =
+            "Supporting file detected. Used as narrative context only.";
       }
       return result;
     }
@@ -1277,7 +1597,9 @@ async function validateExcelBuffer(file) {
     for (const header of sheetHeaders) {
       if (!header.mappedColumns.projectTitle) continue;
       const projectColumnIndex = Number(
-        Object.entries(header.mappedByIndex).find(([, field]) => field === "projectTitle")?.[0]
+        Object.entries(header.mappedByIndex).find(
+          ([, field]) => field === "projectTitle"
+        )?.[0]
       );
       header.worksheet.eachRow((row, rowNumber) => {
         if (rowNumber <= header.rowNumber) return;
@@ -1291,14 +1613,14 @@ async function validateExcelBuffer(file) {
     let readinessScore = 0;
     if (result.mappedColumns.projectTitle) readinessScore += 20;
     if (
-      result.mappedColumns.investment || 
-      result.mappedColumns.annualSaving || 
-      result.mappedColumns.energySaving || 
+      result.mappedColumns.investment ||
+      result.mappedColumns.annualSaving ||
+      result.mappedColumns.energySaving ||
       result.mappedColumns.payback
     ) {
       readinessScore += 20;
     }
-    
+
     if (result.mappedColumns.energySaving) readinessScore += 15;
     if (result.mappedColumns.annualSaving) readinessScore += 15;
     if (result.mappedColumns.investment) readinessScore += 10;
@@ -1307,19 +1629,26 @@ async function validateExcelBuffer(file) {
     if (result.mappedColumns.priority) readinessScore += 3;
     if (result.mappedColumns.location) readinessScore += 1;
     if (result.mappedColumns.co2Reduction) readinessScore += 1;
-    
+
     result.readinessScore = Math.min(100, readinessScore);
 
     const hasProjectColumn = !!result.mappedColumns.projectTitle;
-    const hasUsableMetric = ["investment", "annualSaving", "energySaving", "payback"].some(
-      (field) => !!result.mappedColumns[field]
-    );
+    const hasUsableMetric = [
+      "investment",
+      "annualSaving",
+      "energySaving",
+      "payback",
+    ].some((field) => !!result.mappedColumns[field]);
 
     if (!hasProjectColumn) {
-      result.criticalIssues.push("Project / ECM / Measure / Recommendation column is missing.");
+      result.criticalIssues.push(
+        "Project / ECM / Measure / Recommendation column is missing."
+      );
     }
     if (!hasUsableMetric) {
-      result.criticalIssues.push("At least one financial/saving column (Investment, Annual Saving, Energy Saving, or Payback) is missing.");
+      result.criticalIssues.push(
+        "At least one financial/saving column (Investment, Annual Saving, Energy Saving, or Payback) is missing."
+      );
     }
     if (result.projectRowsDetected === 0) {
       result.criticalIssues.push("No project/ECM data rows were detected.");
@@ -1340,8 +1669,12 @@ async function validateExcelBuffer(file) {
     if (result.criticalIssues.length > 0) {
       result.status = "error";
       result.canGenerate = false;
-      result.professionalSummary = "Excel validation failed. The file does not contain enough project/ECM data for report generation.";
-    } else if (result.readinessScore < 80 || result.highPriorityRecommendations.length > 0) {
+      result.professionalSummary =
+        "Excel validation failed. The file does not contain enough project/ECM data for report generation.";
+    } else if (
+      result.readinessScore < 80 ||
+      result.highPriorityRecommendations.length > 0
+    ) {
       result.status = "warning";
       result.canGenerate = true;
       result.professionalSummary = `Your Excel file is usable for report generation. ${result.projectRowsDetected} project/ECM rows were detected. However, adding the missing recommended fields below will improve the quality of the Executive Summary, Project Grouping and Project Chapter sections.`;
@@ -1353,8 +1686,11 @@ async function validateExcelBuffer(file) {
 
     return result;
   } catch (error) {
-    result.errors.push(`File is unreadable as an Excel workbook: ${error.message}`);
-    result.professionalSummary = "Excel validation failed due to file reading error.";
+    result.errors.push(
+      `File is unreadable as an Excel workbook: ${error.message}`
+    );
+    result.professionalSummary =
+      "Excel validation failed due to file reading error.";
     return result;
   }
 }
@@ -1406,17 +1742,19 @@ function reportEndpoints(app) {
           versionHistory,
         } = reqBody(request);
         if (!name || !prompt) {
-          return response.status(400).json({ error: "Name and Prompt are required fields." });
+          return response
+            .status(400)
+            .json({ error: "Name and Prompt are required fields." });
         }
 
         const template = await prisma.report_templates.create({
           data: {
             name,
-            slug:         slug         || null,
+            slug: slug || null,
             prompt,
-            model:        model        || null,
-            rules:        rules        || null,
-            jsonSchema:   jsonSchema   || null,
+            model: model || null,
+            rules: rules || null,
+            jsonSchema: jsonSchema || null,
             reportFormat: reportFormat || null,
             componentPath: componentPath || null,
             status: status || "active",
@@ -1465,29 +1803,49 @@ function reportEndpoints(app) {
           versionHistory,
         } = reqBody(request);
 
-        const exists = await prisma.report_templates.findFirst({ where: { id } });
+        const exists = await prisma.report_templates.findFirst({
+          where: { id },
+        });
         if (!exists) return response.sendStatus(404).end();
 
         const template = await prisma.report_templates.update({
           where: { id },
           data: {
-            name:         name         !== undefined ? name         : exists.name,
-            slug:         slug         !== undefined ? slug         : exists.slug,
-            prompt:       prompt       !== undefined ? prompt       : exists.prompt,
-            model:        model        !== undefined ? model        : exists.model,
-            rules:        rules        !== undefined ? rules        : exists.rules,
-            jsonSchema:   jsonSchema   !== undefined ? jsonSchema   : exists.jsonSchema,
-            reportFormat: reportFormat !== undefined ? reportFormat : exists.reportFormat,
-            componentPath: componentPath !== undefined ? componentPath : exists.componentPath,
+            name: name !== undefined ? name : exists.name,
+            slug: slug !== undefined ? slug : exists.slug,
+            prompt: prompt !== undefined ? prompt : exists.prompt,
+            model: model !== undefined ? model : exists.model,
+            rules: rules !== undefined ? rules : exists.rules,
+            jsonSchema:
+              jsonSchema !== undefined ? jsonSchema : exists.jsonSchema,
+            reportFormat:
+              reportFormat !== undefined ? reportFormat : exists.reportFormat,
+            componentPath:
+              componentPath !== undefined
+                ? componentPath
+                : exists.componentPath,
             status: status !== undefined ? status : exists.status,
-            showInPublic: showInPublic !== undefined ? !!showInPublic : exists.showInPublic,
-            publicBadge: publicBadge !== undefined ? publicBadge : exists.publicBadge,
+            showInPublic:
+              showInPublic !== undefined ? !!showInPublic : exists.showInPublic,
+            publicBadge:
+              publicBadge !== undefined ? publicBadge : exists.publicBadge,
             category: category !== undefined ? category : exists.category,
-            allowedFileTypes: allowedFileTypes !== undefined ? allowedFileTypes : exists.allowedFileTypes,
-            outputFormats: outputFormats !== undefined ? outputFormats : exists.outputFormats,
-            inputRules: inputRules !== undefined ? inputRules : exists.inputRules,
-            sampleData: sampleData !== undefined ? sampleData : exists.sampleData,
-            versionHistory: versionHistory !== undefined ? versionHistory : exists.versionHistory,
+            allowedFileTypes:
+              allowedFileTypes !== undefined
+                ? allowedFileTypes
+                : exists.allowedFileTypes,
+            outputFormats:
+              outputFormats !== undefined
+                ? outputFormats
+                : exists.outputFormats,
+            inputRules:
+              inputRules !== undefined ? inputRules : exists.inputRules,
+            sampleData:
+              sampleData !== undefined ? sampleData : exists.sampleData,
+            versionHistory:
+              versionHistory !== undefined
+                ? versionHistory
+                : exists.versionHistory,
           },
         });
         response.status(200).json({ template });
@@ -1505,7 +1863,9 @@ function reportEndpoints(app) {
     async (request, response) => {
       try {
         const id = parseInt(request.params.id);
-        const exists = await prisma.report_templates.findFirst({ where: { id } });
+        const exists = await prisma.report_templates.findFirst({
+          where: { id },
+        });
         if (!exists) return response.sendStatus(404).end();
 
         await prisma.report_templates.delete({ where: { id } });
@@ -1540,12 +1900,12 @@ function reportEndpoints(app) {
         });
 
         const publicTemplates = templates.map((t) => ({
-          id:           t.id,
-          slug:         t.slug,
-          name:         t.name,
-          status:       t.status,
-          publicBadge:  t.publicBadge,
-          category:     t.category,
+          id: t.id,
+          slug: t.slug,
+          name: t.name,
+          status: t.status,
+          publicBadge: t.publicBadge,
+          category: t.category,
           allowedFileTypes: t.allowedFileTypes,
           outputFormats: t.outputFormats,
         }));
@@ -1574,33 +1934,45 @@ function reportEndpoints(app) {
       try {
         const debugCollector = createPipelineDebugCollector({
           reportType: "upload",
-          generationMode: "upload"
+          generationMode: "upload",
         });
-        
+
         debugCollector.addBlock({
           id: "upload_validation",
           title: "Upload Validation",
           status: "completed",
           startedAt: new Date().toISOString(),
           finishedAt: new Date().toISOString(),
-          durationMs: 0
+          durationMs: 0,
         });
 
         console.log("[UPLOAD] request received");
         console.log("[UPLOAD] content-type:", request.headers["content-type"]);
-        console.log("[UPLOAD] files:", request.file ? [{
-          originalname: request.file.originalname,
-          mimetype: request.file.mimetype,
-          size: request.file.size
-        }] : "no files");
+        console.log(
+          "[UPLOAD] files:",
+          request.file
+            ? [
+                {
+                  originalname: request.file.originalname,
+                  mimetype: request.file.mimetype,
+                  size: request.file.size,
+                },
+              ]
+            : "no files"
+        );
 
-        const { originalname, path: uploadedPath, size, mimetype } = request.file;
+        const {
+          originalname,
+          path: uploadedPath,
+          size,
+          mimetype,
+        } = request.file;
         const ext = path.extname(originalname).toLowerCase();
 
         const fileSummary = {
           originalName: originalname,
           storedName: uploadedPath,
-          fileType: ext.replace('.', ''),
+          fileType: ext.replace(".", ""),
           mimeType: mimetype,
           sizeBytes: size,
           uploadStatus: "success",
@@ -1610,7 +1982,7 @@ function reportEndpoints(app) {
           sheetsDetected: 0,
           rowsDetected: 0,
           warnings: [],
-          errors: []
+          errors: [],
         };
 
         const ACCEPTED_EXTENSIONS = [
@@ -1625,14 +1997,14 @@ function reportEndpoints(app) {
           ".jpg",
           ".jpeg",
           ".png",
-          ".webp"
+          ".webp",
         ];
-        
+
         fileSummary.parserUsed = "direct_upload";
         fileSummary.parserReason = "validation_removed";
         debugCollector.data.inputSummary.files.push(fileSummary);
         debugCollector.finalize();
-        
+
         return response.status(200).json({
           success: true,
           location: uploadedPath || originalname,
@@ -1641,7 +2013,7 @@ function reportEndpoints(app) {
           mimetype,
           parsingStatus: "uploaded",
           token_count_estimate: 0,
-          pipelineDebug: debugCollector.data
+          pipelineDebug: debugCollector.data,
         });
       } catch (e) {
         console.error(e.message, e);
@@ -1683,48 +2055,84 @@ function reportEndpoints(app) {
                   missingRecommendedColumns: [],
                   warnings: [],
                   errors: [],
-                  professionalSummary: "Supporting file detected. Used as narrative context only."
+                  professionalSummary:
+                    "Supporting file detected. Used as narrative context only.",
                 };
               }
               return await validateExcelBuffer(file);
             })
           );
 
-          const projectFileFound = validations.some(v => v.status === "accepted_project_file" || v.status === "warning" || v.status === "valid");
-          const supportingFilesCount = validations.filter(v => v.status === "accepted_supporting_file").length;
-          const canGenerateReport = projectFileFound || supportingFilesCount > 0;
+          const projectFileFound = validations.some(
+            (v) =>
+              v.status === "accepted_project_file" ||
+              v.status === "warning" ||
+              v.status === "valid"
+          );
+          const supportingFilesCount = validations.filter(
+            (v) => v.status === "accepted_supporting_file"
+          ).length;
+          const canGenerateReport =
+            projectFileFound || supportingFilesCount > 0;
 
-          const debugCollector = createPipelineDebugCollector({ reportType: "validation", generationMode: "upload" });
-          debugCollector.addBlock({ id: "parser_selection", title: "Parser Selection", status: "completed" });
-          debugCollector.addBlock({ id: "file_extraction", title: "File Extraction", status: "completed" });
-          debugCollector.addBlock({ id: "excel_sheet_detection", title: "Excel Sheet Detection", status: "completed" });
-          debugCollector.addBlock({ id: "ecm_row_detection", title: "ECM Row Detection", status: "completed" });
+          const debugCollector = createPipelineDebugCollector({
+            reportType: "validation",
+            generationMode: "upload",
+          });
+          debugCollector.addBlock({
+            id: "parser_selection",
+            title: "Parser Selection",
+            status: "completed",
+          });
+          debugCollector.addBlock({
+            id: "file_extraction",
+            title: "File Extraction",
+            status: "completed",
+          });
+          debugCollector.addBlock({
+            id: "excel_sheet_detection",
+            title: "Excel Sheet Detection",
+            status: "completed",
+          });
+          debugCollector.addBlock({
+            id: "ecm_row_detection",
+            title: "ECM Row Detection",
+            status: "completed",
+          });
 
           validations.forEach((v) => {
             debugCollector.data.inputSummary.files.push({
               fileName: v.filename,
-              parserUsed: v.parserUsed || (v.fileType === "excel" ? "ecm_xlsx_parser" : "unstructured"),
+              parserUsed:
+                v.parserUsed ||
+                (v.fileType === "excel" ? "ecm_xlsx_parser" : "unstructured"),
               status: v.status,
               role: v.role,
               warnings: v.warnings || [],
-              errors: v.errors || []
+              errors: v.errors || [],
             });
 
             if (v.status !== "accepted_supporting_file") {
-              debugCollector.data.inputSummary.sheetsDetected += (v.sheets || []).length;
-              debugCollector.data.inputSummary.ecmRowsFound += (v.projectRowsDetected || 0);
-              debugCollector.data.inputSummary.extractedFieldsCount += Object.keys(v.mappedColumns || {}).length;
-              debugCollector.data.inputSummary.missingFields.push(...(v.missingRequiredColumns || []));
-              
-              (v.sheets || []).forEach(sheetName => {
-                 debugCollector.data.inputSummary.sheetSummaries.push({
-                   sheetName,
-                   rowCount: v.projectRowsDetected || 0,
-                   columnCount: Object.keys(v.mappedColumns || {}).length,
-                   detectedPurpose: "ECM Data",
-                   ecmRowsFound: v.projectRowsDetected || 0,
-                   mappedColumns: Object.keys(v.mappedColumns || {})
-                 });
+              debugCollector.data.inputSummary.sheetsDetected += (
+                v.sheets || []
+              ).length;
+              debugCollector.data.inputSummary.ecmRowsFound +=
+                v.projectRowsDetected || 0;
+              debugCollector.data.inputSummary.extractedFieldsCount +=
+                Object.keys(v.mappedColumns || {}).length;
+              debugCollector.data.inputSummary.missingFields.push(
+                ...(v.missingRequiredColumns || [])
+              );
+
+              (v.sheets || []).forEach((sheetName) => {
+                debugCollector.data.inputSummary.sheetSummaries.push({
+                  sheetName,
+                  rowCount: v.projectRowsDetected || 0,
+                  columnCount: Object.keys(v.mappedColumns || {}).length,
+                  detectedPurpose: "ECM Data",
+                  ecmRowsFound: v.projectRowsDetected || 0,
+                  mappedColumns: Object.keys(v.mappedColumns || {}),
+                });
               });
             } else {
               debugCollector.data.inputSummary.supportingDataFound = "Yes";
@@ -1732,13 +2140,13 @@ function reportEndpoints(app) {
           });
           debugCollector.finalize();
 
-          return response.status(200).json({ 
-            success: true, 
+          return response.status(200).json({
+            success: true,
             files: validations,
             projectFileFound,
             supportingFilesCount,
             canGenerateReport,
-            pipelineDebug: debugCollector.data
+            pipelineDebug: debugCollector.data,
           });
         } catch (e) {
           console.error(e.message, e);
@@ -1758,10 +2166,14 @@ function reportEndpoints(app) {
     const timeoutPromise = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
     });
-    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+    return Promise.race([promise, timeoutPromise]).finally(() =>
+      clearTimeout(timer)
+    );
   };
 
-  const { extractLightweightExcelData } = require("../services/lightweightExcelExtractor");
+  const {
+    extractLightweightExcelData,
+  } = require("../services/lightweightExcelExtractor");
 
   function getUploadedFilesFromPayload(body) {
     if (body.uploadedFiles) return body.uploadedFiles;
@@ -1782,6 +2194,27 @@ function reportEndpoints(app) {
   }
 
   function buildLightweightReportData(projects, reportDetails) {
+    const { buildProjectGroups } = require("../services/llmProviderService");
+    
+    // Map lightweight properties to expected fields for classification engine
+    const mappedProjects = projects.map((p, i) => ({
+      ...p,
+      projectNo: p.ecmNo || `ECM ${i + 1}`,
+      title: p.description || `Project ${i + 1}`,
+      system: p.system || "Other",
+      projectTitle: p.description,
+      energySaving: Number(p.energySaving) || 0,
+      annualSaving: Number(p.annualSaving) || 0,
+      investment: Number(p.investment) || 0,
+      payback: Number(p.payback) || 0,
+      estimatedInvestment: Number(p.investment) || 0,
+      expectedAnnualCostSaving: Number(p.annualSaving) || 0,
+      expectedEnergySaving: Number(p.energySaving) || 0,
+      simplePaybackPeriod: Number(p.payback) || 0,
+    }));
+
+    const grouped = buildProjectGroups(mappedProjects);
+
     return {
       reportInfo: {
         clientName: reportDetails.clientName || "Client Name",
@@ -1790,23 +2223,8 @@ function reportEndpoints(app) {
         auditPeriod: reportDetails.auditPeriod || "Audit Period",
         reportDate: reportDetails.reportDate || new Date().toISOString(),
       },
-      groupedProjects: [
-        {
-          groupId: "ecm_projects",
-          groupTitle: "Energy Conservation Measures",
-          projects: projects.map((p, i) => ({
-            id: `ecm-${i+1}`,
-            title: p.description || `Project ${i+1}`,
-            description: p.description || "",
-            system: p.system || "Other",
-            energySaving: Number(p.energySaving) || 0,
-            annualSaving: Number(p.annualSaving) || 0,
-            investment: Number(p.investment) || 0,
-            payback: Number(p.payback) || 0,
-          })),
-        },
-      ],
-      projects: projects, // fallback
+      groupedProjects: grouped,
+      projects: mappedProjects, // fallback
     };
   }
 
@@ -1816,7 +2234,7 @@ function reportEndpoints(app) {
       originalName: file.originalName || file.name || file.filename,
       sizeBytes: file.sizeBytes || file.size || 0,
       mimeType: file.mimeType || file.mimetype || file.type || "unknown",
-      fileType: file.fileType || "unknown"
+      fileType: file.fileType || "unknown",
     }));
   }
 
@@ -1831,14 +2249,14 @@ function reportEndpoints(app) {
       console.error("[DB_SAVE_WARNING] generated_reports.create failed:", {
         message: error?.message || String(error),
         code: error?.code,
-        meta: error?.meta
+        meta: error?.meta,
       });
 
       return {
         id: `temp_${Date.now()}`,
         isTemporary: true,
         dbSaveFailed: true,
-        dbSaveError: error?.message || String(error)
+        dbSaveError: error?.message || String(error),
       };
     }
   }
@@ -1856,14 +2274,16 @@ function reportEndpoints(app) {
         const templateId = body.templateId || body.template_id;
 
         if (!templateId) {
-          return response.status(400).json({ error: "template_id is a required field." });
+          return response
+            .status(400)
+            .json({ error: "template_id is a required field." });
         }
 
         // 1. Get user session (lightweight)
         let user = null;
         try {
-           user = await userFromSession(request, response);
-        } catch(e) {}
+          user = await userFromSession(request, response);
+        } catch (e) {}
 
         // 2. Select MAX 3 Excel files only
         const excelFiles = sortExcelFilesByPriority(uploadedFiles).slice(0, 3);
@@ -1872,41 +2292,60 @@ function reportEndpoints(app) {
 
         // 3. Fast deterministic extraction loop with hard timeout
         for (const file of excelFiles) {
-          const filePath = path.resolve(__dirname, "../../storage", file.location);
+          const filePath = path.resolve(
+            __dirname,
+            "../../storage",
+            file.location
+          );
           if (!fs.existsSync(filePath)) continue;
 
           try {
-             // 5 SECOND MAX TIMEOUT PER FILE
-             const extraction = await withTimeout(
-               Promise.resolve(extractLightweightExcelData(filePath, file)),
-               5000,
-               `Extraction timed out for ${file.filename}`
-             );
+            // 5 SECOND MAX TIMEOUT PER FILE
+            const extraction = await withTimeout(
+              Promise.resolve(extractLightweightExcelData(filePath, file)),
+              5000,
+              `Extraction timed out for ${file.filename}`
+            );
 
-             extractionAttempts.push({
-               filename: file.filename,
-               status: extraction.success ? "success" : "failed",
-               projectsFound: extraction.projectCount || 0
-             });
+            extractionAttempts.push({
+              filename: file.filename,
+              status: extraction.success ? "success" : "failed",
+              projectsFound: extraction.projectCount || 0,
+            });
 
-             if (extraction.success && extraction.projects && extraction.projects.length > 0) {
-               extractedProjects = [...extractedProjects, ...extraction.projects];
-             }
-          } catch(e) {
-             extractionAttempts.push({ filename: file.filename, status: "timeout or error", error: e.message });
+            if (
+              extraction.success &&
+              extraction.projects &&
+              extraction.projects.length > 0
+            ) {
+              extractedProjects = [
+                ...extractedProjects,
+                ...extraction.projects,
+              ];
+            }
+          } catch (e) {
+            extractionAttempts.push({
+              filename: file.filename,
+              status: "timeout or error",
+              error: e.message,
+            });
           }
         }
 
         // 4. Require at least one project for success
         if (extractedProjects.length === 0) {
-           return response.status(422).json({
-             error: "No ECM projects could be extracted from the provided Excel files. Please check file format.",
-             extractionAttempts
-           });
+          return response.status(422).json({
+            error:
+              "No ECM projects could be extracted from the provided Excel files. Please check file format.",
+            extractionAttempts,
+          });
         }
 
         // 5. Build rigid data structure instantly
-        const reportData = buildLightweightReportData(extractedProjects, reportDetails);
+        const reportData = buildLightweightReportData(
+          extractedProjects,
+          reportDetails
+        );
 
         // 6. Save fast record to DB safely
         const reportRecordData = {
@@ -1918,10 +2357,13 @@ function reportEndpoints(app) {
           outputContent: JSON.stringify(reportData || {}),
           userId: user?.id || null,
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         };
 
-        const reportRecord = await safeCreateGeneratedReport(prisma, reportRecordData);
+        const reportRecord = await safeCreateGeneratedReport(
+          prisma,
+          reportRecordData
+        );
 
         // 7. Return immediately. DO NOT CALL DOCX EXPORT OR AI.
         return response.json({
@@ -1938,7 +2380,7 @@ function reportEndpoints(app) {
           extractionAttempts,
           aiEnhancementStatus: {
             status: "not_started",
-            reason: "AI enhancement is optional after deterministic preview."
+            reason: "AI enhancement is optional after deterministic preview.",
           },
           elapsedMs: Date.now() - startedAt,
           report: {
@@ -1946,9 +2388,8 @@ function reportEndpoints(app) {
             status: "ready",
             outputContent: JSON.stringify(reportData),
             providerUsed: "deterministic",
-          }
+          },
         });
-
       } catch (err) {
         console.error("Generate Flow Error:", err);
         return response.status(500).json({ error: err.message });
@@ -1977,14 +2418,18 @@ function reportEndpoints(app) {
         }
 
         if (report.template?.slug !== "commercial-building-energy-audit") {
-          return response.status(400).json({ error: "DOCX export not supported for this template yet." });
+          return response.status(400).json({
+            error: "DOCX export not supported for this template yet.",
+          });
         }
 
         let reportData = {};
         try {
           reportData = JSON.parse(report.outputContent);
         } catch (e) {
-          return response.status(400).json({ error: "Report content is not valid JSON." });
+          return response
+            .status(400)
+            .json({ error: "Report content is not valid JSON." });
         }
 
         reportData = normalizeReportForExport(reportData);
@@ -1993,24 +2438,30 @@ function reportEndpoints(app) {
         const qcResult = runReportQC(reportData);
         const accuracyResult = calculateReportAccuracyScore(reportData);
         const allowDraft = request.query.allowDraft === "true";
-        const isDev = process.env.NODE_ENV === "development" || process.env.VITE_ALLOW_DRAFT_EXPORT === "true";
+        const isDev =
+          process.env.NODE_ENV === "development" ||
+          process.env.VITE_ALLOW_DRAFT_EXPORT === "true";
 
         console.log("[EXPORT QC CHECK]", {
-          validEcms: qcResult.summary.validEcmCount ?? qcResult.summary.projectCount,
+          validEcms:
+            qcResult.summary.validEcmCount ?? qcResult.summary.projectCount,
           groups: qcResult.summary.groupCount,
           duplicateTitles: qcResult.summary.duplicateTitleCount,
           invalidTitles: qcResult.summary.invalidTitleCount,
           hardErrors: qcResult.summary.hardErrorCount,
           warnings: qcResult.summary.warningCount,
           requiredReview: !qcResult.qcPassed,
-          shouldBlockExport: !qcResult.qcPassed
+          shouldBlockExport: !qcResult.qcPassed,
         });
 
         if (!qcResult.qcPassed || !accuracyResult.passed) {
-          console.error(`[QC FAILED] Report ID: ${id}`, JSON.stringify({ qcResult, accuracyResult }, null, 2));
+          console.error(
+            `[QC FAILED] Report ID: ${id}`,
+            JSON.stringify({ qcResult, accuracyResult }, null, 2)
+          );
           if (!(allowDraft && isDev)) {
-            return response.status(400).json({ 
-              qcFailed: true, 
+            return response.status(400).json({
+              qcFailed: true,
               error: !qcResult.qcPassed
                 ? "Report requires review before final export."
                 : "Report accuracy score is below the required threshold for final export.",
@@ -2021,7 +2472,9 @@ function reportEndpoints(app) {
         }
 
         if (allowDraft && isDev && reportData.reportInfo) {
-          reportData.reportInfo.clientName = "[DRAFT - QC REVIEW REQUIRED] " + (reportData.reportInfo.clientName || "");
+          reportData.reportInfo.clientName =
+            "[DRAFT - QC REVIEW REQUIRED] " +
+            (reportData.reportInfo.clientName || "");
         }
 
         const exportReport = stripDebugMetadata(reportData);
@@ -2030,15 +2483,27 @@ function reportEndpoints(app) {
         try {
           buffer = await buildCommercialBuildingEnergyAuditDocx(exportReport);
         } catch (docxError) {
-          console.error(`[DOCX EXPORT FAILED] Report ID: ${id}`, docxError.stack || docxError);
+          console.error(
+            `[DOCX EXPORT FAILED] Report ID: ${id}`,
+            docxError.stack || docxError
+          );
           throw docxError;
         }
-        
-        const clientName = reportData.reportInfo?.clientName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || "client";
+
+        const clientName =
+          reportData.reportInfo?.clientName
+            ?.replace(/[^a-z0-9]/gi, "_")
+            .toLowerCase() || "client";
         const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
 
-        response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${filename}"`
+        );
+        response.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
         response.send(buffer);
       } catch (e) {
         console.error(e.stack || e.message, e);
@@ -2051,27 +2516,25 @@ function reportEndpoints(app) {
     try {
       const reportId = req.params.reportId || req.body.reportId || null;
 
-      const reportData =
-        req.body.reportData ||
-        req.body.previewData ||
-        null;
+      const reportData = req.body.reportData || req.body.previewData || null;
 
       if (!reportData) {
         return res.status(422).json({
           success: false,
-          error: "AI enhancement requires reportData."
+          error: "AI enhancement requires reportData.",
         });
       }
 
       const projectCount = (reportData.groups || []).reduce(
-        (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
+        (sum, group) =>
+          sum + (Array.isArray(group.projects) ? group.projects.length : 0),
         0
       );
 
       if (projectCount <= 0) {
         return res.status(422).json({
           success: false,
-          error: "AI enhancement requires at least one extracted project."
+          error: "AI enhancement requires at least one extracted project.",
         });
       }
 
@@ -2081,8 +2544,8 @@ function reportEndpoints(app) {
           reportId,
           reportData,
           providerOptions: {
-            forceJson: true
-          }
+            forceJson: true,
+          },
         });
       } else {
         throw new Error("AI Enhancement module is disabled or not found.");
@@ -2094,9 +2557,9 @@ function reportEndpoints(app) {
         reportData: result.reportData || reportData,
         previewData: result.reportData || reportData,
         aiEnhancementStatus: result.aiEnhancementStatus || {
-          status: "success"
+          status: "success",
         },
-        providerAttempts: result.providerAttempts || []
+        providerAttempts: result.providerAttempts || [],
       });
     } catch (error) {
       console.error("[enhance-ai] failed:", error);
@@ -2111,15 +2574,15 @@ function reportEndpoints(app) {
           finalEnhancerUsed: "deterministic",
           failureReason: "ai_enhancement_error",
           developerMessage: error?.stack || error?.message || String(error),
-          userMessage: "AI enhancement could not be applied. Deterministic report is ready."
-        }
+          userMessage:
+            "AI enhancement could not be applied. Deterministic report is ready.",
+        },
       });
     }
   }
 
   app.post("/reports/enhance-ai", enhanceAiHandler);
   app.post("/reports/:reportId/enhance-ai", enhanceAiHandler);
-
 }
 
 module.exports = { reportEndpoints, extractAuthoritativeExcelProjects };

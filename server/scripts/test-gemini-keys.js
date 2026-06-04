@@ -6,10 +6,13 @@ const {
 } = require("../services/geminiProviderService");
 
 async function testKey(apiKey, keyIndex) {
-  const result = await generateWithGeminiUsingKey('Return JSON only: {"ok":true}', {
-    apiKey,
-    keyIndex,
-  });
+  const result = await generateWithGeminiUsingKey(
+    'Return JSON only: {"ok":true}',
+    {
+      apiKey,
+      keyIndex,
+    }
+  );
 
   if (result.success) {
     console.log(`Key ${keyIndex}: success`);

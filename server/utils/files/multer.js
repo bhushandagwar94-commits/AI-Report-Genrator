@@ -92,9 +92,9 @@ const pfpUploadStorage = multer.diskStorage({
  * @param {NextFunction} next
  */
 function handleFileUpload(request, response, next) {
-  const upload = multer({ 
+  const upload = multer({
     storage: fileUploadStorage,
-    limits: { fileSize: 100 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 },
   }).single("file");
   upload(request, response, function (err) {
     if (err) {
@@ -119,9 +119,9 @@ function handleFileUpload(request, response, next) {
  * @param {NextFunction} next
  */
 function handleAPIFileUpload(request, response, next) {
-  const upload = multer({ 
+  const upload = multer({
     storage: fileAPIUploadStorage,
-    limits: { fileSize: 100 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 },
   }).single("file");
   upload(request, response, function (err) {
     if (err) {

@@ -1,4 +1,6 @@
-require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../.env"),
+});
 
 async function callOpenRouterModel(model, messages, options = {}) {
   const controller = new AbortController();
@@ -6,22 +8,26 @@ async function callOpenRouterModel(model, messages, options = {}) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "SEE-Tech AI Report Generator (TEST)"
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.1,
-        max_tokens: 100
-      }),
-      signal: controller.signal
-    });
+    const response = await fetch(
+      process.env.OPENROUTER_BASE_URL ||
+        "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "http://localhost:3000",
+          "X-Title": "SEE-Tech AI Report Generator (TEST)",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.1,
+          max_tokens: 100,
+        }),
+        signal: controller.signal,
+      }
+    );
 
     const text = await response.text();
 
@@ -49,16 +55,22 @@ async function runTests() {
     process.exit(1);
   }
 
-  const modelsStr = process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "";
-  const models = modelsStr.split(",").map(m => m.trim()).filter(Boolean);
+  const modelsStr =
+    process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "";
+  const models = modelsStr
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
 
   if (models.length === 0) {
-    console.error("❌ Error: No OpenRouter models configured in OPENROUTER_MODELS or OPENROUTER_MODEL.");
+    console.error(
+      "❌ Error: No OpenRouter models configured in OPENROUTER_MODELS or OPENROUTER_MODEL."
+    );
     process.exit(1);
   }
 
   console.log(`Found ${models.length} model(s) to test:`, models);
-  
+
   const messages = [{ role: "user", content: 'Return JSON only: {"ok":true}' }];
 
   for (const model of models) {

@@ -10,7 +10,7 @@ const fs = require("fs");
  */
 function extractLightweightExcelData(filePath, file) {
   const fileName = file?.filename || path.basename(filePath);
-  
+
   if (!filePath || !fs.existsSync(filePath)) {
     return { success: false, error: "File not found", fileName };
   }
@@ -53,7 +53,7 @@ function extractLightweightExcelData(filePath, file) {
     sheetNames,
     totalRows,
     projects,
-    projectCount: projects.length
+    projectCount: projects.length,
   };
 }
 
@@ -67,16 +67,47 @@ function extractProjects(sheets) {
     const headerRowIdx = findHeaderRow(rows);
     if (headerRowIdx === -1) continue;
 
-    const headers = rows[headerRowIdx].map((h) => String(h).toLowerCase().trim());
+    const headers = rows[headerRowIdx].map((h) =>
+      String(h).toLowerCase().trim()
+    );
 
     const colIdx = {
-      ecmNo:        findCol(headers, ["ecm no", "ecm#", "sr no", "sr.", "no.", "sl no"]),
-      system:       findCol(headers, ["system", "energy system", "category"]),
-      description:  findCol(headers, ["description", "project", "measure", "recommendation", "ecm description"]),
-      energySaving: findCol(headers, ["energy saving", "energy saved", "kwh", "units saved"]),
-      annualSaving: findCol(headers, ["annual saving", "cost saving", "rs.", "inr", "annual cost"]),
-      investment:   findCol(headers, ["investment", "cost", "capital cost", "capex"]),
-      payback:      findCol(headers, ["payback", "simple payback", "spb"]),
+      ecmNo: findCol(headers, [
+        "ecm no",
+        "ecm#",
+        "sr no",
+        "sr.",
+        "no.",
+        "sl no",
+      ]),
+      system: findCol(headers, ["system", "energy system", "category"]),
+      description: findCol(headers, [
+        "description",
+        "project",
+        "measure",
+        "recommendation",
+        "ecm description",
+      ]),
+      energySaving: findCol(headers, [
+        "energy saving",
+        "energy saved",
+        "kwh",
+        "units saved",
+      ]),
+      annualSaving: findCol(headers, [
+        "annual saving",
+        "cost saving",
+        "rs.",
+        "inr",
+        "annual cost",
+      ]),
+      investment: findCol(headers, [
+        "investment",
+        "cost",
+        "capital cost",
+        "capex",
+      ]),
+      payback: findCol(headers, ["payback", "simple payback", "spb"]),
     };
 
     for (let i = headerRowIdx + 1; i < rows.length; i++) {
@@ -88,15 +119,15 @@ function extractProjects(sheets) {
       if (/^(total|sub.?total|grand total)/i.test(description)) continue;
 
       projects.push({
-        ecmNo:        getValue(row, colIdx.ecmNo) || String(projects.length + 1),
-        system:       getValue(row, colIdx.system) || "",
+        ecmNo: getValue(row, colIdx.ecmNo) || String(projects.length + 1),
+        system: getValue(row, colIdx.system) || "",
         description,
         energySaving: parseNum(getValue(row, colIdx.energySaving)),
         annualSaving: parseNum(getValue(row, colIdx.annualSaving)),
-        investment:   parseNum(getValue(row, colIdx.investment)),
-        payback:      parseNum(getValue(row, colIdx.payback)),
-        sourceSheet:  sheetName,
-        sourceRow:    i + 1,
+        investment: parseNum(getValue(row, colIdx.investment)),
+        payback: parseNum(getValue(row, colIdx.payback)),
+        sourceSheet: sheetName,
+        sourceRow: i + 1,
       });
     }
 
@@ -107,7 +138,15 @@ function extractProjects(sheets) {
 }
 
 function findHeaderRow(rows) {
-  const keywords = ["description", "project", "ecm", "saving", "investment", "system", "measure"];
+  const keywords = [
+    "description",
+    "project",
+    "ecm",
+    "saving",
+    "investment",
+    "system",
+    "measure",
+  ];
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const rowText = rows[i].join(" ").toLowerCase();
     const hits = keywords.filter((kw) => rowText.includes(kw)).length;

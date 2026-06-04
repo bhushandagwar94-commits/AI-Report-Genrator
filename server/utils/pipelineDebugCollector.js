@@ -22,7 +22,7 @@ function createPipelineDebugCollector(initial = {}) {
       extractedFieldsCount: 0,
       missingFields: [],
       warnings: [],
-      errors: []
+      errors: [],
     },
     dataStructuring: {
       rawRowsCount: 0,
@@ -35,8 +35,8 @@ function createPipelineDebugCollector(initial = {}) {
         energyFieldsMapped: 0,
         paybackFieldsMapped: 0,
         missingFinancialFields: [],
-        missingEnergyFields: []
-      }
+        missingEnergyFields: [],
+      },
     },
     functionBlocks: [],
     aiNodes: [],
@@ -45,12 +45,12 @@ function createPipelineDebugCollector(initial = {}) {
     vectorDb: {
       enabled: false,
       retrievalUsed: false,
-      message: "Vector DB not configured"
+      message: "Vector DB not configured",
     },
     ocrTrace: {
       ocrUsed: false,
       engine: null,
-      reason: null
+      reason: null,
     },
     calculationTrace: [],
     plottingTrace: [],
@@ -60,7 +60,7 @@ function createPipelineDebugCollector(initial = {}) {
       promptLeakageDetected: 0,
       aiFieldsAccepted: 0,
       aiFieldsDropped: 0,
-      droppedFields: []
+      droppedFields: [],
     },
     exportTrace: {},
     recommendedModels: [
@@ -69,29 +69,29 @@ function createPipelineDebugCollector(initial = {}) {
         currentModel: "deterministic parser",
         idealModel: "deterministic parser",
         reason: "Structured extraction is more accurate with code than LLM",
-        priority: "high"
+        priority: "high",
       },
       {
         nodeId: "executive_summary",
         currentModel: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
         idealModel: "gemini-2.5-flash-lite",
         reason: "Fast and cost-efficient for summary generation",
-        priority: "medium"
+        priority: "medium",
       },
       {
         nodeId: "ecm_engineering",
         currentModel: "openai/gpt-oss-120b:free",
         idealModel: "openai/gpt-oss-120b:free",
         reason: "Better suited for deeper ECM engineering explanation",
-        priority: "high"
+        priority: "high",
       },
       {
         nodeId: "qc_validation",
         currentModel: "deterministic validation",
         idealModel: "deterministic validation",
         reason: "QC should not depend on AI",
-        priority: "critical"
-      }
+        priority: "critical",
+      },
     ],
     warnings: [],
     errors: [],
@@ -102,11 +102,18 @@ function createPipelineDebugCollector(initial = {}) {
 
     config: {
       geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
-      openRouterModels: String(process.env.OPENROUTER_MODELS || "").split(",").map(s => s.trim()).filter(Boolean),
-      aiFinalizationTimeoutMs: Number(process.env.AI_FINALIZATION_TIMEOUT_MS || process.env.AI_TOTAL_TIMEOUT_MS || 120000),
+      openRouterModels: String(process.env.OPENROUTER_MODELS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      aiFinalizationTimeoutMs: Number(
+        process.env.AI_FINALIZATION_TIMEOUT_MS ||
+          process.env.AI_TOTAL_TIMEOUT_MS ||
+          120000
+      ),
       openRouterTimeoutMs: Number(process.env.OPENROUTER_TIMEOUT_MS || 90000),
-      openRouterBatchSize: Number(process.env.OPENROUTER_ECM_BATCH_SIZE || 3)
-    }
+      openRouterBatchSize: Number(process.env.OPENROUTER_ECM_BATCH_SIZE || 3),
+    },
   };
 
   return {
@@ -123,7 +130,7 @@ function createPipelineDebugCollector(initial = {}) {
         inputSummary: block.inputSummary || {},
         outputSummary: block.outputSummary || {},
         warnings: block.warnings || [],
-        errors: block.errors || []
+        errors: block.errors || [],
       });
     },
 
@@ -137,7 +144,7 @@ function createPipelineDebugCollector(initial = {}) {
         durationMs: attempt.durationMs || null,
         error: attempt.error || null,
         reason: attempt.reason || null,
-        finalUsed: Boolean(attempt.finalUsed)
+        finalUsed: Boolean(attempt.finalUsed),
       });
     },
 
@@ -152,7 +159,7 @@ function createPipelineDebugCollector(initial = {}) {
         finalUsed: Boolean(node.finalUsed),
         idealModelSuggestion: node.idealModelSuggestion || null,
         warnings: node.warnings || [],
-        errors: node.errors || []
+        errors: node.errors || [],
       });
     },
 
@@ -166,7 +173,7 @@ function createPipelineDebugCollector(initial = {}) {
         userPromptPreview: prompt.userPromptPreview || "",
         schemaName: prompt.schemaName || null,
         estimatedInputTokens: prompt.estimatedInputTokens || null,
-        estimatedOutputTokens: prompt.estimatedOutputTokens || null
+        estimatedOutputTokens: prompt.estimatedOutputTokens || null,
       });
     },
 
@@ -180,16 +187,20 @@ function createPipelineDebugCollector(initial = {}) {
 
     finalize(final = {}) {
       debug.finishedAt = new Date().toISOString();
-      debug.totalDurationMs = new Date(debug.finishedAt).getTime() - new Date(debug.startedAt).getTime();
+      debug.totalDurationMs =
+        new Date(debug.finishedAt).getTime() -
+        new Date(debug.startedAt).getTime();
       debug.status = final.status || "completed";
-      debug.finalOutputSource = final.finalOutputSource || debug.finalOutputSource;
-      debug.finalEnhancerUsed = final.finalEnhancerUsed || debug.finalEnhancerUsed;
+      debug.finalOutputSource =
+        final.finalOutputSource || debug.finalOutputSource;
+      debug.finalEnhancerUsed =
+        final.finalEnhancerUsed || debug.finalEnhancerUsed;
       debug.fallbackReason = final.fallbackReason || debug.fallbackReason;
       return debug;
-    }
+    },
   };
 }
 
 module.exports = {
-  createPipelineDebugCollector
+  createPipelineDebugCollector,
 };

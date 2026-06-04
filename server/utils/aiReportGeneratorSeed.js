@@ -1,4 +1,13 @@
-const ALLOWED_FILE_TYPES = ["xlsx", "xls", "pdf", "docx", "pptx", "jpg", "jpeg", "png"];
+const ALLOWED_FILE_TYPES = [
+  "xlsx",
+  "xls",
+  "pdf",
+  "docx",
+  "pptx",
+  "jpg",
+  "jpeg",
+  "png",
+];
 const COMPONENT_PATH =
   "frontend/src/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate.tsx";
 const WORKSPACE_SLUG = "commercial-building-energy-audit";
@@ -27,15 +36,13 @@ Missing optional values must remain renderable as "Data required".`;
 function anythingLlmConfigured() {
   return Boolean(
     process.env.LLM_PROVIDER &&
-      (
-        process.env.OPEN_AI_KEY ||
-        process.env.GEMINI_API_KEY ||
-        process.env.ANTHROPIC_API_KEY ||
-        process.env.AZURE_OPENAI_KEY ||
-        process.env.GROQ_API_KEY ||
-        process.env.OLLAMA_BASE_PATH ||
-        process.env.GENERIC_OPEN_AI_BASE_PATH
-      )
+    (process.env.OPEN_AI_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.AZURE_OPENAI_KEY ||
+      process.env.GROQ_API_KEY ||
+      process.env.OLLAMA_BASE_PATH ||
+      process.env.GENERIC_OPEN_AI_BASE_PATH)
   );
 }
 
@@ -49,7 +56,8 @@ function commercialTemplateData() {
     model: "gemini-2.0-flash",
     rules: JSON.stringify({
       missingValueRule: "Use Data required for unavailable values.",
-      templateRule: "Render with the Commercial Building Energy Audit TSX template. Do not use LaTeX.",
+      templateRule:
+        "Render with the Commercial Building Energy Audit TSX template. Do not use LaTeX.",
       projectChapterSections: [
         "Existing Condition",
         "System Description",
@@ -71,7 +79,12 @@ function commercialTemplateData() {
     }),
     jsonSchema: JSON.stringify({
       type: "object",
-      required: ["reportInfo", "executiveSummary", "buildingProfile", "projects"],
+      required: [
+        "reportInfo",
+        "executiveSummary",
+        "buildingProfile",
+        "projects",
+      ],
       properties: {
         reportInfo: { type: "object" },
         executiveSummary: { type: "object" },
@@ -84,34 +97,79 @@ function commercialTemplateData() {
               projectTitle: { type: ["string", "number", "boolean", "null"] },
               projectNo: { type: ["string", "number", "boolean", "null"] },
               system: { type: ["string", "number", "boolean", "null"] },
-              expectedEnergySaving: { type: ["string", "number", "boolean", "null"] },
-              expectedAnnualCostSaving: { type: ["string", "number", "boolean", "null"] },
-              estimatedInvestment: { type: ["string", "number", "boolean", "null"] },
-              simplePaybackPeriod: { type: ["string", "number", "boolean", "null"] },
-              implementationPriority: { type: ["string", "number", "boolean", "null"] },
-              existingCondition: { type: ["string", "number", "boolean", "null"] },
-              systemDescription: { type: ["string", "number", "boolean", "null"] },
-              engineeringAssessment: { type: ["string", "number", "boolean", "null"] },
-              rootCauseAnalysis: { type: ["string", "number", "boolean", "null"] },
-              recommendedMeasure: { type: ["string", "number", "boolean", "null"] },
-              technicalMethodology: { type: ["string", "number", "boolean", "null"] },
-              detailedKeyActivities: { type: "array", items: { type: "object" } },
-              rationaleForSavings: { type: ["string", "number", "boolean", "null"] },
+              expectedEnergySaving: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              expectedAnnualCostSaving: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              estimatedInvestment: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              simplePaybackPeriod: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              implementationPriority: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              existingCondition: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              systemDescription: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              engineeringAssessment: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              rootCauseAnalysis: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              recommendedMeasure: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              technicalMethodology: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              detailedKeyActivities: {
+                type: "array",
+                items: { type: "object" },
+              },
+              rationaleForSavings: {
+                type: ["string", "number", "boolean", "null"],
+              },
               energyImpact: { type: "array", items: { type: "object" } },
               financialImpact: { type: "array", items: { type: "object" } },
               risksAndMitigation: { type: "array", items: { type: "object" } },
-              implementationConsiderations: { type: ["string", "number", "boolean", "null"] },
-              monitoringAndVerificationPlan: { type: "array", items: { type: "object" } },
-              oAndMRequirements: { type: ["string", "number", "boolean", "null"] },
-              implementationTimeline: { type: "array", items: { type: "object" } },
+              implementationConsiderations: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              monitoringAndVerificationPlan: {
+                type: "array",
+                items: { type: "object" },
+              },
+              oAndMRequirements: {
+                type: ["string", "number", "boolean", "null"],
+              },
+              implementationTimeline: {
+                type: "array",
+                items: { type: "object" },
+              },
               conclusion: { type: ["string", "number", "boolean", "null"] },
               carbonFootprint: {
                 type: "object",
                 properties: {
-                  annualEnergySaving: { type: ["string", "number", "boolean", "null"] },
-                  emissionFactor: { type: ["string", "number", "boolean", "null"] },
-                  estimatedCO2Reduction: { type: ["string", "number", "boolean", "null"] },
-                  calculationBasis: { type: ["string", "number", "boolean", "null"] },
+                  annualEnergySaving: {
+                    type: ["string", "number", "boolean", "null"],
+                  },
+                  emissionFactor: {
+                    type: ["string", "number", "boolean", "null"],
+                  },
+                  estimatedCO2Reduction: {
+                    type: ["string", "number", "boolean", "null"],
+                  },
+                  calculationBasis: {
+                    type: ["string", "number", "boolean", "null"],
+                  },
                   remarks: { type: ["string", "number", "boolean", "null"] },
                 },
               },
@@ -121,15 +179,23 @@ function commercialTemplateData() {
                   type: "object",
                   properties: {
                     title: { type: ["string", "number", "boolean", "null"] },
-                    clientType: { type: ["string", "number", "boolean", "null"] },
+                    clientType: {
+                      type: ["string", "number", "boolean", "null"],
+                    },
                     system: { type: ["string", "number", "boolean", "null"] },
-                    implementedMeasure: { type: ["string", "number", "boolean", "null"] },
+                    implementedMeasure: {
+                      type: ["string", "number", "boolean", "null"],
+                    },
                     result: { type: ["string", "number", "boolean", "null"] },
-                    relevance: { type: ["string", "number", "boolean", "null"] },
+                    relevance: {
+                      type: ["string", "number", "boolean", "null"],
+                    },
                   },
                 },
               },
-              finalConclusion: { type: ["string", "number", "boolean", "null"] },
+              finalConclusion: {
+                type: ["string", "number", "boolean", "null"],
+              },
             },
           },
         },
@@ -228,7 +294,8 @@ Project chapters use dynamic chapter numbering. Project 1 renders 3.1 to 3.18, P
     versionHistory: JSON.stringify([
       {
         version: "1.0.0",
-        notes: "Reproducible seed for the public Detailed Energy Audit Report template.",
+        notes:
+          "Reproducible seed for the public Detailed Energy Audit Report template.",
       },
     ]),
     anythingllmWorkspaceSlug: WORKSPACE_SLUG,
@@ -242,15 +309,25 @@ Project chapters use dynamic chapter numbering. Project 1 renders 3.1 to 3.18, P
 }
 
 const COMING_SOON_TEMPLATES = [
-  { slug: "boiler-audit", name: "Boiler Audit Report", category: "Energy Audit" },
-  { slug: "motor-retrofit", name: "Motor Retrofit Report", category: "Energy Audit" },
+  {
+    slug: "boiler-audit",
+    name: "Boiler Audit Report",
+    category: "Energy Audit",
+  },
+  {
+    slug: "motor-retrofit",
+    name: "Motor Retrofit Report",
+    category: "Energy Audit",
+  },
   { slug: "apfc-report", name: "APFC Report", category: "Power Quality" },
   { slug: "solar-report", name: "Solar Report", category: "Renewable Energy" },
   { slug: "hvac-report", name: "HVAC Report", category: "Energy Audit" },
 ];
 
 async function upsertSystemSetting(prisma, label, value) {
-  const existing = await prisma.system_settings.findUnique({ where: { label } });
+  const existing = await prisma.system_settings.findUnique({
+    where: { label },
+  });
   if (existing) {
     return prisma.system_settings.update({
       where: { label },
@@ -302,7 +379,13 @@ async function ensureActiveTemplateVersion(prisma, template) {
       validationPrompt: template.validationPrompt,
     }),
     extractionMappingSnapshot: JSON.stringify({
-      projectTitle: ["project", "project name", "ecm", "measure", "recommendation"],
+      projectTitle: [
+        "project",
+        "project name",
+        "ecm",
+        "measure",
+        "recommendation",
+      ],
       system: ["system", "area", "utility", "category"],
       investment: ["investment", "capex", "cost", "project cost", "inr"],
       annualSaving: ["annual saving", "cost saving", "yearly saving"],
@@ -318,7 +401,8 @@ async function ensureActiveTemplateVersion(prisma, template) {
       useAnythingLLM: template.useAnythingLLM,
     }),
     sampleDataSnapshot: template.sampleData,
-    changeNote: "Initial active Commercial Building Energy Audit template version",
+    changeNote:
+      "Initial active Commercial Building Energy Audit template version",
     publishedAt: new Date(),
   };
 
@@ -367,7 +451,8 @@ async function ensureAiReportGeneratorSeeded(prisma) {
   for (const comingSoonTemplate of COMING_SOON_TEMPLATES) {
     await upsertTemplateBySlug(prisma, {
       ...comingSoonTemplate,
-      prompt: "Coming soon. This template is seeded so the public catalog is reproducible.",
+      prompt:
+        "Coming soon. This template is seeded so the public catalog is reproducible.",
       status: "coming_soon",
       showInPublic: true,
       publicBadge: "Coming Soon",

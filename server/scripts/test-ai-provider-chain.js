@@ -4,13 +4,18 @@ const {
   getGeminiApiKeys,
   generateWithGeminiUsingKey,
 } = require("../services/geminiProviderService");
-const { generateWithOpenRouterFallback } = require("../services/llmProviderService");
+const {
+  generateWithOpenRouterFallback,
+} = require("../services/llmProviderService");
 
 async function testGeminiKey(apiKey, keyIndex) {
-  const result = await generateWithGeminiUsingKey('Return JSON only: {"ok":true}', {
-    apiKey,
-    keyIndex,
-  });
+  const result = await generateWithGeminiUsingKey(
+    'Return JSON only: {"ok":true}',
+    {
+      apiKey,
+      keyIndex,
+    }
+  );
 
   if (result.success) return { keyIndex, status: "success" };
   if (result.isQuotaExceeded) return { keyIndex, status: "quota" };
@@ -18,9 +23,10 @@ async function testGeminiKey(apiKey, keyIndex) {
 }
 
 async function testOpenRouter() {
-  const result = await generateWithOpenRouterFallback([
-    { role: "user", content: 'Return JSON only: {"ok":true}' }
-  ], { isManualEnhancement: true });
+  const result = await generateWithOpenRouterFallback(
+    [{ role: "user", content: 'Return JSON only: {"ok":true}' }],
+    { isManualEnhancement: true }
+  );
 
   if (result.success) return { status: "success", providerUsed: "openrouter" };
   return { status: "failed", providerUsed: "openrouter" };
@@ -36,10 +42,13 @@ async function main() {
   }
 
   const openRouterResult = await testOpenRouter();
-  const selectedFallbackProvider =
-    geminiResults.find((result) => result.status === "success")
-      ? "gemini"
-      : (openRouterResult.status === "success" ? "openrouter" : "deterministic");
+  const selectedFallbackProvider = geminiResults.find(
+    (result) => result.status === "success"
+  )
+    ? "gemini"
+    : openRouterResult.status === "success"
+      ? "openrouter"
+      : "deterministic";
 
   geminiResults.forEach((result) => {
     console.log(`Gemini Key ${result.keyIndex}: ${result.status}`);

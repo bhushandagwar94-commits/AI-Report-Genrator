@@ -1,5 +1,8 @@
-const fs = require('fs');
-let code = fs.readFileSync('../frontend/src/components/DeveloperPipelinePanel/index.jsx', 'utf8');
+const fs = require("fs");
+let code = fs.readFileSync(
+  "../frontend/src/components/DeveloperPipelinePanel/index.jsx",
+  "utf8"
+);
 
 // Update tabs array
 code = code.replace(
@@ -9,7 +12,7 @@ code = code.replace(
 
 // Remove the old aiModels check block in render
 code = code.replace(
-  /          if \(activeTab === "aiModels"\) \{[\s\S]*?          if \(pipelineDebug\[activeTab\] === undefined\) \{/g,
+  / {10}if \(activeTab === "aiModels"\) \{[\s\S]*? {10}if \(pipelineDebug\[activeTab\] === undefined\) \{/g,
   `          const debug = pipelineDebug || {};
           const functionBlocks = Array.isArray(debug.functionBlocks) ? debug.functionBlocks : [];
           const prompts = Array.isArray(debug.prompts) ? debug.prompts : [];
@@ -36,5 +39,8 @@ code = code.replace(
           if (pipelineDebug[activeTab] === undefined) {`
 );
 
-fs.writeFileSync('../frontend/src/components/DeveloperPipelinePanel/index.jsx', code);
-console.log('patched developer panel');
+fs.writeFileSync(
+  "../frontend/src/components/DeveloperPipelinePanel/index.jsx",
+  code
+);
+console.log("patched developer panel");

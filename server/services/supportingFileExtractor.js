@@ -10,7 +10,7 @@ async function extractPptSupportingContext(file) {
       extractionStatus: "warning",
       extractedText: "",
       slides: [],
-      warnings: ["PPT file path missing. Could not extract content."]
+      warnings: ["PPT file path missing. Could not extract content."],
     };
   }
 
@@ -23,7 +23,7 @@ async function extractPptSupportingContext(file) {
       extractionStatus: "extracted",
       extractedText: "Extracted PPT content for " + fileName,
       slides: [],
-      warnings: []
+      warnings: [],
     };
   } catch (error) {
     return {
@@ -33,7 +33,9 @@ async function extractPptSupportingContext(file) {
       extractionStatus: "warning",
       extractedText: "",
       slides: [],
-      warnings: [`PPT extraction failed and was skipped: ${error?.message || error}`]
+      warnings: [
+        `PPT extraction failed and was skipped: ${error?.message || error}`,
+      ],
     };
   }
 }
@@ -46,7 +48,7 @@ async function extractPdfSupportingContext(file) {
     fileType: "pdf",
     extractionStatus: "extracted",
     extractedText: "Extracted PDF content for " + fileName,
-    warnings: []
+    warnings: [],
   };
 }
 
@@ -58,7 +60,7 @@ async function extractDocxSupportingContext(file) {
     fileType: "docx",
     extractionStatus: "extracted",
     extractedText: "Extracted DOCX content for " + fileName,
-    warnings: []
+    warnings: [],
   };
 }
 
@@ -66,7 +68,9 @@ async function extractSupportingContext(files = []) {
   const results = [];
 
   for (const file of files) {
-    const name = String(file.originalName || file.filename || file.fileName || "").toLowerCase();
+    const name = String(
+      file.originalName || file.filename || file.fileName || ""
+    ).toLowerCase();
 
     try {
       if (/\.(ppt|pptx)$/i.test(name)) {
@@ -81,7 +85,7 @@ async function extractSupportingContext(files = []) {
         success: false,
         fileName: file.originalName || file.filename || file.fileName,
         extractionStatus: "warning",
-        warnings: [`Supporting file skipped: ${error?.message || error}`]
+        warnings: [`Supporting file skipped: ${error?.message || error}`],
       });
     }
   }
@@ -93,7 +97,7 @@ async function extractSupportingContext(files = []) {
       .map((item) => `SOURCE: ${item.fileName}\n${item.extractedText}`)
       .join("\n\n")
       .slice(0, 25000),
-    warnings: results.flatMap((item) => item.warnings || [])
+    warnings: results.flatMap((item) => item.warnings || []),
   };
 }
 
@@ -101,5 +105,5 @@ module.exports = {
   extractSupportingContext,
   extractPptSupportingContext,
   extractPdfSupportingContext,
-  extractDocxSupportingContext
+  extractDocxSupportingContext,
 };

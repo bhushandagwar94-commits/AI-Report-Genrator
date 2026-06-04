@@ -172,7 +172,7 @@ app.get("/api/health", (req, res) => {
     success: true,
     status: "ok",
     service: "backend",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -181,7 +181,7 @@ app.get("/health", (req, res) => {
     success: true,
     status: "ok",
     service: "backend",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -198,7 +198,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({
     error: err.message,
     code: err.code,
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 });
 

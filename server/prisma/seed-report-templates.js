@@ -179,53 +179,95 @@ const JSON_SCHEMA = JSON.stringify({
   type: "object",
   title: "SEE-Tech Detailed Energy Audit — Extraction Schema v2.0",
   properties: {
-    clientName:               { type: "string",  title: "Client / Organisation Name" },
-    facilityAddress:          { type: "string",  title: "Facility Address" },
-    plantName:                { type: "string",  title: "Plant or Unit Name" },
-    auditPeriod:              { type: "string",  title: "Audit Period (Date Range)" },
-    leadEngineer:             { type: "string",  title: "SEE-Tech Lead Engineer" },
-    contractNumber:           { type: "string",  title: "Contract / PO Number" },
-    reportDate:               { type: "string",  title: "Report Date" },
-    documentVersion:          { type: "string",  title: "Document Version" },
+    clientName: { type: "string", title: "Client / Organisation Name" },
+    facilityAddress: { type: "string", title: "Facility Address" },
+    plantName: { type: "string", title: "Plant or Unit Name" },
+    auditPeriod: { type: "string", title: "Audit Period (Date Range)" },
+    leadEngineer: { type: "string", title: "SEE-Tech Lead Engineer" },
+    contractNumber: { type: "string", title: "Contract / PO Number" },
+    reportDate: { type: "string", title: "Report Date" },
+    documentVersion: { type: "string", title: "Document Version" },
 
-    sanctionedLoad_kVA:       { type: "string",  title: "Sanctioned Load (kVA)" },
-    contractDemand_kVA:       { type: "string",  title: "Contract Demand (kVA)" },
-    annualEnergy_kWh:         { type: "string",  title: "Annual Energy Consumption (kWh)" },
-    annualCost_INR:           { type: "string",  title: "Annual Energy Cost (₹)" },
-    tariffCategory:           { type: "string",  title: "Tariff Category (HT/LT/Industrial)" },
-    tariffRate_INR_per_kWh:   { type: "string",  title: "Energy Tariff Rate (₹/kWh)" },
-    operatingHours_per_day:   { type: "string",  title: "Operating Hours per Day" },
-    operatingDays_per_year:   { type: "string",  title: "Operating Days per Year" },
-    productionOutput:         { type: "string",  title: "Annual Production Output (with unit)" },
-    specificEnergy:           { type: "string",  title: "Specific Energy Consumption (kWh/unit)" },
+    sanctionedLoad_kVA: { type: "string", title: "Sanctioned Load (kVA)" },
+    contractDemand_kVA: { type: "string", title: "Contract Demand (kVA)" },
+    annualEnergy_kWh: {
+      type: "string",
+      title: "Annual Energy Consumption (kWh)",
+    },
+    annualCost_INR: { type: "string", title: "Annual Energy Cost (₹)" },
+    tariffCategory: {
+      type: "string",
+      title: "Tariff Category (HT/LT/Industrial)",
+    },
+    tariffRate_INR_per_kWh: {
+      type: "string",
+      title: "Energy Tariff Rate (₹/kWh)",
+    },
+    operatingHours_per_day: {
+      type: "string",
+      title: "Operating Hours per Day",
+    },
+    operatingDays_per_year: {
+      type: "string",
+      title: "Operating Days per Year",
+    },
+    productionOutput: {
+      type: "string",
+      title: "Annual Production Output (with unit)",
+    },
+    specificEnergy: {
+      type: "string",
+      title: "Specific Energy Consumption (kWh/unit)",
+    },
 
-    transformerCapacity_kVA:  { type: "string",  title: "Transformer Capacity (kVA)" },
-    avgPowerFactor:           { type: "string",  title: "Average Power Factor" },
-    maxDemand_kVA:            { type: "string",  title: "Recorded Maximum Demand (kVA)" },
-    loadFactor_pct:           { type: "string",  title: "Load Factor (%)" },
-    thdVoltage_pct:           { type: "string",  title: "Voltage THD (%)" },
-    thdCurrent_pct:           { type: "string",  title: "Current THD (%)" },
-    apfcCapacity_kVAR:        { type: "string",  title: "APFC Panel Capacity (kVAR)" },
+    transformerCapacity_kVA: {
+      type: "string",
+      title: "Transformer Capacity (kVA)",
+    },
+    avgPowerFactor: { type: "string", title: "Average Power Factor" },
+    maxDemand_kVA: { type: "string", title: "Recorded Maximum Demand (kVA)" },
+    loadFactor_pct: { type: "string", title: "Load Factor (%)" },
+    thdVoltage_pct: { type: "string", title: "Voltage THD (%)" },
+    thdCurrent_pct: { type: "string", title: "Current THD (%)" },
+    apfcCapacity_kVAR: { type: "string", title: "APFC Panel Capacity (kVAR)" },
 
-    totalLightingLoad_kW:     { type: "string",  title: "Total Installed Lighting Load (kW)" },
-    avgLuxLevel:              { type: "string",  title: "Average Measured Lux Level" },
-    fixtureInventory:         { type: "string",  title: "Fixture Count by Type" },
+    totalLightingLoad_kW: {
+      type: "string",
+      title: "Total Installed Lighting Load (kW)",
+    },
+    avgLuxLevel: { type: "string", title: "Average Measured Lux Level" },
+    fixtureInventory: { type: "string", title: "Fixture Count by Type" },
 
-    numMotors:                { type: "string",  title: "Number of Motors Audited" },
-    totalMotorLoad_kW:        { type: "string",  title: "Total Connected Motor Load (kW)" },
-    avgMotorLoading_pct:      { type: "string",  title: "Average Motor Loading (%)" },
-    vfdInstalled:             { type: "string",  title: "VFDs Installed (Yes/No)" },
+    numMotors: { type: "string", title: "Number of Motors Audited" },
+    totalMotorLoad_kW: {
+      type: "string",
+      title: "Total Connected Motor Load (kW)",
+    },
+    avgMotorLoading_pct: { type: "string", title: "Average Motor Loading (%)" },
+    vfdInstalled: { type: "string", title: "VFDs Installed (Yes/No)" },
 
-    compressedAirPressure_bar:{ type: "string",  title: "Compressed Air Pressure (bar)" },
-    compressorCapacity:       { type: "string",  title: "Compressor Capacity (cfm or m³/min)" },
-    chillerCOP:               { type: "string",  title: "Chiller COP (if applicable)" },
-    chillerTonnage:           { type: "string",  title: "Chiller Tonnage (TR, if applicable)" },
+    compressedAirPressure_bar: {
+      type: "string",
+      title: "Compressed Air Pressure (bar)",
+    },
+    compressorCapacity: {
+      type: "string",
+      title: "Compressor Capacity (cfm or m³/min)",
+    },
+    chillerCOP: { type: "string", title: "Chiller COP (if applicable)" },
+    chillerTonnage: {
+      type: "string",
+      title: "Chiller Tonnage (TR, if applicable)",
+    },
 
-    boilerCapacity_TPH:       { type: "string",  title: "Boiler Capacity (TPH, if applicable)" },
-    fuelType:                 { type: "string",  title: "Fuel Type and GCV" },
-    boilerEfficiency_pct:     { type: "string",  title: "Boiler Efficiency (%)" },
-    stackTemperature_C:       { type: "string",  title: "Stack Gas Temperature (°C)" },
-    flueGasO2_pct:            { type: "string",  title: "Flue Gas O₂ (%)" },
+    boilerCapacity_TPH: {
+      type: "string",
+      title: "Boiler Capacity (TPH, if applicable)",
+    },
+    fuelType: { type: "string", title: "Fuel Type and GCV" },
+    boilerEfficiency_pct: { type: "string", title: "Boiler Efficiency (%)" },
+    stackTemperature_C: { type: "string", title: "Stack Gas Temperature (°C)" },
+    flueGasO2_pct: { type: "string", title: "Flue Gas O₂ (%)" },
 
     ecms: {
       type: "array",
@@ -233,47 +275,121 @@ const JSON_SCHEMA = JSON.stringify({
       items: {
         type: "object",
         properties: {
-          ecmNumber:            { type: "string", title: "ECM No." },
-          ecmTitle:             { type: "string", title: "ECM Title" },
-          system:               { type: "string", title: "System (Electrical/Lighting/Motor/HVAC/Boiler)" },
-          existingDescription:  { type: "string", title: "Existing System Description" },
-          baselineData:         { type: "string", title: "Baseline Data and Measurements" },
-          problemGap:           { type: "string", title: "Problem / Gap Identified" },
-          proposedProject:      { type: "string", title: "Proposed Project Description" },
-          keyActivities:        { type: "string", title: "Key Activities for Implementation" },
-          savingRationale:      { type: "string", title: "Rationale for Energy Saving" },
-          savingCalculation:    { type: "string", title: "Energy Saving Calculation Details" },
-          investment_INR:       { type: "string", title: "Estimated Investment (₹)" },
-          annualSavings_INR:    { type: "string", title: "Estimated Annual Savings (₹/year)" },
-          annualSavings_kWh:    { type: "string", title: "Estimated Annual Energy Savings (kWh/year)" },
-          paybackPeriod_months: { type: "string", title: "Simple Payback Period (months)" },
-          co2Reduction_tonnes:  { type: "string", title: "CO₂ Reduction (tonnes/year)" },
-          priority:             { type: "string", title: "Priority (High / Medium / Low)" },
-          implementationDuration:{ type: "string",title: "Implementation Duration" },
-          technicalSpecs:       { type: "string", title: "Technical Specifications" },
-          mvPlan:               { type: "string", title: "Measurement & Verification Plan" },
-          otherBenefits:        { type: "string", title: "Benefits Other Than Energy Saving" },
-          precautions:          { type: "string", title: "Precautions / Aspects to be Taken Care Of" },
-          imageFilename:        { type: "string", title: "Image Filename (if available)" },
-          imageCaption:         { type: "string", title: "Image Caption (if available)" }
-        }
-      }
+          ecmNumber: { type: "string", title: "ECM No." },
+          ecmTitle: { type: "string", title: "ECM Title" },
+          system: {
+            type: "string",
+            title: "System (Electrical/Lighting/Motor/HVAC/Boiler)",
+          },
+          existingDescription: {
+            type: "string",
+            title: "Existing System Description",
+          },
+          baselineData: {
+            type: "string",
+            title: "Baseline Data and Measurements",
+          },
+          problemGap: { type: "string", title: "Problem / Gap Identified" },
+          proposedProject: {
+            type: "string",
+            title: "Proposed Project Description",
+          },
+          keyActivities: {
+            type: "string",
+            title: "Key Activities for Implementation",
+          },
+          savingRationale: {
+            type: "string",
+            title: "Rationale for Energy Saving",
+          },
+          savingCalculation: {
+            type: "string",
+            title: "Energy Saving Calculation Details",
+          },
+          investment_INR: { type: "string", title: "Estimated Investment (₹)" },
+          annualSavings_INR: {
+            type: "string",
+            title: "Estimated Annual Savings (₹/year)",
+          },
+          annualSavings_kWh: {
+            type: "string",
+            title: "Estimated Annual Energy Savings (kWh/year)",
+          },
+          paybackPeriod_months: {
+            type: "string",
+            title: "Simple Payback Period (months)",
+          },
+          co2Reduction_tonnes: {
+            type: "string",
+            title: "CO₂ Reduction (tonnes/year)",
+          },
+          priority: { type: "string", title: "Priority (High / Medium / Low)" },
+          implementationDuration: {
+            type: "string",
+            title: "Implementation Duration",
+          },
+          technicalSpecs: { type: "string", title: "Technical Specifications" },
+          mvPlan: { type: "string", title: "Measurement & Verification Plan" },
+          otherBenefits: {
+            type: "string",
+            title: "Benefits Other Than Energy Saving",
+          },
+          precautions: {
+            type: "string",
+            title: "Precautions / Aspects to be Taken Care Of",
+          },
+          imageFilename: {
+            type: "string",
+            title: "Image Filename (if available)",
+          },
+          imageCaption: {
+            type: "string",
+            title: "Image Caption (if available)",
+          },
+        },
+      },
     },
 
-    totalAnnualSavings_INR:   { type: "string", title: "Total Aggregate Annual Savings (₹)" },
-    totalInvestment_INR:      { type: "string", title: "Total Aggregate Investment (₹)" },
-    overallPayback_months:    { type: "string", title: "Overall Simple Payback (months)" },
-    co2Reduction_tonnes:      { type: "string", title: "Total CO₂ Reduction (tonnes/year)" },
-    dataSourceNotes:          { type: "string", title: "Data Sources and Assumptions Notes" },
-    mvNotes:                  { type: "string", title: "Measurement and Verification Notes" }
+    totalAnnualSavings_INR: {
+      type: "string",
+      title: "Total Aggregate Annual Savings (₹)",
+    },
+    totalInvestment_INR: {
+      type: "string",
+      title: "Total Aggregate Investment (₹)",
+    },
+    overallPayback_months: {
+      type: "string",
+      title: "Overall Simple Payback (months)",
+    },
+    co2Reduction_tonnes: {
+      type: "string",
+      title: "Total CO₂ Reduction (tonnes/year)",
+    },
+    dataSourceNotes: {
+      type: "string",
+      title: "Data Sources and Assumptions Notes",
+    },
+    mvNotes: { type: "string", title: "Measurement and Verification Notes" },
   },
   required: [
-    "clientName", "facilityAddress", "plantName", "auditPeriod", "leadEngineer",
-    "sanctionedLoad_kVA", "contractDemand_kVA",
-    "annualEnergy_kWh", "annualCost_INR", "tariffRate_INR_per_kWh",
-    "transformerCapacity_kVA", "avgPowerFactor", "maxDemand_kVA",
-    "totalAnnualSavings_INR", "totalInvestment_INR", "overallPayback_months"
-  ]
+    "clientName",
+    "facilityAddress",
+    "plantName",
+    "auditPeriod",
+    "leadEngineer",
+    "sanctionedLoad_kVA",
+    "contractDemand_kVA",
+    "annualEnergy_kWh",
+    "annualCost_INR",
+    "tariffRate_INR_per_kWh",
+    "transformerCapacity_kVA",
+    "avgPowerFactor",
+    "maxDemand_kVA",
+    "totalAnnualSavings_INR",
+    "totalInvestment_INR",
+    "overallPayback_months",
+  ],
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -393,7 +509,16 @@ const COMMERCIAL_BUILDING_TEMPLATE = {
   showInPublic: true,
   publicBadge: "Available",
   category: "Energy Audit",
-  allowedFileTypes: JSON.stringify(["xlsx", "xls", "pdf", "docx", "pptx", "jpg", "jpeg", "png"]),
+  allowedFileTypes: JSON.stringify([
+    "xlsx",
+    "xls",
+    "pdf",
+    "docx",
+    "pptx",
+    "jpg",
+    "jpeg",
+    "png",
+  ]),
   outputFormats: JSON.stringify(["preview", "pdf"]),
   prompt: `You are SEE-Tech Solutions’ Commercial Building Energy Audit Report Generator.
 
@@ -536,8 +661,12 @@ Fixed report structure:
       totalEstimatedInvestment: "Data required",
       simplePaybackPeriod: "Data required",
       co2ReductionPotential: "Data required",
-      keyObservations: ["HVAC schedules require validation.", "Lighting controls may reduce operating hours."],
-      conclusionAndWayForward: "Validate baseline data and prioritize technically feasible projects.",
+      keyObservations: [
+        "HVAC schedules require validation.",
+        "Lighting controls may reduce operating hours.",
+      ],
+      conclusionAndWayForward:
+        "Validate baseline data and prioritize technically feasible projects.",
     },
     buildingProfile: {
       facilityName: "Facility Name",
@@ -580,7 +709,8 @@ Fixed report structure:
     {
       version: "1.0.0",
       date: "2026-05-20",
-      notes: "Initial React/TSX commercial building energy audit template registration.",
+      notes:
+        "Initial React/TSX commercial building energy audit template registration.",
     },
   ]),
 };
@@ -597,17 +727,19 @@ async function main() {
   });
 
   if (existing) {
-    console.log(`⚠️  Template already exists (ID: ${existing.id}). Updating to latest version...`);
+    console.log(
+      `⚠️  Template already exists (ID: ${existing.id}). Updating to latest version...`
+    );
     const updated = await prisma.report_templates.update({
       where: { id: existing.id },
       data: {
-        slug:         "seetech-ea-001",
-        prompt:       GENERATION_PROMPT,
-        model:        "gemini-2.0-flash",
-        rules:        RULES,
-        jsonSchema:   JSON_SCHEMA,
+        slug: "seetech-ea-001",
+        prompt: GENERATION_PROMPT,
+        model: "gemini-2.0-flash",
+        rules: RULES,
+        jsonSchema: JSON_SCHEMA,
         reportFormat: REPORT_FORMAT,
-        updatedAt:    new Date(),
+        updatedAt: new Date(),
       },
     });
     console.log(`✅  Template updated successfully. ID: ${updated.id}`);
@@ -618,12 +750,12 @@ async function main() {
     console.log("📋  Creating new template: Detailed Energy Audit Report...");
     const created = await prisma.report_templates.create({
       data: {
-        name:         "Detailed Energy Audit Report",
-        slug:         "seetech-ea-001",
-        prompt:       GENERATION_PROMPT,
-        model:        "gemini-2.0-flash",
-        rules:        RULES,
-        jsonSchema:   JSON_SCHEMA,
+        name: "Detailed Energy Audit Report",
+        slug: "seetech-ea-001",
+        prompt: GENERATION_PROMPT,
+        model: "gemini-2.0-flash",
+        rules: RULES,
+        jsonSchema: JSON_SCHEMA,
         reportFormat: REPORT_FORMAT,
       },
     });
@@ -634,7 +766,9 @@ async function main() {
     console.log(`    Created  : ${created.createdAt.toISOString()}`);
   }
 
-  console.log("\n📋  Registering template: Commercial Building Energy Audit Report...");
+  console.log(
+    "\n📋  Registering template: Commercial Building Energy Audit Report..."
+  );
   const commercialExisting = await prisma.report_templates.findFirst({
     where: { slug: COMMERCIAL_BUILDING_TEMPLATE.slug },
   });
@@ -647,12 +781,16 @@ async function main() {
         updatedAt: new Date(),
       },
     });
-    console.log(`✅  Commercial building template updated. ID: ${updatedCommercial.id}`);
+    console.log(
+      `✅  Commercial building template updated. ID: ${updatedCommercial.id}`
+    );
   } else {
     const createdCommercial = await prisma.report_templates.create({
       data: COMMERCIAL_BUILDING_TEMPLATE,
     });
-    console.log(`✅  Commercial building template created. ID: ${createdCommercial.id}`);
+    console.log(
+      `✅  Commercial building template created. ID: ${createdCommercial.id}`
+    );
   }
 
   console.log("\n🎉  Seeding complete. Template is ready in the database.");

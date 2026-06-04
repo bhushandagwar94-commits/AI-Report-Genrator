@@ -63,7 +63,7 @@ async function generateWithGeminiUsingKey(messagesOrPrompt, options = {}) {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           contents: [
@@ -71,18 +71,20 @@ async function generateWithGeminiUsingKey(messagesOrPrompt, options = {}) {
               role: "user",
               parts: [
                 {
-                  text: messagesOrPrompt
-                }
-              ]
-            }
+                  text: messagesOrPrompt,
+                },
+              ],
+            },
           ],
           generationConfig: {
             temperature: Number(process.env.GEMINI_TEMPERATURE || 0.1),
-            maxOutputTokens: Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 2048),
-            responseMimeType: "application/json"
-          }
+            maxOutputTokens: Number(
+              process.env.GEMINI_MAX_OUTPUT_TOKENS || 2048
+            ),
+            responseMimeType: "application/json",
+          },
         }),
-        signal: controller.signal
+        signal: controller.signal,
       }
     );
 
@@ -91,11 +93,15 @@ async function generateWithGeminiUsingKey(messagesOrPrompt, options = {}) {
     if (!response.ok) {
       if (response.status === 429) {
         let retrySeconds = 60;
-        const retryMatch = text.match(/retry (?:in|after) (?:about )?(\d+(?:\.\d+)?)\s*s/i);
+        const retryMatch = text.match(
+          /retry (?:in|after) (?:about )?(\d+(?:\.\d+)?)\s*s/i
+        );
         if (retryMatch) {
           retrySeconds = Math.ceil(parseFloat(retryMatch[1]));
         }
-        const err = new Error(`Gemini free quota exceeded. Retry after ${retrySeconds} seconds.`);
+        const err = new Error(
+          `Gemini free quota exceeded. Retry after ${retrySeconds} seconds.`
+        );
         err.retryAfterSeconds = retrySeconds;
         err.isQuotaExceeded = true;
         throw err;
@@ -121,9 +127,10 @@ async function generateWithGeminiUsingKey(messagesOrPrompt, options = {}) {
       keyIndex,
     };
   } catch (error) {
-    const actualErrorMessage = error.name === "AbortError"
-      ? `Gemini timed out after ${timeoutMs}ms`
-      : error.message;
+    const actualErrorMessage =
+      error.name === "AbortError"
+        ? `Gemini timed out after ${timeoutMs}ms`
+        : error.message;
 
     return {
       success: false,
@@ -158,7 +165,7 @@ async function generateWithGeminiFallback(prompt, options = {}) {
       providerStatus: "failed",
       modelUsed: model,
       error: "No Gemini API keys configured",
-      providerAttempts
+      providerAttempts,
     };
   }
 
@@ -170,7 +177,7 @@ async function generateWithGeminiFallback(prompt, options = {}) {
       model,
       keyIndex,
       status: "started",
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
     };
 
     providerAttempts.push(attempt);
@@ -205,23 +212,30 @@ async function generateWithGeminiFallback(prompt, options = {}) {
     attempt.finishedAt = new Date().toISOString();
 
     if (result.isQuotaExceeded) {
-      console.log(`[GEMINI FALLBACK] Key ${keyIndex} quota exceeded. Trying next key.`);
+      console.log(
+        `[GEMINI FALLBACK] Key ${keyIndex} quota exceeded. Trying next key.`
+      );
       continue;
     }
 
     if (isRetryableGeminiError(errorMessage)) {
-      console.warn(`[GEMINI FALLBACK] Key ${keyIndex} failed/retryable. Trying next key if available...`);
+      console.warn(
+        `[GEMINI FALLBACK] Key ${keyIndex} failed/retryable. Trying next key if available...`
+      );
       continue;
     }
 
     break;
   }
 
-  const quotaAttempts = providerAttempts.filter((attempt) => attempt.status === "quota_exceeded");
-  const retryAfterSeconds = quotaAttempts
-    .map((attempt) => Number(attempt.retryAfterSeconds))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b)[0] || 60;
+  const quotaAttempts = providerAttempts.filter(
+    (attempt) => attempt.status === "quota_exceeded"
+  );
+  const retryAfterSeconds =
+    quotaAttempts
+      .map((attempt) => Number(attempt.retryAfterSeconds))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .sort((a, b) => a - b)[0] || 60;
 
   const allQuotaExceeded =
     providerAttempts.length > 0 &&
@@ -237,7 +251,7 @@ async function generateWithGeminiFallback(prompt, options = {}) {
       : "All Gemini API keys failed.",
     isQuotaExceeded: allQuotaExceeded,
     retryAfterSeconds,
-    providerAttempts
+    providerAttempts,
   };
 }
 
