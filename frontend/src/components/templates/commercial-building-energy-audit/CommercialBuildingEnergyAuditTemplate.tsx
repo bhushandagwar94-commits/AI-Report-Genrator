@@ -689,6 +689,14 @@ function TableOfContentsPage({ projectGroups }: { projectGroups: any[] }) {
 
 function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
   const es = data.executiveSummary || {};
+  const purposeText =
+    es.purposeText || "[To be updated after site data verification]";
+  const keyObservations = Array.isArray(es.keyObservations)
+    ? es.keyObservations
+    : [];
+  const conclusionAndWayForward =
+    es.conclusionAndWayForward ||
+    "[To be updated after site data verification]";
   const categorySummaryRows = groupedProjects.map((group: any, index: number) => ({
     groupNo: group.groupNo || `GR-${index + 1}`,
     groupName: group.groupTitle || formatGroupHeading(group, index).replace(/^GR-\d+\s*/, ""),
@@ -723,24 +731,13 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
       <SectionHeader level={1} title="Chapter 1: Executive Summary" />
       
       <SectionHeader number="1.1" title="Purpose of the Energy Audit" />
-      {renderList(es.purposeText, [
-        "The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization.",
-        "The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus."
-      ])}
+      {renderBulletTheory(purposeText)}
       
-      <SectionHeader number="1.2" title="Key Objectives" />
-      {renderList(es.keyObjectives, [
-        "Identify and quantify energy-saving opportunities across all major utility and process systems.",
-        "Provide a structured roadmap for implementing control improvements, equipment efficiency upgrades, and system optimization initiatives.",
-        "Establish baseline performance metrics to enable effective post-implementation measurement and verification."
-      ])}
+      <SectionHeader number="1.2" title="Key Objectives / Key Observations" />
+      {renderBulletTheory(keyObservations.join("\n"))}
 
-      <SectionHeader number="1.3" title="Scope of Assessment" />
-      {renderList(es.scopeOfAssessment, [
-        "Comprehensive review of historical energy consumption patterns and utility billing data.",
-        "Detailed performance evaluation of major energy-consuming systems including HVAC, compressed air, pumping, and production machinery.",
-        "Assessment of existing control logic, operating practices, and maintenance procedures impacting energy efficiency."
-      ])}
+      <SectionHeader number="1.3" title="Conclusion and Way Forward" />
+      {renderBulletTheory(conclusionAndWayForward)}
 
       <SectionHeader number="1.4" title="Expected Outcomes" />
       {renderList(es.expectedOutcomes, [
@@ -1105,6 +1102,11 @@ const renderBulletTheory = (value: unknown) => {
   );
 };
 
+const getTheoryField = (project: any, field: string, fallback?: string) => {
+  const value = project?.[field];
+  return value && String(value).trim() ? value : fallback;
+};
+
 function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { project: any, groupNumber: string, ecmIndexWithinGroup: number }) {
   const ecmType = classifyEcmType(project);
   const ecmTitleRaw = firstNonEmpty(project.projectTitle, project.title, project.ecmName, "ECM");
@@ -1115,12 +1117,12 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
   const rawCleanTitle = ecmTitleRaw.replace(/^(ECM|Ecm|ecm)\s*\d*\s*[-–:]*\s*/i, '').trim();
   const cleanTitle = sanitizePromptLeakageText(rawCleanTitle, ecmType);
 
-  const baselineDescription = sanitizePromptLeakageText(firstNonEmpty(project.existingSystemDescription, project.existingCondition, project.baselineCondition, project.existingSystem, project.existingOperatingCondition, project.baselineDetails), ecmType);
-  const problemGap = sanitizePromptLeakageText(firstNonEmpty(project.problemGapIdentified, project.problemGap, project.gapIdentified), ecmType);
-  const proposedDescription = sanitizePromptLeakageText(firstNonEmpty(project.proposedProjectDescription, project.proposedIntervention, project.proposedEnergyConservationMeasure, project.proposedMeasure, project.recommendedMeasure), ecmType);
-  const rationale = sanitizePromptLeakageText(firstNonEmpty(project.rationaleForEnergySaving, project.rationale, project.savingRationale, "The recommendation reduces avoidable losses and improves alignment between system demand and energy input."), ecmType);
+  const baselineDescription = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "existingSystemDescription"), project.existingCondition, project.baselineCondition, project.existingSystem, project.existingOperatingCondition, project.baselineDetails), ecmType);
+  const problemGap = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "problemGapIdentified"), project.problemGap, project.gapIdentified), ecmType);
+  const proposedDescription = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "proposedProject"), getTheoryField(project, "proposedProjectDescription"), project.proposedIntervention, project.proposedEnergyConservationMeasure, project.proposedMeasure, project.recommendedMeasure), ecmType);
+  const rationale = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "rationaleForEnergySaving"), project.rationale, project.savingRationale, "The recommendation reduces avoidable losses and improves alignment between system demand and energy input."), ecmType);
   const caseStudy = sanitizePromptLeakageText(firstNonEmpty(project.caseStudy, project.referenceApplication, "Similar measures are commonly implemented in comparable industrial utility/process systems after site-specific engineering validation. Project-specific case evidence shall be updated after implementation or vendor confirmation."), ecmType);
-  const conclusion = sanitizePromptLeakageText(firstNonEmpty(project.finalConclusion, project.conclusion, project.projectConclusion, `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${isMeaningful(project.expectedEnergySaving) ? `${formatNumberDisplay(project.expectedEnergySaving)} kWh` : "[energy saving]"}, resulting in annual cost saving of ${formatCurrencyDisplay(project.expectedAnnualCostSaving) || "[annual saving]"}. With an estimated investment of ${formatCurrencyDisplay(project.estimatedInvestment) || "[investment]"}, the simple payback period is expected to be ${isMeaningful(project.simplePaybackPeriod) ? `${formatPaybackDisplay(project.simplePaybackPeriod)} years` : "[payback]"}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeText(project.priority) || safeText(project.implementationPriority) || "[priority]"}.`), ecmType);
+  const conclusion = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "conclusion"), project.finalConclusion, project.projectConclusion, `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${isMeaningful(project.expectedEnergySaving) ? `${formatNumberDisplay(project.expectedEnergySaving)} kWh` : "[energy saving]"}, resulting in annual cost saving of ${formatCurrencyDisplay(project.expectedAnnualCostSaving) || "[annual saving]"}. With an estimated investment of ${formatCurrencyDisplay(project.estimatedInvestment) || "[investment]"}, the simple payback period is expected to be ${isMeaningful(project.simplePaybackPeriod) ? `${formatPaybackDisplay(project.simplePaybackPeriod)} years` : "[payback]"}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeText(project.priority) || safeText(project.implementationPriority) || "[priority]"}.`), ecmType);
 
   const schematic = (project.schematicFramework && project.schematicFramework.length) ? project.schematicFramework : [
     { stage: "Stage 1: Current State", description: "Existing inefficient or non-optimized operation" },
@@ -1207,13 +1209,13 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       <ReportTable compact columns={[{ key: "area", label: "Area" }, { key: "precaution", label: "Precaution" }]} rows={aspectsTable} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.14 Measurement and Verification Plan`} />
-      {renderBulletTheory(firstNonEmpty(project.measurementVerificationPlan, project.mvPlan))}
+      {renderBulletTheory(firstNonEmpty(getTheoryField(project, "measurementVerificationPlan"), project.mvPlan))}
       <div className="text-xs text-gray-500 mb-4 mt-2 leading-tight">
         Savings shall be validated by measuring the power consumption and operating pattern before and after implementation. The final saving will be calculated based on measured load reduction, actual operating hours and applicable electricity tariff.
       </div>
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`} />
-      {renderBulletTheory(firstNonEmpty(project.benefitsOtherThanEnergySaving, project.benefits))}
+      {renderBulletTheory(firstNonEmpty(getTheoryField(project, "benefitsOtherThanEnergySaving"), project.benefits))}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.16 Carbon Footprint Reduction`} />
       <p className="text-sm leading-snug mb-2">{carbonText}</p>

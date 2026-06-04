@@ -150,6 +150,38 @@ function getActiveReportProjectCount(reportData) {
     : 0;
 }
 
+function getAllProjects(reportData) {
+  return (reportData?.groups || []).flatMap((group) =>
+    Array.isArray(group?.projects) ? group.projects : []
+  );
+}
+
+function wordCount(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function enhancementSummary(reportData) {
+  const firstProject = getAllProjects(reportData)[0];
+
+  return {
+    projectCount: getAllProjects(reportData).length,
+    firstProjectTitle:
+      firstProject?.title || firstProject?.ecmName || firstProject?.projectTitle || null,
+    existingWords: wordCount(firstProject?.existingSystemDescription),
+    problemWords: wordCount(firstProject?.problemGapIdentified),
+    proposedWords: wordCount(
+      firstProject?.proposedProject || firstProject?.proposedProjectDescription
+    ),
+    rationaleWords: wordCount(firstProject?.rationaleForEnergySaving),
+    mvWords: wordCount(firstProject?.measurementVerificationPlan),
+    benefitsWords: wordCount(firstProject?.benefitsOtherThanEnergySaving),
+    conclusionWords: wordCount(firstProject?.conclusion || firstProject?.finalConclusion),
+  };
+}
+
 // ─── Slug → Template name mapping ──────────────────────────────────────────────
 // Allows public clients to reference templates by slug (e.g. seetech-ea-001)
 // instead of internal numeric DB ids.
@@ -2313,10 +2345,6 @@ function reportEndpoints(app) {
   }
 
   function buildLightweightReportData(projects, reportDetails) {
-<<<<<<< HEAD
-    // Map lightweight properties to expected fields for classification engine
-=======
->>>>>>> 973f88acc51446707a3ed714570b3b570f7b448d
     const mappedProjects = projects.map((p, i) => ({
       projectNo: p.ecmNo || p.projectNo || `ECM ${i + 1}`,
       projectTitle: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
@@ -2358,16 +2386,12 @@ function reportEndpoints(app) {
         auditPeriod: reportDetails.auditPeriod || "Audit Period",
         reportDate: reportDetails.reportDate || new Date().toISOString(),
       },
-<<<<<<< HEAD
       executiveSummary: {
-        summaryOfIdentifiedProjects: mappedProjects
+        summaryOfIdentifiedProjects: cleaned
       },
       groups: finalGroups,
-      projects: mappedProjects
-=======
       groupedProjects: grouped,
       projects: cleaned, // fallback
->>>>>>> 973f88acc51446707a3ed714570b3b570f7b448d
     };
   }
 
@@ -2601,13 +2625,25 @@ function reportEndpoints(app) {
           });
         }
 
-        let reportData = {};
-        try {
-          reportData = JSON.parse(report.outputContent);
-        } catch (e) {
-          return response
-            .status(400)
-            .json({ error: "Report content is not valid JSON." });
+        const requestBody = reqBody(request);
+        let reportData =
+          requestBody.reportData || requestBody.previewData || requestBody.generatedReportData || {};
+
+        if (!Object.keys(reportData).length) {
+          try {
+            reportData = JSON.parse(report.outputContent);
+          } catch (e) {
+            return response
+              .status(400)
+              .json({ error: "Report content is not valid JSON." });
+          }
+        }
+
+        if (requestBody.reportData || requestBody.previewData) {
+          console.log(
+            "[DOCX_EXPORT_REQUEST_BODY_DEBUG]",
+            enhancementSummary(normalizeActiveReportData(reportData))
+          );
         }
 
         reportData = normalizeActiveReportData(reportData);
@@ -2763,7 +2799,20 @@ function reportEndpoints(app) {
         force: req.body.force === true
       });
 
-      const finalReportData = enforceReportQuality(result.reportData || reportData);
+      const finalReportData = enforceReportQuality(
+        normalizeActiveReportData(result.reportData || reportData)
+      );
+      const finalEnhancementSummary = enhancementSummary(finalReportData);
+      finalReportData.enhancementMeta = {
+        enhancedAt: new Date().toISOString(),
+        enhancerUsed:
+          result.aiEnhancementStatus?.finalEnhancerUsed ||
+          (result.fallbackEnhanced ? "local_deterministic_narrative" : "ai"),
+        enhancementApplied: true,
+        summary: finalEnhancementSummary,
+      };
+
+      console.log("[ENHANCE_RESPONSE_SUMMARY]", finalEnhancementSummary);
 
       return res.status(200).json({
         success: true,
@@ -2772,6 +2821,7 @@ function reportEndpoints(app) {
         reportId,
         reportData: finalReportData,
         previewData: finalReportData,
+        enhancementSummary: finalEnhancementSummary,
         aiEnhancementStatus: result.aiEnhancementStatus || {
           status: result.fallbackEnhanced ? "fallback_success" : "success"
         },

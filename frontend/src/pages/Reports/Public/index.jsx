@@ -1321,6 +1321,7 @@ function Step4({
   selectedTemplate,
   onStartOver,
   activeReportData,
+  previewRenderKey,
   onReportUpdated,
   onEnhanceWithAi,
   aiEnhancing,
@@ -1450,6 +1451,8 @@ function Step4({
     
     const exportReportData = activeReportData || reportData || null;
     const projectCount = getProjectCount(exportReportData);
+
+    console.log("[DOCX_EXPORT_DATA_DEBUG]", getReportSummary(exportReportData));
     
     if (!exportReportData || projectCount <= 0) {
       showToast("Cannot export: Report contains no project data. Please verify your ECM Excel sheet.", "error");
@@ -1467,7 +1470,11 @@ function Step4({
     );
 
     try {
-      const res = await Reports.downloadDocx(report.id, allowDraft);
+      const res = await Reports.downloadDocx(
+        report.id,
+        allowDraft,
+        exportReportData
+      );
       if (res.success) {
         setQcResult(null);
         toast.update(wordExportToastRef.current, {
@@ -2033,7 +2040,10 @@ function Step4({
           <div className="report-viewer">
             <div className="report-page-shell">
               <div ref={reportRef} className="report-print-area">
-                <CommercialBuildingEnergyAuditTemplate data={reportData} />
+                <CommercialBuildingEnergyAuditTemplate
+                  key={previewRenderKey}
+                  data={reportData}
+                />
               </div>
             </div>
           </div>
@@ -2217,6 +2227,38 @@ function getProjectCount(data) {
   );
 }
 
+function getAllProjects(data) {
+  return (data?.groups || []).flatMap((group) =>
+    Array.isArray(group?.projects) ? group.projects : []
+  );
+}
+
+function wordCount(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function getReportSummary(data) {
+  const firstProject = getAllProjects(data)[0];
+
+  return {
+    projectCount: getAllProjects(data).length,
+    firstProjectTitle:
+      firstProject?.title || firstProject?.ecmName || firstProject?.projectTitle || null,
+    existingWords: wordCount(firstProject?.existingSystemDescription),
+    problemWords: wordCount(firstProject?.problemGapIdentified),
+    proposedWords: wordCount(
+      firstProject?.proposedProject || firstProject?.proposedProjectDescription
+    ),
+    rationaleWords: wordCount(firstProject?.rationaleForEnergySaving),
+    mvWords: wordCount(firstProject?.measurementVerificationPlan),
+    benefitsWords: wordCount(firstProject?.benefitsOtherThanEnergySaving),
+    conclusionWords: wordCount(firstProject?.conclusion || firstProject?.finalConclusion),
+  };
+}
+
 function normalizeReportDataShape(candidate) {
   if (!candidate || typeof candidate !== "object") return null;
 
@@ -2279,6 +2321,7 @@ export default function PublicReports() {
   const [showSlowWarning, setShowSlowWarning] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
   const [activeReportData, setActiveReportData] = useState(null);
+  const [previewRenderKey, setPreviewRenderKey] = useState(0);
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
   const [
     allowGenerateWithSupportingFilesOnly,
@@ -2595,7 +2638,6 @@ export default function PublicReports() {
 
     const baseReportData =
       activeReportData ||
-      generatedReportData ||
       generatedReport?.reportData ||
       generatedReport?.previewData ||
       generatedReport ||
@@ -2642,10 +2684,46 @@ export default function PublicReports() {
         normalizeReportDataFromResponse(res) ||
         null;
 
-      if (enhancedReportData) {
-        if (typeof setActiveReportData === "function") setActiveReportData(enhancedReportData);
-        if (typeof setGeneratedReportData === "function") setGeneratedReportData(enhancedReportData);
+      console.log("[AI_ENHANCE_RESPONSE_DEBUG]", {
+        responseKeys: Object.keys(res || {}),
+        enhancementSummary: res?.enhancementSummary,
+        hasEnhancedReportData: Boolean(enhancedReportData),
+        frontendSummary: getReportSummary(enhancedReportData)
+      });
+
+      if (!enhancedReportData) {
+        toast.error("Enhancement returned no reportData.");
+        return;
       }
+
+      const beforeSummary = getReportSummary(normalizedReportData);
+      const normalizedEnhancedReportData =
+        normalizeReportDataShape(enhancedReportData) || enhancedReportData;
+      const afterSummary = getReportSummary(normalizedEnhancedReportData);
+
+      console.log("[AI_ENHANCE_BEFORE_AFTER]", {
+        beforeSummary,
+        afterSummary
+      });
+
+      setActiveReportData(normalizedEnhancedReportData);
+      setGeneratedReport((previous) => ({
+        ...(previous || {}),
+        ...(res.report || {}),
+        reportData: normalizedEnhancedReportData,
+        previewData: normalizedEnhancedReportData,
+        data: normalizedEnhancedReportData,
+        outputContent: JSON.stringify(normalizedEnhancedReportData),
+        enhancementSummary: res?.enhancementSummary,
+        aiEnhancementStatus:
+          res?.aiEnhancementStatus || previous?.aiEnhancementStatus,
+        providerAttempts:
+          res?.providerAttempts ||
+          res?.aiEnhancementStatus?.providerAttempts ||
+          previous?.providerAttempts ||
+          []
+      }));
+      setPreviewRenderKey((key) => key + 1);
 
       const aiStatus =
         res?.aiEnhancementStatus ||
@@ -2661,12 +2739,21 @@ export default function PublicReports() {
         const seconds = res.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
-      } else if (res.fallbackEnhanced || aiStatus?.status === "fallback_success") {
-        toast.success("Report narrative enhanced successfully.");
-      } else if (res.aiEnhanced === true || aiStatus?.status === "success") {
-        toast.success("AI enhancement completed.");
       } else {
-        toast.success("Report enhancement completed.");
+        const contentChanged =
+          JSON.stringify(beforeSummary) !== JSON.stringify(afterSummary) &&
+          (
+            afterSummary.existingWords > beforeSummary.existingWords ||
+            afterSummary.problemWords > beforeSummary.problemWords ||
+            afterSummary.rationaleWords > beforeSummary.rationaleWords ||
+            afterSummary.mvWords > beforeSummary.mvWords
+          );
+
+        if (!contentChanged) {
+          toast.warning("Enhancement returned successfully, but report content did not visibly change.");
+        } else {
+          toast.success("Report narrative enhanced successfully.");
+        }
       }
     } catch (err) {
       console.error("[AI_ENHANCE_FAILED]", err);
@@ -2703,6 +2790,7 @@ export default function PublicReports() {
     setUploadedFiles([]);
     setGeneratedReport(null);
     setActiveReportData(null);
+    setPreviewRenderKey(0);
     setAiEnhancing(false);
     setAiProgress(createAiProgressState());
     setAllowGenerateWithSupportingFilesOnly(false);
@@ -2819,6 +2907,7 @@ export default function PublicReports() {
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
                 activeReportData={activeReportData}
+                previewRenderKey={previewRenderKey}
                 onReportUpdated={(updated) => {
                   try {
                     if (updated.outputContent) {
@@ -2834,6 +2923,7 @@ export default function PublicReports() {
                         previewData: normalizedUpdatedReportData,
                         outputContent: JSON.stringify(normalizedUpdatedReportData),
                       }));
+                      setPreviewRenderKey((key) => key + 1);
                     }
                   } catch (e) {}
                 }}

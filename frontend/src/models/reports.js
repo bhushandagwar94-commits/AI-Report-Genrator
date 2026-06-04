@@ -245,12 +245,23 @@ const Reports = {
       });
   },
 
-  downloadDocx: async (id, allowDraft = false) => {
+  downloadDocx: async (id, allowDraft = false, reportData = null) => {
+    const headers = baseHeaders();
+    headers["Content-Type"] = "application/json";
+
     return await fetch(
       `${API_BASE}/reports/${id}/export/docx${allowDraft ? "?allowDraft=true" : ""}`,
       {
         method: "POST",
-        headers: baseHeaders(),
+        headers,
+        body: JSON.stringify(
+          reportData
+            ? {
+                reportData,
+                previewData: reportData,
+              }
+            : {}
+        ),
       }
     )
       .then(async (res) => {
