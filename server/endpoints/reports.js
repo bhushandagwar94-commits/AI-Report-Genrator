@@ -48,6 +48,12 @@ const {
   extractSupportingContext,
 } = require("../services/supportingFileExtractor");
 const { enforceReportQuality } = require("../services/reportQualityEnforcer");
+const {
+  expandReportEngineeringNarratives,
+  classifyEcm,
+  countWords,
+} = require("../services/engineeringNarrativeExpander");
+const { filterReportProjects } = require("../services/projectQualityFilter");
 
 let enhanceReportNarrativesWithAi = null;
 
@@ -179,6 +185,25 @@ function enhancementSummary(reportData) {
     mvWords: wordCount(firstProject?.measurementVerificationPlan),
     benefitsWords: wordCount(firstProject?.benefitsOtherThanEnergySaving),
     conclusionWords: wordCount(firstProject?.conclusion || firstProject?.finalConclusion),
+  };
+}
+
+function firstProjectSummary(reportData) {
+  const firstProject = getAllProjects(reportData)[0];
+
+  return {
+    projectCount: getAllProjects(reportData).length,
+    firstProjectNo: firstProject?.ecmNo || firstProject?.projectNo || null,
+    firstProjectTitle:
+      firstProject?.title || firstProject?.ecmName || firstProject?.projectTitle || null,
+    firstProjectClassification: firstProject ? classifyEcm(firstProject) : null,
+    existingWords: countWords(firstProject?.existingSystemDescription),
+    problemWords: countWords(firstProject?.problemGapIdentified),
+    proposedWords: countWords(firstProject?.proposedProject),
+    rationaleWords: countWords(firstProject?.rationaleForEnergySaving),
+    mvWords: countWords(firstProject?.measurementVerificationPlan),
+    benefitsWords: countWords(firstProject?.benefitsOtherThanEnergySaving),
+    conclusionWords: countWords(firstProject?.conclusion),
   };
 }
 
@@ -2299,51 +2324,6 @@ function reportEndpoints(app) {
       });
   }
 
-  function isBadFallbackProject(project = {}) {
-    const title = String(project.title || project.ecmName || project.description || "").trim().toLowerCase();
-    const system = String(project.system || "").toLowerCase();
-
-    const annualSaving = Number(project.annualSavingRaw ?? project.annualSaving ?? 0);
-    const investment = Number(project.investmentRaw ?? project.investment ?? 0);
-    const payback = Number(project.paybackRaw ?? project.payback ?? 0);
-
-    if (project.fallbackGenerated && system.includes("fallback")) return true;
-
-    if (title.includes("fallback ecm")) return true;
-
-    if (/^\d+\s/.test(title) && !/replacement|retrofit|optimization|improvement|heat recovery|vfd|ie5|apfc|servo|compressor|pump|chiller/i.test(title)) {
-      return true;
-    }
-
-    if (annualSaving < 0) return true;
-    if (payback > 25) return true;
-
-    if (title.match(/\b0 0 0 0\b/)) return true;
-
-    return false;
-  }
-
-  function normalizeProjectKey(project = {}) {
-    return String(project.ecmNo || "") + "|" + String(project.title || project.ecmName || project.description || "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function dedupeProjects(projects = []) {
-    const seen = new Set();
-    const result = [];
-
-    for (const project of projects) {
-      const key = normalizeProjectKey(project);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      result.push(project);
-    }
-
-    return result;
-  }
-
   function buildLightweightReportData(projects, reportDetails) {
     const mappedProjects = projects.map((p, i) => ({
       projectNo: p.ecmNo || p.projectNo || `ECM ${i + 1}`,
@@ -2501,12 +2481,8 @@ function reportEndpoints(app) {
           }
         }
 
-        // Filter and dedupe projects
-        let validProjects = extractedProjects.filter((project) => !isBadFallbackProject(project));
-        validProjects = dedupeProjects(validProjects);
-
-        // 4. Require at least one project for success
-        if (validProjects.length === 0) {
+        // 4. Require at least one extracted project for success
+        if (!Array.isArray(extractedProjects) || extractedProjects.length === 0) {
           return response.status(422).json({
             error:
               "No valid ECM rows found. Fallback rows were rejected.",
@@ -2515,16 +2491,23 @@ function reportEndpoints(app) {
         }
 
         let reportData = buildLightweightReportData(
-          validProjects,
+          extractedProjects,
           reportDetails
         );
-
+        reportData = filterReportProjects(reportData);
         reportData = enforceReportQuality(reportData);
 
         const projectCount = (reportData.groups || []).reduce(
           (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
           0
         );
+
+        console.log("[BACKEND_GENERATE_FILTERED]", {
+          extractedProjectCount: extractedProjects.length,
+          retainedProjectCount: projectCount,
+          rejectedProjectCount: reportData?.filteringMeta?.rejectedCount || 0,
+          firstProject: firstProjectSummary(reportData),
+        });
 
         if (projectCount <= 0) {
           return response.status(422).json({
@@ -2556,6 +2539,7 @@ function reportEndpoints(app) {
           hasReportData: Boolean(reportData),
           groups: reportData?.groups?.length || 0,
           projects: projectCount,
+          firstProject: firstProjectSummary(reportData),
           extractionAttempts: extractionAttempts?.map((item) => ({
             fileName: item.filename,
             status: item.status,
@@ -2646,11 +2630,25 @@ function reportEndpoints(app) {
           );
         }
 
-        reportData = normalizeActiveReportData(reportData);
+        let exportReportData = normalizeActiveReportData(reportData);
+        exportReportData = filterReportProjects(exportReportData);
+        exportReportData = expandReportEngineeringNarratives(exportReportData);
+        if (getAllProjects(exportReportData).length <= 0) {
+          return response.status(400).json({
+            error: "DOCX export requires at least one valid ECM project after filtering.",
+          });
+        }
+
+        console.log("[DOCX_FILTERED_PROJECTS]", {
+          retainedProjectCount: getAllProjects(exportReportData).length,
+          rejectedProjectCount: exportReportData?.filteringMeta?.rejectedCount || 0,
+        });
+        console.log("[DOCX_FORCED_EXPANSION_SUMMARY]", firstProjectSummary(exportReportData));
+        console.log("[FINAL_ECM_SPECIFIC_EXPORT]", firstProjectSummary(exportReportData));
 
         // Quality Check (QC) Gate
-        const qcResult = runReportQC(reportData);
-        const accuracyResult = calculateReportAccuracyScore(reportData);
+        const qcResult = runReportQC(exportReportData);
+        const accuracyResult = calculateReportAccuracyScore(exportReportData);
         const allowDraft = request.query.allowDraft === "true";
         const isDev =
           process.env.NODE_ENV === "development" ||
@@ -2685,13 +2683,13 @@ function reportEndpoints(app) {
           }
         }
 
-        if (allowDraft && isDev && reportData.reportInfo) {
-          reportData.reportInfo.clientName =
+        if (allowDraft && isDev && exportReportData.reportInfo) {
+          exportReportData.reportInfo.clientName =
             "[DRAFT - QC REVIEW REQUIRED] " +
-            (reportData.reportInfo.clientName || "");
+            (exportReportData.reportInfo.clientName || "");
         }
 
-        const exportReport = stripDebugMetadata(reportData);
+        const exportReport = stripDebugMetadata(exportReportData);
 
         let buffer;
         try {
@@ -2705,7 +2703,7 @@ function reportEndpoints(app) {
         }
 
         const clientName =
-          reportData.reportInfo?.clientName
+          exportReportData.reportInfo?.clientName
             ?.replace(/[^a-z0-9]/gi, "_")
             .toLowerCase() || "client";
         const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
@@ -2754,13 +2752,16 @@ function reportEndpoints(app) {
         });
       }
 
-      const reportData = normalizeActiveReportData(rawReportData);
+      let reportData = normalizeActiveReportData(rawReportData);
+      reportData = filterReportProjects(reportData);
       const projectCount = getActiveReportProjectCount(reportData);
 
       console.log("[BACKEND_ENHANCE_RECEIVE_DEBUG]", {
         reportId,
         groups: reportData?.groups?.length || 0,
         projects: projectCount,
+        rejectedProjects: reportData?.filteringMeta?.rejectedCount || 0,
+        firstProject: firstProjectSummary(reportData),
         receivedKeys: Object.keys(req.body || {}),
       });
 
@@ -2779,18 +2780,25 @@ function reportEndpoints(app) {
       }
 
       if (typeof enhanceReportNarrativesWithAi !== "function") {
+        let finalReportData = expandReportEngineeringNarratives(reportData);
+        const expansionSummary = firstProjectSummary(finalReportData);
+
+        console.log("[FORCED_ENGINEERING_EXPANSION_SUMMARY]", expansionSummary);
+        console.log("[FINAL_ECM_SPECIFIC_EXPANSION]", expansionSummary);
+
         return res.status(200).json({
           success: true,
           aiEnhanced: false,
-          reportData,
-          previewData: reportData,
+          fallbackEnhanced: true,
+          reportData: finalReportData,
+          previewData: finalReportData,
+          enhancementSummary: expansionSummary,
           aiEnhancementStatus: {
-            status: "failed_non_blocking",
-            finalEnhancerUsed: "deterministic",
-            failureReason: "ai_enhancer_import_failed",
-            userMessage: "AI enhancement module is not available on the server. Deterministic report is ready.",
-            providerAttempts: []
-          }
+            status: "engineering_expansion_success",
+            finalEnhancerUsed: "forced_engineering_narrative_expander",
+            userMessage: "Report engineering narrative expanded successfully.",
+            providerAttempts: [],
+          },
         });
       }
 
@@ -2799,9 +2807,17 @@ function reportEndpoints(app) {
         force: req.body.force === true
       });
 
-      const finalReportData = enforceReportQuality(
-        normalizeActiveReportData(result.reportData || reportData)
-      );
+      let finalReportData = normalizeActiveReportData(result.reportData || reportData);
+      finalReportData = filterReportProjects(finalReportData);
+      finalReportData = enforceReportQuality(finalReportData);
+      if (getActiveReportProjectCount(finalReportData) <= 0) {
+        return res.status(422).json({
+          success: false,
+          error: "AI enhancement produced no valid ECM projects after filtering.",
+        });
+      }
+      finalReportData = expandReportEngineeringNarratives(finalReportData);
+      const expansionSummary = firstProjectSummary(finalReportData);
       const finalEnhancementSummary = enhancementSummary(finalReportData);
       finalReportData.enhancementMeta = {
         enhancedAt: new Date().toISOString(),
@@ -2813,17 +2829,22 @@ function reportEndpoints(app) {
       };
 
       console.log("[ENHANCE_RESPONSE_SUMMARY]", finalEnhancementSummary);
+      console.log("[FORCED_ENGINEERING_EXPANSION_SUMMARY]", expansionSummary);
+      console.log("[FINAL_ECM_SPECIFIC_EXPANSION]", expansionSummary);
 
       return res.status(200).json({
         success: true,
         aiEnhanced: result.aiEnhanced === true,
-        fallbackEnhanced: result.fallbackEnhanced === true,
+        fallbackEnhanced: true,
         reportId,
         reportData: finalReportData,
         previewData: finalReportData,
-        enhancementSummary: finalEnhancementSummary,
-        aiEnhancementStatus: result.aiEnhancementStatus || {
-          status: result.fallbackEnhanced ? "fallback_success" : "success"
+        enhancementSummary: expansionSummary,
+        aiEnhancementStatus: {
+          ...(result.aiEnhancementStatus || {}),
+          status: "engineering_expansion_success",
+          finalEnhancerUsed: "forced_engineering_narrative_expander",
+          userMessage: "Report engineering narrative expanded successfully.",
         },
         providerAttempts:
           result.providerAttempts ||

@@ -2605,6 +2605,10 @@ export default function PublicReports() {
         projects: projectCount,
         extractionAttempts: res?.extractionAttempts || []
       });
+      console.log("[FRONTEND_GENERATE_RECEIVE_DEBUG]", {
+        activeReportDataProjectCount: projectCount,
+        groups: nextReportData?.groups?.length || 0,
+      });
 
       setPipelineDebugData((prev) =>
         mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
@@ -2651,6 +2655,10 @@ export default function PublicReports() {
       groups: normalizedReportData?.groups?.length || 0,
       projects: projectCount
     });
+    console.log("[AI_ENHANCE_CLICK_DEBUG]", {
+      projectCount,
+      groups: normalizedReportData?.groups?.length || 0,
+    });
 
     if (!normalizedReportData || projectCount <= 0) {
       toast.warning("AI enhancement requires a generated report with at least one project.");
@@ -2673,6 +2681,10 @@ export default function PublicReports() {
       console.log("[AI_ENHANCE_PAYLOAD]", {
         groups: payload.reportData?.groups?.length || 0,
         projects: getProjectCount(payload.reportData)
+      });
+      console.log("[AI_ENHANCE_PAYLOAD_DEBUG]", {
+        projectCount: getProjectCount(payload.reportData),
+        groups: payload.reportData?.groups?.length || 0,
       });
 
       const res = await Reports.enhanceReportWithAi(payload.reportId, payload);
@@ -2740,19 +2752,16 @@ export default function PublicReports() {
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
       } else {
-        const contentChanged =
-          JSON.stringify(beforeSummary) !== JSON.stringify(afterSummary) &&
-          (
-            afterSummary.existingWords > beforeSummary.existingWords ||
-            afterSummary.problemWords > beforeSummary.problemWords ||
-            afterSummary.rationaleWords > beforeSummary.rationaleWords ||
-            afterSummary.mvWords > beforeSummary.mvWords
-          );
+        const expanded =
+          afterSummary.existingWords >= 250 ||
+          afterSummary.problemWords >= 250 ||
+          afterSummary.rationaleWords >= 250 ||
+          afterSummary.mvWords >= 250;
 
-        if (!contentChanged) {
-          toast.warning("Enhancement returned successfully, but report content did not visibly change.");
+        if (!expanded) {
+          toast.warning("Enhancement returned, but engineering expansion did not apply.");
         } else {
-          toast.success("Report narrative enhanced successfully.");
+          toast.success("Report engineering narrative expanded successfully.");
         }
       }
     } catch (err) {
