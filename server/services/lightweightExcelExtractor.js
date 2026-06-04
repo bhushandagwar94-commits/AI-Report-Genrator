@@ -59,6 +59,8 @@ function extractLightweightExcelData(filePath, file) {
 
 function extractProjects(sheets) {
   const projects = [];
+  
+  console.log(`[ECM EXTRACTION] Workbook sheets found: ${sheets.map(s => s.name).join(", ")}`);
 
   for (const sheet of sheets) {
     const { name: sheetName, rows } = sheet;
@@ -66,6 +68,9 @@ function extractProjects(sheets) {
 
     const headerRowIdx = findHeaderRow(rows);
     if (headerRowIdx === -1) continue;
+    
+    console.log(`[ECM EXTRACTION] Selected sheet: ${sheetName}`);
+    console.log(`[ECM EXTRACTION] Header row detected at index: ${headerRowIdx}`);
 
     const headers = rows[headerRowIdx].map((h) =>
       String(h).toLowerCase().trim()
@@ -117,10 +122,23 @@ function extractProjects(sheets) {
       const description = getValue(row, colIdx.description);
       if (!description) continue;
       if (/^(total|sub.?total|grand total)/i.test(description)) continue;
+      
+      // Hard Validation: Reject rows that only contain machine name / asset tag.
+      // Must contain action words typically found in titles/recommendations/measures/descriptions
+      const lowerDesc = description.toLowerCase();
+      const hasActionWord = /(improvement|optimization|retrofit|replacement|installation|upgrade|saving|recovery|insulation|reduction|vfd|system|control|management|integration)/i.test(lowerDesc);
+      
+      const isJustMachineName = /^[\w\d\-\s]+$/.test(lowerDesc) && lowerDesc.length < 15 && !hasActionWord;
+      
+      if (isJustMachineName || lowerDesc === "70 dph" || lowerDesc === "12m" || lowerDesc === "50mb") {
+        console.log(`[ECM EXTRACTION] Rejected invalid ECM row ${i+1}: ${description}`);
+        continue;
+      }
 
-      projects.push({
+      const p = {
         ecmNo: getValue(row, colIdx.ecmNo) || String(projects.length + 1),
         system: getValue(row, colIdx.system) || "",
+        title: description, // Mapping description as title for pipeline
         description,
         energySaving: parseNum(getValue(row, colIdx.energySaving)),
         annualSaving: parseNum(getValue(row, colIdx.annualSaving)),
@@ -128,11 +146,25 @@ function extractProjects(sheets) {
         payback: parseNum(getValue(row, colIdx.payback)),
         sourceSheet: sheetName,
         sourceRow: i + 1,
-      });
+      };
+      
+      console.log(`[ECM EXTRACTION] Extracted:
+{
+  rowNumber: ${i + 1},
+  ecmNo: "${p.ecmNo}",
+  title: "${p.title}",
+  description: "${p.description}",
+  sourceSheet: "${p.sourceSheet}",
+  sourceRow: ${p.sourceRow}
+}`);
+
+      projects.push(p);
     }
 
     if (projects.length > 0) break;
   }
+  
+  console.log(`[ECM EXTRACTION] Total ECMs Extracted: ${projects.length}`);
 
   // Fallback: If no projects extracted via headers, scan rows for keywords
   if (projects.length === 0) {

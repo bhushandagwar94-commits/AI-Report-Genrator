@@ -1,0 +1,158 @@
+[
+  {
+    "equipment": "ct fan",
+    "parentSystem": "cooling tower",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "chw pump",
+    "parentSystem": "chilled water system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "ct water pump",
+    "parentSystem": "cooling tower water system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "condenser pump",
+    "parentSystem": "condenser water system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "chiller",
+    "parentSystem": "chiller plant",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "ahu",
+    "parentSystem": "air handling system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "fcu",
+    "parentSystem": "air handling system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "plug fan",
+    "parentSystem": "air handling system",
+    "domain": "Cooling System",
+    "targetGroup": "GR-1"
+  },
+  {
+    "equipment": "compressor",
+    "parentSystem": "compressed air system",
+    "domain": "Compressed Air System",
+    "targetGroup": "GR-3"
+  },
+  {
+    "equipment": "booster compressor",
+    "parentSystem": "compressed air system",
+    "domain": "Compressed Air System",
+    "targetGroup": "GR-3"
+  },
+  {
+    "equipment": "air receiver",
+    "parentSystem": "compressed air system",
+    "domain": "Compressed Air System",
+    "targetGroup": "GR-3"
+  },
+  {
+    "equipment": "air dryer",
+    "parentSystem": "compressed air system",
+    "domain": "Compressed Air System",
+    "targetGroup": "GR-3"
+  },
+  {
+    "equipment": "servo motor retrofit on asb",
+    "parentSystem": "production machine",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "servo motor",
+    "parentSystem": "production machine",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "asb",
+    "parentSystem": "production machine",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "ebm",
+    "parentSystem": "production machine",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "molding machine",
+    "parentSystem": "production machine",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "dryer",
+    "parentSystem": "production heating",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "barrel heater",
+    "parentSystem": "production heating",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "ir heater",
+    "parentSystem": "production heating",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "machine",
+    "parentSystem": "production system",
+    "domain": "Production System",
+    "targetGroup": "GR-2"
+  },
+  {
+    "equipment": "apfc panel",
+    "parentSystem": "electrical utility",
+    "domain": "Auxiliary System",
+    "targetGroup": "GR-4"
+  },
+  {
+    "equipment": "apfc",
+    "parentSystem": "electrical utility",
+    "domain": "Auxiliary System",
+    "targetGroup": "GR-4"
+  },
+  {
+    "equipment": "blower",
+    "parentSystem": "general utility",
+    "domain": "Auxiliary System",
+    "targetGroup": "GR-4"
+  },
+  {
+    "equipment": "fan",
+    "parentSystem": "general utility",
+    "domain": "Auxiliary System",
+    "targetGroup": "GR-4"
+  },
+  {
+    "equipment": "lighting",
+    "parentSystem": "general utility",
+    "domain": "Auxiliary System",
+    "targetGroup": "GR-4"
+  }
+]

@@ -1270,6 +1270,12 @@ function DevDiagnostics({ data }: { data: any }) {
 export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: CommercialBuildingEnergyAuditData }) {
   const projects = asArray(data.projects);
   const groupedProjects = asArray(data.groupedProjects);
+  
+  console.log("REPORT GROUPED PROJECTS");
+  console.log(data.groupedProjects);
+
+  console.log("REPORT PROJECTS");
+  console.log(data.projects);
   const projectGroups = groupedProjects.length ? groupedProjects : [{
     groupNo: "GR-1",
     groupTitle: "Energy Saving Projects",
@@ -1297,18 +1303,8 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
       <BuildingEnergyProfilePage data={data} />
       <div className="page-break" />
 
-      {(() => {
-        console.log("GROUPING SUMMARY");
-        const summary: any = {};
-        projectGroups.forEach((g: any) => {
-          const key = g.groupNo || g.groupId || g.groupTitle;
-          summary[key] = asArray(g.projects).length;
-        });
-        console.log(summary);
-        return null;
-      })()}
-
       {projectGroups.map((group, index) => {
+        const globalStartIndex = projectGroups.slice(0, index).reduce((acc, g) => acc + asArray(g.projects).length, 0);
         return (
           <section key={index} className="report-page" style={{...pageStyle, minHeight: 'auto'}}>
             <SectionHeader level={2} title={formatGroupHeading(group, index)} />
@@ -1331,8 +1327,9 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
 
             <div className="mt-4">
               {asArray(group.projects).map((project, pIndex) => {
+                const globalEcmIndex = globalStartIndex + pIndex + 1;
                 return (
-                  <ProjectChapterPage key={pIndex} project={project} groupNumber={`3.${index + 1}`} ecmIndexWithinGroup={pIndex + 1} />
+                  <ProjectChapterPage key={pIndex} project={project} groupNumber="3" ecmIndexWithinGroup={globalEcmIndex} />
                 );
               })}
             </div>

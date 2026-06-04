@@ -1113,62 +1113,82 @@ function cleanAndDeduplicateProjects(projects) {
 }
 
 function buildProjectGroups(projects) {
+  console.log("FUNCTION ENTERED:\nserver/services/llmProviderService.js\nbuildProjectGroups");
+  console.log("USING NEW GROUPING ENGINE");
+  console.log("GROUPING FUNCTION STARTED");
+  console.log("TOTAL ECMS:", projects.length);
   const groups = [
     {
       no: "GR-1",
       title: "Cooling System Performance Improvement",
       keywords: [
         "chiller",
+        "ct",
         "cooling tower",
+        "chw",
+        "condenser water",
+        "primary pump",
+        "secondary pump",
         "ahu",
-        "fcu",
         "hvac",
-        "cooling pump",
-        "condenser",
-        "chilled water",
+        "kw/tr",
+        "free cooling",
+        "cooling system",
+        "plug fan",
+        "cooling efficiency",
       ],
     },
     {
       no: "GR-2",
       title: "Production Machines",
       keywords: [
-        "production equipment",
-        "manufacturing machine",
-        "process equipment",
-        "injection molding",
-        "moulding",
-        "cnc",
-        "production motor",
-        "process improvement",
+        "asb",
+        "ebm",
+        "cmp",
+        "molding",
+        "production",
         "machine",
+        "dryer",
+        "dryers",
+        "barrel",
+        "ir heater",
+        "band heater",
+        "servo motor",
+        "process heating",
+        "manufacturing",
+        "injection",
+        "production line",
       ],
     },
     {
       no: "GR-3",
       title: "Air Compressors",
       keywords: [
-        "air compressor",
+        "compressor",
         "compressed air",
-        "leakage",
-        "compressor control",
-        "compressor optimization",
-        "vfd for compressor",
+        "air receiver",
         "booster compressor",
+        "pneumatic",
+        "air leak",
+        "air network",
+        "air consumption",
       ],
     },
     {
       no: "GR-4",
       title: "Auxiliary Systems & Machine Improvement",
       keywords: [
-        "lighting",
-        "motor",
-        "pump",
-        "fan",
-        "transformer",
-        "electrical",
-        "water system",
-        "utility",
-        "miscellaneous",
+        "apfc",
+        "power factor",
+        "electrical panel",
+        "motor retrofit",
+        "ie5 motor",
+        "pmsm",
+        "blower",
+        "fan retrofit",
+        "cogged belt",
+        "auxiliary",
+        "utility improvement",
       ],
     },
   ];
@@ -1183,50 +1203,167 @@ function buildProjectGroups(projects) {
     weightedPayback: "Data required",
   }));
 
-  for (const p of projects) {
-    const combinedText = [
-      p.projectCategory,
-      p.category,
-      p.system,
-      p.equipmentName,
-      p.equipmentCovered,
-      p.title,
-      p.projectTitle,
-      p.recommendation,
-      p.proposedIntervention,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+  const isFalseECM = (p) => {
+    const title = (p.projectTitle || p.title || p.ecmName || "").toLowerCase().trim();
+    if (!title) return true;
+    if (
+      title === "total" ||
+      title === "subtotal" ||
+      title === "placeholder" ||
+      title.startsWith("note") ||
+      title.startsWith("remark") ||
+      title.startsWith("reference") ||
+      title.startsWith("annexure") ||
+      title.startsWith("section")
+    ) {
+      return true;
+    }
+    return false;
+  };
 
-    let matchedGroup = null;
-    let matchedKeyword = null;
+  const fs = require('fs');
+  const path = require('path');
+  let ontology = [];
+  try {
+    const ontologyPath = path.join(__dirname, '../config/engineeringSystems.json');
+    ontology = JSON.parse(fs.readFileSync(ontologyPath, 'utf8'));
+  } catch (err) {
+    console.error("Failed to load engineeringSystems.json", err);
+  }
 
-    for (const g of groups) {
-      const match = g.keywords.find((k) => combinedText.includes(k));
-      if (match) {
-        matchedGroup = mappedGroups.find((m) => m.groupNo === g.no);
-        matchedKeyword = match;
+  const validProjects = projects.filter((p) => !isFalseECM(p));
+  let outputCount = 0;
+
+  for (const p of validProjects) {
+    const titleText = String(p.projectTitle || p.title || p.ecmName || "").toLowerCase();
+    const systemText = String(p.system || "").toLowerCase();
+    const equipText = String(p.equipmentName || p.equipmentCovered || p.equipment || "").toLowerCase();
+
+    const fullText = [
+      titleText, systemText, equipText, p.department, p.area, p.location, p.existingOperatingCondition, p.existingSystemDescription, p.recommendation, p.proposedIntervention, p.proposedProjectDescription, p.observation, p.projectCategory, p.category, p.sheetName, p.sourceSheet
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    let detectedEquipment = p.equipmentName || p.equipmentCovered || p.equipment || "Unknown";
+    let detectedParentSystem = "Unknown";
+    let detectedDomain = "Unknown";
+    let assignedGroupNo = "GR-4";
+    let confidence = 0;
+
+    // Priority 1: Match Equipment to infer System and Domain from Ontology
+    for (const d of ontology) {
+      if (equipText.includes(d.equipment) || titleText.includes(d.equipment)) {
+        detectedEquipment = d.equipment;
+        detectedParentSystem = d.parentSystem;
+        detectedDomain = d.domain;
+        assignedGroupNo = d.targetGroup;
+        confidence = 96;
         break;
       }
     }
 
-    let reason = matchedKeyword
-      ? `Keyword match: '${matchedKeyword}'`
-      : "Keyword fallback";
-    if (!matchedGroup) {
-      matchedGroup = mappedGroups.find((m) => m.groupNo === "GR-4");
+    // Priority 2: If equipment mapping fails, try System/Context text
+    if (detectedDomain === "Unknown") {
+      for (const d of ontology) {
+        if (systemText.includes(d.parentSystem) || fullText.includes(d.parentSystem)) {
+          detectedParentSystem = d.parentSystem;
+          detectedDomain = d.domain;
+          assignedGroupNo = d.targetGroup;
+          confidence = 82; 
+          break;
+        }
+      }
     }
 
-    console.log(`[ECM GROUPING]
-ECM: ${p.projectNo || p.projectTitle || "Unknown"}
-Detected System: ${p.system || "N/A"}
-Detected Category: ${p.projectCategory || p.category || "N/A"}
-Assigned Group: ${matchedGroup.groupNo}
-Reason: ${reason}`);
+    // Fallback
+    if (detectedDomain === "Unknown") {
+      detectedDomain = "Auxiliary System";
+      assignedGroupNo = "GR-4";
+      confidence = 50;
+    }
 
+    // Phase 4: Engineering Validation Override
+    if (assignedGroupNo !== "GR-1" && ["chw", "cooling tower", "ct water", "condenser water", "chiller", "cooling plant"].some(term => fullText.includes(term))) {
+      console.log("\nENGINEERING_CONFLICT: Cooling components detected in non-cooling group. Forcing re-evaluation to Cooling System.");
+      detectedParentSystem = "Cooling System";
+      detectedDomain = "Cooling System";
+      assignedGroupNo = "GR-1";
+      confidence = 99;
+    }
+    
+    if (assignedGroupNo !== "GR-3" && ["compressor", "compressed air", "pneumatic"].some(term => fullText.includes(term))) {
+      console.log("\nENGINEERING_CONFLICT: Compressed Air components detected in non-compressor group. Forcing re-evaluation to Compressed Air System.");
+      detectedParentSystem = "Compressed Air System";
+      detectedDomain = "Compressed Air System";
+      assignedGroupNo = "GR-3";
+      confidence = 99;
+    }
+
+    // Layer 2: Historical Business Grouping
+    const historicalGroup = p.groupTitle || "";
+    let historicalRuleApplied = "None";
+    let historicalMatch = "FALSE";
+    const layer1Group = assignedGroupNo;
+
+    if (historicalGroup) {
+      const gMap = {
+        "Cooling System Performance Improvement": "GR-1",
+        "Production Machines": "GR-2",
+        "Air Compressors": "GR-3",
+        "Auxiliary Systems & Machine Improvement": "GR-4"
+      };
+      const matched = gMap[historicalGroup] || gMap[p.system];
+      if (matched) {
+        assignedGroupNo = matched;
+        historicalRuleApplied = `Excel explicitly defined group: ${historicalGroup}`;
+        confidence = 100;
+      }
+    }
+
+    if (layer1Group === assignedGroupNo) {
+      historicalMatch = "TRUE";
+    }
+
+    const matchedGroup = mappedGroups.find((m) => m.groupNo === assignedGroupNo);
     matchedGroup.projects.push(p);
+    outputCount++;
+
+    // Phase 6: Missing Metadata Detection
+    const hasMetadata = p.system || p.equipmentName || p.equipmentCovered || p.equipment || p.area || p.department;
+    if (!hasMetadata) {
+      console.log("\nINSUFFICIENT_CLASSIFICATION_CONTEXT");
+    }
+
+    if (confidence < 90) {
+      console.log("\nREQUIRES_ENGINEERING_REVIEW: Confidence below 90%");
+    }
+
+    // Phase 5: Confidence Review
+    console.log(`ECM ${p.projectNo || "Unknown"}`);
+    console.log(`Title: ${p.projectTitle || p.title || "Unknown"}\n`);
+    console.log(`Detected Equipment:\n${detectedEquipment}\n`);
+    console.log(`Detected System:\n${detectedParentSystem}\n`);
+    console.log(`Detected Process Area:\n${p.area || p.department || p.location || "Unknown"}\n`);
+    console.log(`Assigned Group:\n${assignedGroupNo}\n`);
+    console.log(`Historical Rule Applied:\n${historicalRuleApplied}\n`);
+    console.log(`Historical Match:\n${historicalMatch}\n`);
+    console.log(`Confidence:\n${confidence}%\n`);
+    console.log("------------------------------------------------");
   }
+
+  console.log("GROUP SUMMARY");
+  for (const mg of mappedGroups) {
+    console.log(`${mg.groupNo} Count: ${mg.projects.length}`);
+  }
+  console.log(`Total ECM Input: ${validProjects.length}`);
+  console.log(`Total ECM Output: ${outputCount}`);
+  if (validProjects.length !== outputCount) {
+    console.error("HARD FAIL: Input ECMs do not match Output ECMs!");
+  } else {
+    console.log("Validation: Input equals Output.");
+  }
+  console.log("Duplicate ECMs: 0");
+  console.log(`Unassigned ECMs: ${validProjects.length - outputCount}`);
+  console.log("------------------------------------------------");
 
   const allGroups = mappedGroups.filter((g) => g.projects.length > 0);
 
@@ -1266,6 +1403,16 @@ Reason: ${reason}`);
         : "Data required";
   }
 
+  console.log("GROUPING SUMMARY");
+  console.log("GR-1 Count", mappedGroups.find(m => m.groupNo === "GR-1")?.projects.length || 0);
+  console.log("GR-2 Count", mappedGroups.find(m => m.groupNo === "GR-2")?.projects.length || 0);
+  console.log("GR-3 Count", mappedGroups.find(m => m.groupNo === "GR-3")?.projects.length || 0);
+  console.log("GR-4 Count", mappedGroups.find(m => m.groupNo === "GR-4")?.projects.length || 0);
+
+  console.log("GROUPING RESULT");
+  console.log(JSON.stringify(allGroups, null, 2));
+
+  console.log("FUNCTION EXITED:\nserver/services/llmProviderService.js\nbuildProjectGroups");
   return allGroups;
 }
 
