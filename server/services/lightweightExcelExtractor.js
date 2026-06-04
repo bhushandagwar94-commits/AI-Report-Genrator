@@ -134,6 +134,53 @@ function extractProjects(sheets) {
     if (projects.length > 0) break;
   }
 
+  // Fallback: If no projects extracted via headers, scan rows for keywords
+  if (projects.length === 0) {
+    for (const sheet of sheets) {
+      const { name: sheetName, rows } = sheet;
+      if (!rows || rows.length < 2) continue;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.every((cell) => cell === "")) continue;
+
+        const rowText = row.join(" ").toLowerCase();
+        
+        // Skip header-like rows or total rows
+        if (/^(total|sub.?total|grand total)/i.test(rowText)) continue;
+        if (rowText.includes("description") && rowText.includes("saving")) continue;
+
+        const keywordRegex = /\b(ecm|energy|saving|motor|pump|compressor|hvac|chiller|boiler|vfd|led|lighting)\b/i;
+        
+        if (keywordRegex.test(rowText)) {
+          // Find the longest string in the row as description
+          const strings = row.filter(cell => typeof cell === "string" && isNaN(parseNum(cell)));
+          const description = strings.sort((a, b) => b.length - a.length)[0] || rowText.substring(0, 50);
+
+          // Find the first few numbers
+          const numbers = row.map(cell => parseNum(cell)).filter(n => n !== null);
+          
+          if (description && description.length > 5) {
+            projects.push({
+              ecmNo: String(projects.length + 1),
+              system: "Fallback ECM",
+              description,
+              energySaving: numbers[0] || null,
+              annualSaving: numbers[1] || null,
+              investment: numbers[2] || null,
+              payback: numbers[3] || null,
+              sourceSheet: sheetName,
+              sourceRow: i + 1,
+              isFallback: true
+            });
+          }
+        }
+      }
+      
+      if (projects.length > 0) break;
+    }
+  }
+
   return projects;
 }
 

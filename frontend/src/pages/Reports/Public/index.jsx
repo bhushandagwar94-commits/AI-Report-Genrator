@@ -425,6 +425,59 @@ function getProjectsForQC(reportData) {
   return [];
 }
 
+function normalizeActiveReportData(reportData) {
+  const source = asObject(reportData);
+  const groupedProjects = asArray(source.groupedProjects);
+  const groupsInput = asArray(source.groups);
+  const rawProjects = asArray(source.projects);
+
+  let normalizedGroups = groupedProjects.length ? groupedProjects : groupsInput;
+
+  if (!normalizedGroups.length && rawProjects.length) {
+    const hasGroupObjects = rawProjects.some(
+      (item) => item && Array.isArray(item.projects)
+    );
+
+    normalizedGroups = hasGroupObjects
+      ? rawProjects.map((group, index) => ({
+          ...asObject(group),
+          groupNo: group?.groupNo || `GR-${index + 1}`,
+          groupTitle: group?.groupTitle || group?.title || `Group ${index + 1}`,
+          projects: asArray(group?.projects),
+        }))
+      : [
+          {
+            groupNo: "GR-1",
+            groupTitle: "Energy Saving Projects",
+            projects: rawProjects,
+          },
+        ];
+  }
+
+  const groups = normalizedGroups.map((group, index) => ({
+    ...asObject(group),
+    groupNo: group?.groupNo || `GR-${index + 1}`,
+    groupTitle: group?.groupTitle || group?.title || `Group ${index + 1}`,
+    projects: asArray(group?.projects),
+  }));
+
+  const flatProjects = groups.flatMap((group) => asArray(group?.projects));
+
+  return {
+    ...source,
+    groups,
+    groupedProjects: groups,
+    projects: flatProjects,
+  };
+}
+
+function getActiveReportProjectCount(reportData) {
+  return asArray(reportData?.groups).reduce(
+    (sum, group) => sum + asArray(group?.projects).length,
+    0
+  );
+}
+
 // ─── Step Indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ currentStep }) {
   return (
@@ -1267,7 +1320,7 @@ function Step4({
   report,
   selectedTemplate,
   onStartOver,
-  generatedReportData,
+  activeReportData,
   onReportUpdated,
   onEnhanceWithAi,
   aiEnhancing,
@@ -1290,19 +1343,27 @@ function Step4({
     isCommercialBuildingEnergyAuditTemplate(selectedTemplate);
   const providerUsed =
     report?.providerUsed ||
-    generatedReportData?.providerUsed ||
-    generatedReportData?.metadata?.providerUsed ||
-    generatedReportData?.qcSummary?.providerUsed ||
+    activeReportData?.providerUsed ||
+    activeReportData?.metadata?.providerUsed ||
+    activeReportData?.qcSummary?.providerUsed ||
     "";
   const isFallbackMode =
     providerUsed === "deterministic-fallback" ||
     providerUsed === "deterministic";
   const reportData =
-    generatedReportData || sampleCommercialBuildingEnergyAuditData;
+    activeReportData || sampleCommercialBuildingEnergyAuditData;
   const showFieldFlags =
     import.meta.env.DEV && import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
   const fieldFlags = reportData?.fieldFlags || {};
   const missingFieldSummary = reportData?.missingFieldSummary || [];
+
+  useEffect(() => {
+    console.log("[PREVIEW_ACTIVE_REPORT_DATA_DEBUG]", {
+      usesActiveReportData: Boolean(activeReportData),
+      groups: activeReportData?.groups?.length || 0,
+      projects: getActiveReportProjectCount(activeReportData),
+    });
+  }, [activeReportData]);
 
   const isDev =
     import.meta.env.MODE === "development" ||
@@ -1386,6 +1447,15 @@ function Step4({
       showToast("Please generate the report before downloading Word.", "info");
       return;
     }
+    
+    const exportReportData = activeReportData || reportData || null;
+    const projectCount = getProjectCount(exportReportData);
+    
+    if (!exportReportData || projectCount <= 0) {
+      showToast("Cannot export: Report contains no project data. Please verify your ECM Excel sheet.", "error");
+      return;
+    }
+
     if (isWordExporting) return;
 
     setIsWordExporting(true);
@@ -2138,6 +2208,61 @@ function Step4({
   );
 }
 
+// ─── Pipeline Helpers ──────────────────────────────────────────────────────────
+
+function getProjectCount(data) {
+  return (data?.groups || []).reduce(
+    (sum, group) => sum + (Array.isArray(group?.projects) ? group.projects.length : 0),
+    0
+  );
+}
+
+function normalizeReportDataShape(candidate) {
+  if (!candidate || typeof candidate !== "object") return null;
+
+  const groupProjects = (candidate.groups || []).flatMap((group) =>
+    Array.isArray(group?.projects) ? group.projects : []
+  );
+
+  if (groupProjects.length > 0) return candidate;
+
+  const directProjects =
+    candidate.projects ||
+    candidate.ecms ||
+    candidate.ecmRows ||
+    candidate.executiveSummary?.summaryOfIdentifiedProjects ||
+    [];
+
+  if (Array.isArray(directProjects) && directProjects.length > 0) {
+    return {
+      ...candidate,
+      groups: [
+        {
+          groupNo: "GR-1",
+          groupName: "Energy Saving Projects",
+          projects: directProjects
+        }
+      ]
+    };
+  }
+
+  return candidate;
+}
+
+function normalizeReportDataFromResponse(response) {
+  const candidate =
+    response?.reportData ||
+    response?.previewData ||
+    response?.generatedReportData ||
+    response?.data?.reportData ||
+    response?.data?.previewData ||
+    response?.report?.reportData ||
+    response?.report ||
+    null;
+
+  return normalizeReportDataShape(candidate);
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function PublicReports() {
   const [step, setStep] = useState(1);
@@ -2153,7 +2278,7 @@ export default function PublicReports() {
   const [aiEnhancing, setAiEnhancing] = useState(false);
   const [showSlowWarning, setShowSlowWarning] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
-  const [generatedReportData, setGeneratedReportData] = useState(null);
+  const [activeReportData, setActiveReportData] = useState(null);
   const [aiProgress, setAiProgress] = useState(createAiProgressState());
   const [
     allowGenerateWithSupportingFilesOnly,
@@ -2391,47 +2516,73 @@ export default function PublicReports() {
           )
         );
         showToast(`Generation failed: ${res.error}`, "error");
-      } else {
-        if (res.dbSaveFailed || res.warning) {
-          showToast(res.warning || "Report generated but database save failed. Preview is available.", "warning");
-        }
-        setGeneratedReport(res.report);
-        setPipelineDebugData((prev) =>
-          mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
-        );
-        let parsedData = null;
-        try {
-          if (res.report?.outputContent) {
-            parsedData = JSON.parse(res.report.outputContent);
-          }
-        } catch (e) {
-          console.warn(
-            "Could not parse backend report JSON. Using mock mapper."
-          );
-        }
-        if (
-          !parsedData &&
-          isCommercialBuildingEnergyAuditTemplate(selectedTemplate)
-        ) {
-          parsedData = {
-            ...sampleCommercialBuildingEnergyAuditData,
-            reportInfo: {
-              ...sampleCommercialBuildingEnergyAuditData.reportInfo,
-              clientName: reportDetails.clientName,
-              location: reportDetails.location,
-              auditPeriod: reportDetails.auditPeriod,
-              reportDate: reportDetails.reportDate,
-            },
-            buildingProfile: {
-              ...sampleCommercialBuildingEnergyAuditData.buildingProfile,
-              facilityName: reportDetails.facilityName,
-            },
-          };
-        }
-        setGeneratedReportData(parsedData);
-        setStep(4);
+        return;
       }
+
+      if (res.dbSaveFailed || res.warning) {
+        showToast(res.warning || "Report generated but database save failed. Preview is available.", "warning");
+      }
+
+      let parsedContent = null;
+      if (res.report?.outputContent) {
+        try {
+          parsedContent = JSON.parse(res.report.outputContent);
+        } catch (e) {
+          console.warn("Could not parse backend report JSON. Using mock mapper.");
+        }
+      }
+
+      if (!parsedContent && isCommercialBuildingEnergyAuditTemplate(selectedTemplate)) {
+        parsedContent = {
+          ...sampleCommercialBuildingEnergyAuditData,
+          reportInfo: {
+            ...sampleCommercialBuildingEnergyAuditData.reportInfo,
+            clientName: reportDetails.clientName,
+            location: reportDetails.location,
+            auditPeriod: reportDetails.auditPeriod,
+            reportDate: reportDetails.reportDate,
+          },
+          buildingProfile: {
+            ...sampleCommercialBuildingEnergyAuditData.buildingProfile,
+            facilityName: reportDetails.facilityName,
+          },
+        };
+      }
+
+      const nextReportData = normalizeReportDataShape(
+        normalizeReportDataFromResponse(res) || parsedContent
+      );
+      
+      const projectCount = getProjectCount(nextReportData);
+
+      console.log("[GENERATE_RESULT]", {
+        responseKeys: Object.keys(res || {}),
+        hasReportData: Boolean(nextReportData),
+        groups: nextReportData?.groups?.length || 0,
+        projects: projectCount,
+        extractionAttempts: res?.extractionAttempts || []
+      });
+
+      setPipelineDebugData((prev) =>
+        mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
+      );
+
+      if (!nextReportData || projectCount <= 0) {
+        toast.error("No projects were extracted from the uploaded Excel files. Please check the ECM sheet.");
+        return;
+      }
+
+      setGeneratedReport({
+        ...res.report,
+        reportData: nextReportData,
+        previewData: nextReportData,
+        outputContent: JSON.stringify(nextReportData),
+      });
+
+      setActiveReportData(nextReportData);
+      setStep(4);
     } catch (err) {
+      console.error("[GENERATE_FAILED]", err);
       showToast("Generation error: " + err.message, "error");
     } finally {
       setGenerating(false);
@@ -2440,31 +2591,60 @@ export default function PublicReports() {
   };
 
   const handleEnhanceWithAi = async () => {
-    if (!generatedReport?.id || aiEnhancing || geminiCooldownSeconds > 0)
+    if (aiEnhancing) return;
+
+    const baseReportData =
+      activeReportData ||
+      generatedReportData ||
+      generatedReport?.reportData ||
+      generatedReport?.previewData ||
+      generatedReport ||
+      null;
+
+    const normalizedReportData = normalizeReportDataShape(baseReportData);
+    const projectCount = getProjectCount(normalizedReportData);
+
+    console.log("[AI_ENHANCE_CLICK]", {
+      hasReportData: Boolean(normalizedReportData),
+      groups: normalizedReportData?.groups?.length || 0,
+      projects: projectCount
+    });
+
+    if (!normalizedReportData || projectCount <= 0) {
+      toast.warning("AI enhancement requires a generated report with at least one project.");
       return;
+    }
 
     setAiEnhancing(true);
     startAiCountdown();
 
     try {
-      const res = await Reports.enhanceReportWithAi(generatedReport.id);
-      if (res.error) {
-        showAiEnhancementToast(
-          { status: "failed_non_blocking", failureReason: res.error },
-          showToast
-        );
-        return;
-      }
+      const payload = {
+        reportId: generatedReport?.id || null,
+        reportData: normalizedReportData,
+        previewData: normalizedReportData,
+        uploadedFiles: safeUploadedFiles || [],
+        extractionAttempts: [],
+        force: true
+      };
 
-      if (res.report) {
-        setGeneratedReport(res.report);
-        try {
-          if (res.report.outputContent) {
-            setGeneratedReportData(JSON.parse(res.report.outputContent));
-          }
-        } catch (e) {
-          console.warn("Could not parse enhanced report JSON.");
-        }
+      console.log("[AI_ENHANCE_PAYLOAD]", {
+        groups: payload.reportData?.groups?.length || 0,
+        projects: getProjectCount(payload.reportData)
+      });
+
+      const res = await Reports.enhanceReportWithAi(payload.reportId, payload);
+
+      const enhancedReportData =
+        res.reportData ||
+        res.previewData ||
+        res.enhancedReportData ||
+        normalizeReportDataFromResponse(res) ||
+        null;
+
+      if (enhancedReportData) {
+        if (typeof setActiveReportData === "function") setActiveReportData(enhancedReportData);
+        if (typeof setGeneratedReportData === "function") setGeneratedReportData(enhancedReportData);
       }
 
       const aiStatus =
@@ -2481,16 +2661,15 @@ export default function PublicReports() {
         const seconds = res.report?.retryAfterSeconds || 60;
         setGeminiCooldownSeconds(seconds);
         toast.info(formatGeminiQuotaMessage(seconds));
+      } else if (res.fallbackEnhanced || aiStatus?.status === "fallback_success") {
+        toast.success("Report narrative enhanced successfully.");
+      } else if (res.aiEnhanced === true || aiStatus?.status === "success") {
+        toast.success("AI enhancement completed.");
       } else {
-        if (aiStatus) {
-          showAiEnhancementToast(aiStatus, showToast);
-        } else {
-          toast.info(
-            "AI enhancement processed. Deterministic report is ready."
-          );
-        }
+        toast.success("Report enhancement completed.");
       }
     } catch (err) {
+      console.error("[AI_ENHANCE_FAILED]", err);
       const message =
         err?.message ||
         err?.data?.error ||
@@ -2504,10 +2683,16 @@ export default function PublicReports() {
   };
 
   const handlePreviewSample = () => {
+    const sampleData = normalizeActiveReportData(
+      sampleCommercialBuildingEnergyAuditData
+    );
     setGeneratedReport({
-      outputContent: "Sample Commercial Building Energy Audit preview",
+      outputContent: JSON.stringify(sampleData),
       missingData: "[]",
+      reportData: sampleData,
+      previewData: sampleData,
     });
+    setActiveReportData(sampleData);
     setStep(4);
   };
 
@@ -2517,7 +2702,7 @@ export default function PublicReports() {
     setDetails({ outputFormat: "docx" });
     setUploadedFiles([]);
     setGeneratedReport(null);
-    setGeneratedReportData(null);
+    setActiveReportData(null);
     setAiEnhancing(false);
     setAiProgress(createAiProgressState());
     setAllowGenerateWithSupportingFilesOnly(false);
@@ -2633,12 +2818,22 @@ export default function PublicReports() {
                 report={generatedReport}
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
-                generatedReportData={generatedReportData}
+                activeReportData={activeReportData}
                 onReportUpdated={(updated) => {
-                  setGeneratedReport(updated);
                   try {
                     if (updated.outputContent) {
-                      setGeneratedReportData(JSON.parse(updated.outputContent));
+                      const normalizedUpdatedReportData =
+                        normalizeActiveReportData(
+                          JSON.parse(updated.outputContent)
+                        );
+                      setActiveReportData(normalizedUpdatedReportData);
+                      setGeneratedReport((prev) => ({
+                        ...(prev || {}),
+                        ...updated,
+                        reportData: normalizedUpdatedReportData,
+                        previewData: normalizedUpdatedReportData,
+                        outputContent: JSON.stringify(normalizedUpdatedReportData),
+                      }));
                     }
                   } catch (e) {}
                 }}

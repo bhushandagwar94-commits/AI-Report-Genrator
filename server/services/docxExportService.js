@@ -12,6 +12,7 @@ const {
   PageBreak,
 } = require("docx");
 const { asArray, normalizeReportForExport } = require("./llmProviderService");
+const { enforceReportQuality } = require("./reportQualityEnforcer");
 
 function safeText(value) {
   if (value === null || value === undefined || value === "") return "";
@@ -804,6 +805,20 @@ function heading3(text) {
     heading: HeadingLevel.HEADING_3,
     spacing: { before: 120, after: 60 },
   });
+}
+
+function bulletParagraphsFromText(text) {
+  return String(text || "")
+    .split(/\n+/)
+    .map((line) => line.replace(/^•\s*/, "").trim())
+    .filter(Boolean)
+    .map((line) =>
+      new Paragraph({
+        text: line,
+        bullet: { level: 0 },
+        spacing: { after: 120 }
+      })
+    );
 }
 
 function paragraph(text) {
@@ -1800,7 +1815,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.2 Existing System Description
     heading3(`${ecmSectionNumber}.2 Existing System Description`),
-    paragraph(
+    ...bulletParagraphsFromText(
       sanitizePromptLeakageText(
         project.existingSystemDescription ||
           project.existingOperatingCondition ||
@@ -1831,7 +1846,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.4 Problem / Gap Identified
     heading3(`${ecmSectionNumber}.4 Problem / Gap Identified`),
-    paragraph(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
     mandatoryTable(
       [
         { key: "system", label: "System" },
@@ -1871,9 +1886,9 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.5 Proposed Project
     heading3(`${ecmSectionNumber}.5 Proposed Project`),
-    paragraph(
+    ...bulletParagraphsFromText(
       sanitizePromptLeakageText(
-        project.proposedProjectDescription || project.proposedIntervention,
+        project.proposedProjectDescription || project.proposedIntervention || project.proposedProject,
         ecmType
       )
     ),
@@ -1898,12 +1913,8 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.7 Rationale for Energy Saving
     heading3(`${ecmSectionNumber}.7 Rationale for Energy Saving`),
-    paragraph(
-      sanitizePromptLeakageText(
-        project.rationaleForEnergySaving ||
-          "The recommendation reduces avoidable losses and improves alignment between system demand and energy input.",
-        ecmType
-      )
+    ...bulletParagraphsFromText(
+      sanitizePromptLeakageText(project.rationaleForEnergySaving, ecmType)
     ),
     mandatoryTable(
       [
@@ -2046,6 +2057,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     heading3(
       `${ecmSectionNumber}.13 Precautions / Aspects to be Taken Care Of`
     ),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.aspectsToBeTakenCareOf || project.precautions, ecmType)),
     createTable(
       [
         { key: "area", label: "Area" },
@@ -2091,6 +2103,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.14 Measurement and Verification Plan
     heading3(`${ecmSectionNumber}.14 Measurement and Verification Plan`),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.measurementVerificationPlan || project.mvPlan, ecmType)),
     createTable(
       [
         { key: "parameter", label: "Parameter" },
@@ -2115,6 +2128,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.15 Benefits Other Than Energy Saving
     heading3(`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.benefitsOtherThanEnergySaving || project.benefits, ecmType)),
     createTable(
       [
         { key: "benefit", label: "Benefit" },
@@ -2133,22 +2147,11 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.17 Case Study / Reference Application
     heading3(`${ecmSectionNumber}.17 Case Study / Reference Application`),
-    paragraph(
-      sanitizePromptLeakageText(
-        project.caseStudy ||
-          "Similar measures are commonly implemented in comparable industrial utility/process systems after site-specific engineering validation. Project-specific case evidence shall be updated after implementation or vendor confirmation.",
-        ecmType
-      )
-    ),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.caseStudy, ecmType)),
 
     // 3.x.18 Project Conclusion
     heading3(`${ecmSectionNumber}.18 Project Conclusion`),
-    paragraph(
-      sanitizePromptLeakageText(
-        `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${safeText(project.expectedEnergySaving) ? `${formatNumber(project.expectedEnergySaving)} kWh` : "[energy saving]"}, resulting in annual cost saving of ${safeText(project.expectedAnnualCostSaving) ? formatINR(project.expectedAnnualCostSaving) : "[annual saving]"}. With an estimated investment of ${safeText(project.estimatedInvestment) ? formatINR(project.estimatedInvestment) : "[investment]"}, the simple payback period is expected to be ${safeText(project.simplePaybackPeriod) ? `${formatNumber(project.simplePaybackPeriod, 2)} years` : "[payback]"}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeText(project.priority) || safeText(project.implementationPriority) || "[priority]"}.`,
-        ecmType
-      )
-    ),
+    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.conclusion || project.finalConclusion, ecmType)),
   ];
 
   return lines;
@@ -2210,8 +2213,9 @@ function removeDataRequired(obj) {
   }
   return obj;
 }
-async function buildCommercialBuildingEnergyAuditDocx(reportData) {
-  const cleanReportData = removeDataRequired(reportData);
+async function buildCommercialBuildingEnergyAuditDocx(rawReportData) {
+  const enforcedReportData = enforceReportQuality(rawReportData);
+  const cleanReportData = removeDataRequired(enforcedReportData);
   const report = normalizeReportForExport(cleanReportData);
   const projects = asArray(report.projects);
   const groupedProjects = asArray(report.groupedProjects).length

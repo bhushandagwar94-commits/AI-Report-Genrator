@@ -47,6 +47,16 @@ const { getGeminiApiKeys } = require("../services/geminiProviderService");
 const {
   extractSupportingContext,
 } = require("../services/supportingFileExtractor");
+const { enforceReportQuality } = require("../services/reportQualityEnforcer");
+
+let enhanceReportNarrativesWithAi = null;
+
+try {
+  ({ enhanceReportNarrativesWithAi } = require("../services/aiReportEnhancer"));
+  console.log("[AI_ENHANCER_IMPORT_OK]");
+} catch (error) {
+  console.error("[AI_ENHANCER_IMPORT_FAILED]", error?.stack || error?.message || error);
+}
 
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
@@ -85,6 +95,59 @@ function isValidProjectTitle(titleStr) {
   if (forbiddenTitles.includes(t)) return false;
 
   return true;
+}
+
+function normalizeActiveReportData(reportData) {
+  const normalized = normalizeReportForExport(reportData);
+  let groupedProjects = Array.isArray(normalized?.groupedProjects)
+    ? normalized.groupedProjects
+    : Array.isArray(normalized?.groups)
+    ? normalized.groups
+    : [];
+
+  // Fallback to top-level projects if groups is empty
+  if (groupedProjects.length === 0) {
+    const fallbackProjects = 
+      normalized?.projects || 
+      normalized?.executiveSummary?.summaryOfIdentifiedProjects || 
+      [];
+      
+    if (Array.isArray(fallbackProjects) && fallbackProjects.length > 0) {
+      groupedProjects = [{
+        groupNo: "GR-1",
+        groupName: "Energy Saving Projects",
+        projects: fallbackProjects
+      }];
+    }
+  }
+
+  const groups = groupedProjects.map((group, index) => ({
+    ...(group && typeof group === "object" ? group : {}),
+    groupNo: group?.groupNo || `GR-${index + 1}`,
+    groupTitle: group?.groupTitle || group?.groupName || group?.title || `Group ${index + 1}`,
+    projects: Array.isArray(group?.projects) ? group.projects : [],
+  }));
+
+  const projects = groups.flatMap((group) =>
+    Array.isArray(group?.projects) ? group.projects : []
+  );
+
+  return {
+    ...normalized,
+    groups,
+    groupedProjects: groups,
+    projects,
+  };
+}
+
+function getActiveReportProjectCount(reportData) {
+  return Array.isArray(reportData?.groups)
+    ? reportData.groups.reduce(
+        (sum, group) =>
+          sum + (Array.isArray(group?.projects) ? group.projects.length : 0),
+        0
+      )
+    : 0;
 }
 
 // ─── Slug → Template name mapping ──────────────────────────────────────────────
@@ -2193,9 +2256,52 @@ function reportEndpoints(app) {
       });
   }
 
+  function isBadFallbackProject(project = {}) {
+    const title = String(project.title || project.ecmName || project.description || "").trim().toLowerCase();
+    const system = String(project.system || "").toLowerCase();
+
+    const annualSaving = Number(project.annualSavingRaw ?? project.annualSaving ?? 0);
+    const investment = Number(project.investmentRaw ?? project.investment ?? 0);
+    const payback = Number(project.paybackRaw ?? project.payback ?? 0);
+
+    if (project.fallbackGenerated && system.includes("fallback")) return true;
+
+    if (title.includes("fallback ecm")) return true;
+
+    if (/^\d+\s/.test(title) && !/replacement|retrofit|optimization|improvement|heat recovery|vfd|ie5|apfc|servo|compressor|pump|chiller/i.test(title)) {
+      return true;
+    }
+
+    if (annualSaving < 0) return true;
+    if (payback > 25) return true;
+
+    if (title.match(/\b0 0 0 0\b/)) return true;
+
+    return false;
+  }
+
+  function normalizeProjectKey(project = {}) {
+    return String(project.ecmNo || "") + "|" + String(project.title || project.ecmName || project.description || "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function dedupeProjects(projects = []) {
+    const seen = new Set();
+    const result = [];
+
+    for (const project of projects) {
+      const key = normalizeProjectKey(project);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(project);
+    }
+
+    return result;
+  }
+
   function buildLightweightReportData(projects, reportDetails) {
-    const { buildProjectGroups } = require("../services/llmProviderService");
-    
     // Map lightweight properties to expected fields for classification engine
     const mappedProjects = projects.map((p, i) => ({
       ...p,
@@ -2215,6 +2321,17 @@ function reportEndpoints(app) {
 
     const grouped = buildProjectGroups(mappedProjects);
 
+    let finalGroups = grouped;
+    if ((!finalGroups || finalGroups.length === 0) && mappedProjects.length > 0) {
+      finalGroups = [
+        {
+          groupNo: "GR-1",
+          groupName: "Energy Saving Projects",
+          projects: mappedProjects
+        }
+      ];
+    }
+
     return {
       reportInfo: {
         clientName: reportDetails.clientName || "Client Name",
@@ -2223,8 +2340,11 @@ function reportEndpoints(app) {
         auditPeriod: reportDetails.auditPeriod || "Audit Period",
         reportDate: reportDetails.reportDate || new Date().toISOString(),
       },
-      groupedProjects: grouped,
-      projects: mappedProjects, // fallback
+      executiveSummary: {
+        summaryOfIdentifiedProjects: mappedProjects
+      },
+      groups: finalGroups,
+      projects: mappedProjects
     };
   }
 
@@ -2332,20 +2452,38 @@ function reportEndpoints(app) {
           }
         }
 
+        // Filter and dedupe projects
+        let validProjects = extractedProjects.filter((project) => !isBadFallbackProject(project));
+        validProjects = dedupeProjects(validProjects);
+
         // 4. Require at least one project for success
-        if (extractedProjects.length === 0) {
+        if (validProjects.length === 0) {
           return response.status(422).json({
             error:
-              "No ECM projects could be extracted from the provided Excel files. Please check file format.",
+              "No valid ECM rows found. Fallback rows were rejected.",
             extractionAttempts,
           });
         }
 
-        // 5. Build rigid data structure instantly
-        const reportData = buildLightweightReportData(
-          extractedProjects,
+        let reportData = buildLightweightReportData(
+          validProjects,
           reportDetails
         );
+
+        reportData = enforceReportQuality(reportData);
+
+        const projectCount = (reportData.groups || []).reduce(
+          (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
+          0
+        );
+
+        if (projectCount <= 0) {
+          return response.status(422).json({
+            success: false,
+            error: "No valid ECM projects remained after quality filtering. Fallback/invalid rows were rejected.",
+            extractionSummary: reportData.extractionSummary
+          });
+        }
 
         // 6. Save fast record to DB safely
         const reportRecordData = {
@@ -2364,6 +2502,17 @@ function reportEndpoints(app) {
           prisma,
           reportRecordData
         );
+        
+        console.log("[GENERATE_BACKEND_RETURN]", {
+          hasReportData: Boolean(reportData),
+          groups: reportData?.groups?.length || 0,
+          projects: projectCount,
+          extractionAttempts: extractionAttempts?.map((item) => ({
+            fileName: item.filename,
+            status: item.status,
+            projectsFound: item.projectsFound
+          }))
+        });
 
         // 7. Return immediately. DO NOT CALL DOCX EXPORT OR AI.
         return response.json({
@@ -2377,6 +2526,7 @@ function reportEndpoints(app) {
             : null,
           reportData,
           previewData: reportData,
+          extractionSummary: reportData.extractionSummary,
           extractionAttempts,
           aiEnhancementStatus: {
             status: "not_started",
@@ -2432,7 +2582,7 @@ function reportEndpoints(app) {
             .json({ error: "Report content is not valid JSON." });
         }
 
-        reportData = normalizeReportForExport(reportData);
+        reportData = normalizeActiveReportData(reportData);
 
         // Quality Check (QC) Gate
         const qcResult = runReportQC(reportData);
@@ -2516,59 +2666,104 @@ function reportEndpoints(app) {
     try {
       const reportId = req.params.reportId || req.body.reportId || null;
 
-      const reportData = req.body.reportData || req.body.previewData || null;
+      const rawReportData =
+        req.body.reportData ||
+        req.body.previewData ||
+        req.body.generatedReportData ||
+        req.body.report?.reportData ||
+        req.body.report ||
+        null;
 
-      if (!reportData) {
+      if (!rawReportData) {
         return res.status(422).json({
           success: false,
           error: "AI enhancement requires reportData.",
+          receivedKeys: Object.keys(req.body || {}),
+          debug: {
+            bodyType: typeof req.body,
+            hasReportData: Boolean(req.body?.reportData),
+            hasPreviewData: Boolean(req.body?.previewData),
+            hasGeneratedReportData: Boolean(req.body?.generatedReportData)
+          }
         });
       }
 
-      const projectCount = (reportData.groups || []).reduce(
-        (sum, group) =>
-          sum + (Array.isArray(group.projects) ? group.projects.length : 0),
-        0
-      );
+      const reportData = normalizeActiveReportData(rawReportData);
+      const projectCount = getActiveReportProjectCount(reportData);
+
+      console.log("[BACKEND_ENHANCE_RECEIVE_DEBUG]", {
+        reportId,
+        groups: reportData?.groups?.length || 0,
+        projects: projectCount,
+        receivedKeys: Object.keys(req.body || {}),
+      });
 
       if (projectCount <= 0) {
         return res.status(422).json({
           success: false,
-          error: "AI enhancement requires at least one extracted project.",
+          error: "AI enhancement requires reportData with at least one extracted project.",
+          receivedKeys: Object.keys(req.body || {}),
+          debug: {
+            hasReportData: Boolean(reportData),
+            reportDataKeys: reportData ? Object.keys(reportData) : [],
+            groups: reportData?.groups?.length || 0,
+            projectCount
+          }
         });
       }
 
-      let result;
-      if (typeof enhanceReportNarrativesWithAi !== "undefined") {
-        result = await enhanceReportNarrativesWithAi({
-          reportId,
+      if (typeof enhanceReportNarrativesWithAi !== "function") {
+        return res.status(200).json({
+          success: true,
+          aiEnhanced: false,
           reportData,
-          providerOptions: {
-            forceJson: true,
-          },
+          previewData: reportData,
+          aiEnhancementStatus: {
+            status: "failed_non_blocking",
+            finalEnhancerUsed: "deterministic",
+            failureReason: "ai_enhancer_import_failed",
+            userMessage: "AI enhancement module is not available on the server. Deterministic report is ready.",
+            providerAttempts: []
+          }
         });
-      } else {
-        throw new Error("AI Enhancement module is disabled or not found.");
       }
 
-      return res.json({
+      const result = await enhanceReportNarrativesWithAi({
+        reportData,
+        force: req.body.force === true
+      });
+
+      const finalReportData = enforceReportQuality(result.reportData || reportData);
+
+      return res.status(200).json({
         success: true,
+        aiEnhanced: result.aiEnhanced === true,
+        fallbackEnhanced: result.fallbackEnhanced === true,
         reportId,
-        reportData: result.reportData || reportData,
-        previewData: result.reportData || reportData,
+        reportData: finalReportData,
+        previewData: finalReportData,
         aiEnhancementStatus: result.aiEnhancementStatus || {
-          status: "success",
+          status: result.fallbackEnhanced ? "fallback_success" : "success"
         },
-        providerAttempts: result.providerAttempts || [],
+        providerAttempts:
+          result.providerAttempts ||
+          result.aiEnhancementStatus?.providerAttempts ||
+          [],
+        extractionSummary: finalReportData.extractionSummary
       });
     } catch (error) {
       console.error("[enhance-ai] failed:", error);
 
       return res.status(200).json({
-        success: false,
+        success: true,
+        aiEnhanced: false,
         error: error?.message || String(error),
-        reportData: req.body.reportData || req.body.previewData || null,
-        previewData: req.body.reportData || req.body.previewData || null,
+        reportData: normalizeActiveReportData(
+          req.body.reportData || req.body.previewData || {}
+        ),
+        previewData: normalizeActiveReportData(
+          req.body.reportData || req.body.previewData || {}
+        ),
         aiEnhancementStatus: {
           status: "failed_non_blocking",
           finalEnhancerUsed: "deterministic",

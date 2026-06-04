@@ -195,44 +195,42 @@ const Reports = {
       .finally(() => clearTimeout(timeoutId));
   },
 
-  enhanceReportWithAi: async (id) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      GENERATION_MAX_WAIT_MS
-    );
+  enhanceReportWithAi: async (reportId, payload = {}) => {
+    const endpoint = reportId
+      ? `${API_BASE}/reports/${reportId}/enhance-ai`
+      : `${API_BASE}/reports/enhance-ai`;
 
-    try {
-      const response = await fetch(`${API_BASE}/reports/${id}/enhance-ai`, {
-        method: "POST",
-        headers: baseHeaders(),
-        signal: controller.signal,
-      });
+    console.log("[enhanceReportWithAi] request:", {
+      endpoint,
+      payloadKeys: Object.keys(payload || {}),
+      hasReportData: Boolean(payload?.reportData),
+      hasPreviewData: Boolean(payload?.previewData),
+      groups: payload?.reportData?.groups?.length || payload?.previewData?.groups?.length || 0
+    });
 
-      const json = await readJsonSafely(response);
+    const headers = baseHeaders();
+    headers["Content-Type"] = "application/json";
 
-      if (!response.ok || json.success === false) {
-        throw {
-          status: response.status,
-          message:
-            json.error ||
-            json.message ||
-            `AI enhancement failed with HTTP ${response.status}`,
-          data: json
-        };
-      }
-      return json;
-    } catch (e) {
-      console.error(e);
-      return {
-        error:
-          e.name === "AbortError"
-            ? "AI enhancement is taking too long. Your deterministic report is still available."
-            : e.message || e.error || "AI enhancement failed.",
-      };
-    } finally {
-      clearTimeout(timeoutId);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload || {})
+    });
+
+    const json = await readJsonSafely(response);
+
+    if (!response.ok) {
+      const error = new Error(
+        json.error ||
+        json.message ||
+        `AI enhancement failed with HTTP ${response.status}`
+      );
+      error.status = response.status;
+      error.data = json;
+      throw error;
     }
+
+    return json;
   },
 
   recheckQC: async (id) => {

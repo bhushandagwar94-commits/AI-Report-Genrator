@@ -1072,6 +1072,39 @@ function BuildingEnergyProfilePage({ data }: any) {
   );
 }
 
+const renderBulletTheory = (value: unknown) => {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return (
+      <p className="text-sm text-slate-600">
+        [To be updated after site data verification]
+      </p>
+    );
+  }
+
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.replace(/^•\s*/, "").trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return (
+      <p className="text-sm text-slate-700 leading-relaxed">
+        {text}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="list-disc pl-6 space-y-2 text-sm text-slate-700 leading-relaxed">
+      {lines.map((line, index) => (
+        <li key={`${line.slice(0, 24)}-${index}`}>{line}</li>
+      ))}
+    </ul>
+  );
+};
+
 function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { project: any, groupNumber: string, ecmIndexWithinGroup: number }) {
   const ecmType = classifyEcmType(project);
   const ecmTitleRaw = firstNonEmpty(project.projectTitle, project.title, project.ecmName, "ECM");
@@ -1127,7 +1160,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       <ReportTable compact columns={[{ key: "particular", label: "Particular" }, { key: "value", label: "Details" }]} rows={buildProjectSummaryRows(project, cleanTitle, ecmNo)} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.2 Existing System Description`} />
-      <p className="text-sm leading-snug mb-2">{baselineDescription}</p>
+      {renderBulletTheory(baselineDescription)}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.3 Baseline Data and Measurements`} />
       <ReportTable compact columns={[{ key: "parameter", label: "Parameter" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={buildBaselineDataRows(project)} />
@@ -1135,18 +1168,18 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       <ReportTable compact columns={[{ key: "measurement", label: "Measurement" }, { key: "unit", label: "Unit" }, { key: "value", label: "Value" }]} rows={buildMeasurementRows(project)} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.4 Problem / Gap Identified`} />
-      <p className="text-sm leading-snug mb-2">{problemGap}</p>
+      {renderBulletTheory(problemGap)}
       <ReportTable compact columns={[{ key: "system", label: "System" }, { key: "gap", label: "Typical Gap" }]} rows={(project.problemGapTable && project.problemGapTable.length > 0) ? project.problemGapTable : [getProblemGapEntry(ecmType)]} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.5 Proposed Project`} />
-      <p className="text-sm leading-snug mb-2">{proposedDescription}</p>
+      {renderBulletTheory(proposedDescription)}
       <ReportTable compact columns={[{ key: "srNo", label: "Sr. No." }, { key: "scopeItem", label: "Scope Item" }]} rows={buildScopeOfWorkRows(ecmType, project)} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.6 Key Activities for Implementation`} />
       <ReportTable compact columns={[{ key: "activity", label: "Activity" }, { key: "details", label: "Details" }, { key: "responsibility", label: "Responsibility" }]} rows={buildKeyActivityRows(ecmType, project)} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.7 Rationale for Energy Saving`} />
-      <p className="text-sm leading-snug mb-2">{rationale}</p>
+      {renderBulletTheory(rationale)}
       <ReportTable compact columns={[{ key: "projectType", label: "Project Type" }, { key: "savingRationale", label: "Saving Rationale" }]} rows={(project.rationaleTable && project.rationaleTable.length > 0) ? project.rationaleTable : [getRationaleEntry(ecmType)]} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.8 Energy Saving Calculation`} />
@@ -1174,22 +1207,22 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       <ReportTable compact columns={[{ key: "area", label: "Area" }, { key: "precaution", label: "Precaution" }]} rows={aspectsTable} />
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.14 Measurement and Verification Plan`} />
-      <ReportTable compact columns={[{ key: "parameter", label: "Parameter" }, { key: "baselineMeasurement", label: "Baseline Measurement" }, { key: "postImplementationMeasurement", label: "Post-Implementation Measurement" }]} rows={buildMvPlanRows(ecmType, project)} />
+      {renderBulletTheory(firstNonEmpty(project.measurementVerificationPlan, project.mvPlan))}
       <div className="text-xs text-gray-500 mb-4 mt-2 leading-tight">
         Savings shall be validated by measuring the power consumption and operating pattern before and after implementation. The final saving will be calculated based on measured load reduction, actual operating hours and applicable electricity tariff.
       </div>
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`} />
-      <ReportTable compact columns={[{ key: "benefit", label: "Benefit" }, { key: "description", label: "Description" }]} rows={buildBenefitRows(ecmType, project)} />
+      {renderBulletTheory(firstNonEmpty(project.benefitsOtherThanEnergySaving, project.benefits))}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.16 Carbon Footprint Reduction`} />
       <p className="text-sm leading-snug mb-2">{carbonText}</p>
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.17 Case Study / Reference Application`} />
-      <p className="text-sm leading-snug mb-2">{caseStudy}</p>
+      {renderBulletTheory(caseStudy)}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.18 Project Conclusion`} />
-      <p className="text-sm leading-snug mb-2">{conclusion}</p>
+      {renderBulletTheory(conclusion)}
     </div>
   );
 }
