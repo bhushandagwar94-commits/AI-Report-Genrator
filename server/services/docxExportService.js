@@ -505,12 +505,14 @@ function generateTableOfContents(groupedProjects) {
     heading1("Table of Contents"),
     tocLine("Chapter 1. Executive Summary", 0, true),
     tocLine("1.1 Purpose of the Energy Audit", 1, false),
-    tocLine("1.2 Overall Energy Saving Potential", 1, false),
-    tocLine("1.3 Summary of Identified Energy Saving Projects", 1, false),
-    tocLine("1.4 Project Grouping", 1, false),
-    tocLine("1.5 Key Observations", 1, false),
-    tocLine("1.6 Recommended Implementation Priority", 1, false),
-    tocLine("1.7 Conclusion and Way Forward", 1, false),
+    tocLine("1.2 Key Objectives", 1, false),
+    tocLine("1.3 Scope of Assessment", 1, false),
+    tocLine("1.4 Expected Outcomes", 1, false),
+    tocLine("1.5 Strategic Importance", 1, false),
+    tocLine("1.6 Key Findings", 1, false),
+    tocLine("1.7 Financial Highlights", 1, false),
+    tocLine("1.8 Energy Saving Potential", 1, false),
+    tocLine("1.9 Recommended Implementation Approach", 1, false),
 
     tocLine("Chapter 2. Plant / Building Details and Energy Profile", 0, true),
     tocLine("2.1 General Information", 1, false),
@@ -598,11 +600,60 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
     return order[a.level] - order[b.level];
   });
 
+  const renderBulletList = (items, defaultItems) => {
+    const arr = asArray(items).length ? asArray(items) : defaultItems;
+    return arr.map(item => paragraph("• " + safeText(item)));
+  };
+
   return [
     heading1("Chapter 1: Executive Summary"),
+    
     heading2("1.1 Purpose of the Energy Audit"),
-    paragraph(es.purposeText || `The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects for ${safeText(report.reportInfo?.clientName)}.`),
-    heading2("1.2 Overall Energy Saving Potential"),
+    ...renderBulletList(es.purposeText, [
+      "The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization.",
+      "The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus."
+    ]),
+    
+    heading2("1.2 Key Objectives"),
+    ...renderBulletList(es.keyObjectives, [
+      "Identify and quantify energy-saving opportunities across all major utility and process systems.",
+      "Provide a structured roadmap for implementing control improvements, equipment efficiency upgrades, and system optimization initiatives.",
+      "Establish baseline performance metrics to enable effective post-implementation measurement and verification."
+    ]),
+
+    heading2("1.3 Scope of Assessment"),
+    ...renderBulletList(es.scopeOfAssessment, [
+      "Comprehensive review of historical energy consumption patterns and utility billing data.",
+      "Detailed performance evaluation of major energy-consuming systems including HVAC, compressed air, pumping, and production machinery.",
+      "Assessment of existing control logic, operating practices, and maintenance procedures impacting energy efficiency."
+    ]),
+
+    heading2("1.4 Expected Outcomes"),
+    ...renderBulletList(es.expectedOutcomes, [
+      "A prioritized portfolio of energy conservation measures (ECMs) categorized by technical feasibility and financial return.",
+      "Clear recommendations for immediate operational improvements requiring minimal capital investment.",
+      "Strategic guidance for long-term capital planning related to major equipment replacements and system retrofits."
+    ]),
+
+    heading2("1.5 Strategic Importance"),
+    ...renderBulletList(es.strategicImportance, [
+      "Enhances operational resilience by reducing exposure to energy price volatility and supply constraints.",
+      "Supports corporate sustainability goals through quantifiable reductions in carbon emissions and environmental impact.",
+      "Improves overall facility competitiveness by lowering production costs and optimizing resource utilization."
+    ]),
+
+    heading2("1.6 Key Findings"),
+    ...renderBulletList(es.keyFindings || es.keyObservations, [
+      "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
+      "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
+      "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap."
+    ]),
+
+    heading2("1.7 Financial Highlights"),
+    ...renderBulletList(es.financialHighlightsNarrative, [
+      "The proposed energy conservation measures offer a highly attractive financial return, driven by significant reductions in annual operating costs.",
+      "A balanced mix of low-cost operational improvements and high-return capital projects provides a robust investment portfolio for management consideration."
+    ]),
     createTable(
       [{ key: "particular", label: "Particular" }, { key: "value", label: "Value" }],
       [
@@ -617,7 +668,12 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
         { particular: "CO2 reduction potential", value: formatNumber(es.co2ReductionPotential) || "[Calculation pending due to missing emission factor]" },
       ]
     ),
-    heading2("1.3 Summary of Identified Energy Saving Projects"),
+
+    heading2("1.8 Energy Saving Potential"),
+    ...renderBulletList(es.energySavingPotentialNarrative, [
+      "Substantial energy savings can be achieved through a combination of enhanced system controls, elimination of avoidable losses, and targeted equipment upgrades.",
+      "The projected energy reductions are grounded in verified baseline data and conservative engineering calculations to ensure reliable and achievable outcomes."
+    ]),
     createTable(
       [
         { key: "projectNo", label: "ECM No." },
@@ -636,8 +692,16 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
         energy: formatNumber(project.expectedEnergySaving),
       }))
     ),
-    heading2("1.4 Project Grouping"),
-    paragraph("The identified Energy Conservation Measures (ECMs) are grouped into technical and functional categories below to facilitate structured implementation and system-level improvements."),
+
+    heading2("1.9 Recommended Implementation Approach"),
+    ...renderBulletList(es.recommendedImplementationApproach || es.conclusionAndWayForward, [
+      "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures.",
+      "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins.",
+      "Develop detailed engineering, technical specifications, and integration requirements for the shortlisted measures, including instrumentation, controls, and safety interfaces.",
+      "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks."
+    ]),
+    
+    heading3("1.9.1 Project Grouping"),
     optionalTable(
       [
         { key: "groupNo", label: "Group No." },
@@ -651,14 +715,8 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
       ],
       categoryRows
     ),
-    heading2("1.5 Key Observations"),
-    ...(asArray(es.keyObservations).length ? asArray(es.keyObservations) : [
-      "Cooling, production, compressed air, and auxiliary system projects contribute the major savings opportunity.",
-      "Control improvements and high-efficiency retrofits are strong early implementation candidates.",
-      "Measurement and verification are required to sustain savings after implementation.",
-    ]).map((item) => paragraph(item)),
-    heading2("1.6 Recommended Implementation Priority"),
-    paragraph("Projects have been classified into High, Medium, and Long-Term priorities based on payback duration and implementation feasibility."),
+
+    heading3("1.9.2 Recommended Implementation Priority"),
     optionalTable(
       [
         { key: "level", label: "Priority Level" },
@@ -671,11 +729,11 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
       ],
       priorityRows
     ),
-    heading2("1.7 Conclusion and Way Forward"),
-    paragraph(`Based on the audit findings, SEE-Tech recommends that ${displayText(report.reportInfo?.clientName, "the client")} proceed with detailed implementation planning for the identified energy-saving projects. The suggested steps are:`),
+
+    heading3("1.9.3 Action Plan"),
     optionalTable(
       [{ key: "step", label: "Step" }, { key: "action", label: "Action" }],
-      [
+      report.summary || [
         { step: 1, action: "Site verification" },
         { step: 2, action: "Vendor quotation / detailed engineering" },
         { step: 3, action: "Implementation scheduling" },
@@ -684,6 +742,7 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
         { step: 6, action: "Post-implementation verification" },
       ]
     ),
+    
     pageBreak(),
   ];
 }

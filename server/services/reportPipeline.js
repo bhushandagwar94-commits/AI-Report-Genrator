@@ -826,37 +826,27 @@ function normalizeAiSummaryOutput(ai) {
     ai.executive_summary ||
     ai.summary ||
     {};
-  let keyObservations = executiveSummary.keyObservations ||
-                        executiveSummary.key_observations ||
-                        executiveSummary.observations ||
-                        executiveSummary.keyFindings ||
-                        executiveSummary.findings ||
-                        [];
 
-  if (typeof keyObservations === "string") {
-    keyObservations = keyObservations
-      .split(/\\n|•|-/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-  }
+  const parseToArray = (field) => {
+    if (!field) return [];
+    if (Array.isArray(field)) return field.map(x => (x && typeof x.text === "string" ? x.text : String(x))).filter(Boolean);
+    if (typeof field === "string") {
+      return field.split(/\\n|•|-/).map((x) => x.trim()).filter(Boolean);
+    }
+    return [];
+  };
 
   return {
     executiveSummary: {
-      purposeText:
-        executiveSummary.purposeText ||
-        executiveSummary.purpose ||
-        executiveSummary.auditPurpose ||
-        executiveSummary.summaryPurpose ||
-        null,
-
-      keyObservations,
-
-      conclusionAndWayForward:
-        executiveSummary.conclusionAndWayForward ||
-        executiveSummary.conclusion ||
-        executiveSummary.wayForward ||
-        executiveSummary.nextSteps ||
-        null
+      purposeText: parseToArray(executiveSummary.purposeText || executiveSummary.purpose),
+      keyObjectives: parseToArray(executiveSummary.keyObjectives),
+      scopeOfAssessment: parseToArray(executiveSummary.scopeOfAssessment),
+      expectedOutcomes: parseToArray(executiveSummary.expectedOutcomes),
+      strategicImportance: parseToArray(executiveSummary.strategicImportance),
+      keyFindings: parseToArray(executiveSummary.keyFindings || executiveSummary.keyObservations || executiveSummary.observations),
+      financialHighlightsNarrative: parseToArray(executiveSummary.financialHighlightsNarrative),
+      energySavingPotentialNarrative: parseToArray(executiveSummary.energySavingPotentialNarrative),
+      recommendedImplementationApproach: parseToArray(executiveSummary.recommendedImplementationApproach || executiveSummary.conclusionAndWayForward || executiveSummary.conclusion),
     },
     groups: Array.isArray(ai.groups)
       ? ai.groups
@@ -913,77 +903,52 @@ function applySummaryOnlyNarrative(report, batch, narrativeOutput, approvedToken
       "data required"
     ].includes(normalized);
   };
-  const isDifferentFromExisting = (nextValue, existingValue) =>
-    normalizeWhitespace(nextValue) !== normalizeWhitespace(existingValue);
 
   const executiveBefore = cloneJson(report.executiveSummary || {});
   if (!report.executiveSummary) report.executiveSummary = {};
 
-  const purposeText = typeof normalizedAi.executiveSummary.purposeText === "string"
-    ? normalizeWhitespace(normalizedAi.executiveSummary.purposeText)
-    : "";
-  if (purposeText) {
-    if (purposeText.length < 80) {
-      addDroppedField("executiveSummary.purposeText", "Too short", purposeText);
-    } else if (isExtremelyGeneric(purposeText)) {
-      addDroppedField("executiveSummary.purposeText", "Extremely generic wording", purposeText);
-    } else if (!isDifferentFromExisting(purposeText, executiveBefore?.purposeText)) {
-      addDroppedField("executiveSummary.purposeText", "Same as deterministic text", purposeText);
-    } else if (!hasUnapprovedNumbers(purposeText, "executiveSummary.purposeText")) {
-      report.executiveSummary.purposeText = purposeText;
-      changedFields.push("executiveSummary.purposeText");
-    }
-  }
+  const esFields = [
+    "purposeText",
+    "keyObjectives",
+    "scopeOfAssessment",
+    "expectedOutcomes",
+    "strategicImportance",
+    "keyFindings",
+    "financialHighlightsNarrative",
+    "energySavingPotentialNarrative",
+    "recommendedImplementationApproach"
+  ];
 
-  if (Array.isArray(normalizedAi.executiveSummary.keyObservations) && normalizedAi.executiveSummary.keyObservations.length > 0) {
-    const validObservations = [];
-    normalizedAi.executiveSummary.keyObservations.forEach((obs, index) => {
-      const observation = typeof obs === "string" ? normalizeWhitespace(obs) : "";
-      const fieldPath = `executiveSummary.keyObservations[${index}]`;
-      if (!observation) return;
-      if (observation.length < 50) {
-        addDroppedField(fieldPath, "Too short", observation);
-        return;
-      }
-      if (isExtremelyGeneric(observation)) {
-        addDroppedField(fieldPath, "Extremely generic wording", observation);
-        return;
-      }
-      if (hasUnapprovedNumbers(observation, fieldPath)) {
-        return;
-      }
-      validObservations.push(observation);
-    });
+  esFields.forEach((key) => {
+    const arr = normalizedAi.executiveSummary[key];
+    if (Array.isArray(arr) && arr.length > 0) {
+      const validItems = [];
+      arr.forEach((item, index) => {
+        const text = typeof item === "string" ? normalizeWhitespace(item) : "";
+        const fieldPath = `executiveSummary.${key}[${index}]`;
+        if (!text) return;
+        if (text.length < 30) {
+          addDroppedField(fieldPath, "Too short", text);
+          return;
+        }
+        if (isExtremelyGeneric(text)) {
+          addDroppedField(fieldPath, "Extremely generic wording", text);
+          return;
+        }
+        if (hasUnapprovedNumbers(text, fieldPath)) {
+          return;
+        }
+        validItems.push(text);
+      });
 
-    if (validObservations.length >= 1) {
-      report.executiveSummary.keyObservations = validObservations;
-      changedFields.push("executiveSummary.keyObservations");
-    } else {
-      addDroppedField("executiveSummary.keyObservations", "No valid observations survived validation", normalizedAi.executiveSummary.keyObservations);
+      if (validItems.length > 0) {
+        report.executiveSummary[key] = validItems;
+        changedFields.push(`executiveSummary.${key}`);
+      } else {
+        addDroppedField(`executiveSummary.${key}`, "No valid items survived validation", arr);
+      }
     }
-  }
-
-  const conclusionValue = normalizedAi.executiveSummary.conclusionAndWayForward;
-  const conclusionText = Array.isArray(conclusionValue)
-    ? conclusionValue
-        .map((item) => normalizeWhitespace(item?.action || item?.text || item))
-        .filter(Boolean)
-        .join(" ")
-    : typeof conclusionValue === "string"
-      ? normalizeWhitespace(conclusionValue)
-      : "";
-  if (conclusionText) {
-    if (conclusionText.length < 80) {
-      addDroppedField("executiveSummary.conclusionAndWayForward", "Too short", conclusionValue);
-    } else if (isExtremelyGeneric(conclusionText)) {
-      addDroppedField("executiveSummary.conclusionAndWayForward", "Extremely generic wording", conclusionValue);
-    } else if (!isDifferentFromExisting(conclusionText, executiveBefore?.conclusionAndWayForward)) {
-      addDroppedField("executiveSummary.conclusionAndWayForward", "Same as deterministic text", conclusionValue);
-    } else if (!hasUnapprovedNumbers(conclusionText, "executiveSummary.conclusionAndWayForward")) {
-      report.executiveSummary.conclusionAndWayForward = conclusionText;
-      changedFields.push("executiveSummary.conclusionAndWayForward");
-    }
-  }
+  });
 
   if (Array.isArray(normalizedAi.groups)) {
     normalizedAi.groups.forEach((groupOutput) => {
@@ -2343,18 +2308,25 @@ Return valid JSON only.
 
 Required output structure:
 {
-  "purposeText": "",
-  "overallEnergySavingPotential": {},
-  "categoryWiseSummary": [],
-  "keyObservations": [],
-  "conclusionAndWayForward": []
+  "purposeText": [],
+  "keyObjectives": [],
+  "scopeOfAssessment": [],
+  "expectedOutcomes": [],
+  "strategicImportance": [],
+  "keyFindings": [],
+  "financialHighlightsNarrative": [],
+  "energySavingPotentialNarrative": [],
+  "recommendedImplementationApproach": []
 }
 
 Rules:
-- Use exact totals from ExcelTruth.
-- Do not invent figures.
+- Generate professional consulting-style narratives.
+- Convert all content into structured sections with bullet points. Each array item in the JSON should be a bullet point.
+- Target 300-600 words for each major section.
+- Expand each subsection substantially explaining why issues matter, operational implications, and business impact.
+- Use exact totals from ExcelTruth. Do not invent energy savings, investments, or payback periods.
 - Mention number of ECMs from cleaned project count.
-- Keep professional SEE-Tech tone.
+- Keep professional SEE-Tech tone. Use professional language similar to Tier-1 energy consulting reports.
 - Use ₹ for financial values.`;
 
   const userPrompt = `### Base Report Details:
@@ -2559,7 +2531,49 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
       reportTitle: "Detailed Energy Audit Report"
     },
     executiveSummary: {
-      purposeText: `The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization. The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus. The intent is not only to highlight saving potential, but also to organize the recommended measures into a structured roadmap covering control improvements, equipment efficiency upgrades, and system optimization initiatives that can be taken forward through detailed engineering, commissioning, and post-implementation verification.`,
+      purposeText: [
+        "The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization.",
+        "The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus."
+      ],
+      keyObjectives: [
+        "Identify and quantify energy-saving opportunities across all major utility and process systems.",
+        "Provide a structured roadmap for implementing control improvements, equipment efficiency upgrades, and system optimization initiatives.",
+        "Establish baseline performance metrics to enable effective post-implementation measurement and verification."
+      ],
+      scopeOfAssessment: [
+        "Comprehensive review of historical energy consumption patterns and utility billing data.",
+        "Detailed performance evaluation of major energy-consuming systems including HVAC, compressed air, pumping, and production machinery.",
+        "Assessment of existing control logic, operating practices, and maintenance procedures impacting energy efficiency."
+      ],
+      expectedOutcomes: [
+        "A prioritized portfolio of energy conservation measures (ECMs) categorized by technical feasibility and financial return.",
+        "Clear recommendations for immediate operational improvements requiring minimal capital investment.",
+        "Strategic guidance for long-term capital planning related to major equipment replacements and system retrofits."
+      ],
+      strategicImportance: [
+        "Enhances operational resilience by reducing exposure to energy price volatility and supply constraints.",
+        "Supports corporate sustainability goals through quantifiable reductions in carbon emissions and environmental impact.",
+        "Improves overall facility competitiveness by lowering production costs and optimizing resource utilization."
+      ],
+      keyFindings: [
+        "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
+        "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
+        "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap."
+      ],
+      financialHighlightsNarrative: [
+        "The proposed energy conservation measures offer a highly attractive financial return, driven by significant reductions in annual operating costs.",
+        "A balanced mix of low-cost operational improvements and high-return capital projects provides a robust investment portfolio for management consideration."
+      ],
+      energySavingPotentialNarrative: [
+        "Substantial energy savings can be achieved through a combination of enhanced system controls, elimination of avoidable losses, and targeted equipment upgrades.",
+        "The projected energy reductions are grounded in verified baseline data and conservative engineering calculations to ensure reliable and achievable outcomes."
+      ],
+      recommendedImplementationApproach: [
+        "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures.",
+        "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins.",
+        "Develop detailed engineering, technical specifications, and integration requirements for the shortlisted measures, including instrumentation, controls, and safety interfaces.",
+        "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks."
+      ],
       totalAnnualElectricityConsumption: extractedExcelData?.annualElectricityConsumption || "Data required",
       annualElectricityCost: extractedExcelData?.annualElectricityCost || "Data required",
       averageTariff: extractedExcelData?.averageTariff || "Data required",
@@ -2577,21 +2591,6 @@ function buildDeterministicCommercialAuditFallback({ formData, excelTruth, extra
         energySaving: g.totalEnergySaving,
         simplePaybackPeriod: g.averagePayback
       })),
-      keyObservations: [
-        "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
-        "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
-        "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap.",
-        "Measures requiring integration with production, utilities, or electrical controls should be planned with clear shutdown coordination, engineering review, and commissioning responsibility so the realized performance aligns with the intended audit recommendation.",
-        "Baseline recording, post-implementation monitoring, and operating-condition normalization should be treated as part of the implementation scope so verified energy performance can be demonstrated and sustained after project closure."
-      ],
-      conclusionAndWayForward: [
-        { step: 1, action: "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures." },
-        { step: 2, action: "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins." },
-        { step: 3, action: "Develop detailed engineering, technical specifications, and integration requirements for the shortlisted measures, including instrumentation, controls, and safety interfaces." },
-        { step: 4, action: "Finalize procurement strategy, vendor alignment, and shutdown planning so implementation can proceed without avoidable disruption to plant operation." },
-        { step: 5, action: "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks." },
-        { step: 6, action: "Sustain the achieved performance through monitoring, operator familiarization, and formal measurement-and-verification review after stabilization." }
-      ]
     },
     buildingProfile: {
       facilityName: formData.facilityName || "Data required",

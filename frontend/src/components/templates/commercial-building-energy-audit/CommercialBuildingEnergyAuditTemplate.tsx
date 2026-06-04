@@ -710,77 +710,140 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
     note: "Implementation complexity to be finalized after site verification.",
   })).sort((a: any, b: any) => ({"High Priority": 1, "Medium Priority": 2, "Long-Term Priority": 3}[a.level as "High Priority" | "Medium Priority" | "Long-Term Priority"] || 2) - ({"High Priority": 1, "Medium Priority": 2, "Long-Term Priority": 3}[b.level as "High Priority" | "Medium Priority" | "Long-Term Priority"] || 2));
 
+  const renderList = (items: any, defaultItems: string[]) => (
+    <ul className="text-sm leading-snug mb-4 pl-4 list-disc">
+      {(asArray(items).length ? asArray(items) : defaultItems).map((item, i) => (
+        <li key={i} className="mb-1">{fallbackText(item)}</li>
+      ))}
+    </ul>
+  );
+
   return (
     <section className="report-page" style={pageStyle}>
       <SectionHeader level={1} title="Chapter 1: Executive Summary" />
-      <SectionHeader number="1.1" title="Purpose of the Energy Audit" />
-      <p className="text-sm leading-snug mb-2">{fallbackText(es.purposeText, "The purpose of this energy audit is to identify technically feasible, financially attractive and practically implementable energy-saving projects.")}</p>
       
-      <SectionHeader number="1.2" title="Overall Energy Saving Potential" />
-      <ReportTable compact columns={[{ key: "particular", label: "Particular" }, { key: "value", label: "Value" }]} rows={[
-        { particular: "Total annual electricity consumption", value: es.totalAnnualElectricityConsumption },
-        { particular: "Annual electricity cost", value: formatCurrencyDisplay(es.annualElectricityCost) },
-        { particular: "Average electricity tariff considered", value: formatCurrencyDisplay(es.averageTariff) },
-        { particular: "Number of projects identified", value: es.numberOfProjects || projects.length },
-        { particular: "Total energy saving potential", value: formatNumberDisplay(es.totalEnergySavingPotential || totalEnergy(projects)) },
-        { particular: "Total annual cost saving potential", value: formatCurrencyDisplay(es.totalAnnualCostSavingPotential || totalSavings(projects)) },
-        { particular: "Total estimated investment", value: formatCurrencyDisplay(es.totalEstimatedInvestment || totalInvestment(projects)) },
-        { particular: "Simple payback period", value: formatPaybackDisplay(es.simplePaybackPeriod || weightedPayback(projects)) },
-        { particular: "CO2 reduction potential", value: formatNumberDisplay(es.co2ReductionPotential) || "[Calculation pending]" },
-      ]} />
+      <SectionHeader number="1.1" title="Purpose of the Energy Audit" />
+      {renderList(es.purposeText, [
+        "The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization.",
+        "The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus."
+      ])}
+      
+      <SectionHeader number="1.2" title="Key Objectives" />
+      {renderList(es.keyObjectives, [
+        "Identify and quantify energy-saving opportunities across all major utility and process systems.",
+        "Provide a structured roadmap for implementing control improvements, equipment efficiency upgrades, and system optimization initiatives.",
+        "Establish baseline performance metrics to enable effective post-implementation measurement and verification."
+      ])}
 
-      <SectionHeader number="1.3" title="Summary of Identified Energy Saving Projects" />
-      <ReportTable compact columns={[
-        { key: "projectNo", label: "ECM No." },
-        { key: "project", label: "Energy Saving Project" },
-        { key: "system", label: "System" },
-        { key: "investment", label: "Investment" },
-        { key: "saving", label: "Annual Saving" },
-        { key: "energy", label: "Energy Saving kWh/y" },
-      ]} rows={projects.map((project: any, index: number) => ({
-        projectNo: formatEcmNumber(project) || `ECM ${index + 1}`,
-        project: firstNonEmpty(project.projectTitle, project.title, project.ecmName),
-        system: project.system,
-        investment: formatCurrencyDisplay(project.estimatedInvestment || project.investment),
-        saving: formatCurrencyDisplay(project.expectedAnnualCostSaving || project.annualSaving),
-        energy: formatNumberDisplay(project.expectedEnergySaving || project.energySaving),
-      }))} />
+      <SectionHeader number="1.3" title="Scope of Assessment" />
+      {renderList(es.scopeOfAssessment, [
+        "Comprehensive review of historical energy consumption patterns and utility billing data.",
+        "Detailed performance evaluation of major energy-consuming systems including HVAC, compressed air, pumping, and production machinery.",
+        "Assessment of existing control logic, operating practices, and maintenance procedures impacting energy efficiency."
+      ])}
 
-      <SectionHeader number="1.4" title="Project Grouping" />
-      {renderOptionalTable([
-        { key: "groupNo", label: "Group No." },
-        { key: "groupName", label: "Group Name" },
-        { key: "ecmsIncluded", label: "ECMs Included" },
-        { key: "count", label: "No. of ECMs" },
-        { key: "investment", label: "Total Investment" },
-        { key: "saving", label: "Annual Saving" },
-        { key: "energy", label: "Energy Saving" },
-        { key: "payback", label: "Group Payback" },
-      ], data.projectGrouping || categorySummaryRows, "[To be updated after site data verification]")}
+      <SectionHeader number="1.4" title="Expected Outcomes" />
+      {renderList(es.expectedOutcomes, [
+        "A prioritized portfolio of energy conservation measures (ECMs) categorized by technical feasibility and financial return.",
+        "Clear recommendations for immediate operational improvements requiring minimal capital investment.",
+        "Strategic guidance for long-term capital planning related to major equipment replacements and system retrofits."
+      ])}
 
-      <SectionHeader number="1.5" title="Key Observations" />
-      <ul className="text-sm leading-snug mb-2 pl-4 list-disc">
-        {(asArray(es.keyObservations).length ? asArray(es.keyObservations) : [
-          "Cooling, production, compressed air, and auxiliary system projects contribute the major savings opportunity.",
-          "Control improvements and high-efficiency retrofits are strong early implementation candidates.",
-        ]).map((item, i) => <li key={i}>{fallbackText(item)}</li>)}
-      </ul>
+      <SectionHeader number="1.5" title="Strategic Importance" />
+      {renderList(es.strategicImportance, [
+        "Enhances operational resilience by reducing exposure to energy price volatility and supply constraints.",
+        "Supports corporate sustainability goals through quantifiable reductions in carbon emissions and environmental impact.",
+        "Improves overall facility competitiveness by lowering production costs and optimizing resource utilization."
+      ])}
 
-      <SectionHeader number="1.6" title="Recommended Implementation Priority" />
-      {renderOptionalTable([
-        { key: "level", label: "Priority Level" },
-        { key: "ecms", label: "ECM Numbers" },
-        { key: "reason", label: "Reason for Priority" },
-        { key: "investment", label: "Investment" },
-        { key: "saving", label: "Annual Saving" },
-        { key: "payback", label: "Payback" },
-        { key: "note", label: "Implementation Note" },
-      ], data.implementationPriority || priorityRows, "[To be updated after site data verification]")}
+      <SectionHeader number="1.6" title="Key Findings" />
+      {renderList(es.keyFindings || es.keyObservations, [
+        "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
+        "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
+        "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap."
+      ])}
 
-      <SectionHeader number="1.7" title="Conclusion and Way Forward" />
+      <SectionHeader number="1.7" title="Financial Highlights" />
+      {renderList(es.financialHighlightsNarrative, [
+        "The proposed energy conservation measures offer a highly attractive financial return, driven by significant reductions in annual operating costs.",
+        "A balanced mix of low-cost operational improvements and high-return capital projects provides a robust investment portfolio for management consideration."
+      ])}
+      <div className="mb-4">
+        <ReportTable compact columns={[{ key: "particular", label: "Overall Energy Saving Potential" }, { key: "value", label: "Value" }]} rows={[
+          { particular: "Total annual electricity consumption", value: es.totalAnnualElectricityConsumption },
+          { particular: "Annual electricity cost", value: formatCurrencyDisplay(es.annualElectricityCost) },
+          { particular: "Average electricity tariff considered", value: formatCurrencyDisplay(es.averageTariff) },
+          { particular: "Number of projects identified", value: es.numberOfProjects || projects.length },
+          { particular: "Total energy saving potential", value: formatNumberDisplay(es.totalEnergySavingPotential || totalEnergy(projects)) },
+          { particular: "Total annual cost saving potential", value: formatCurrencyDisplay(es.totalAnnualCostSavingPotential || totalSavings(projects)) },
+          { particular: "Total estimated investment", value: formatCurrencyDisplay(es.totalEstimatedInvestment || totalInvestment(projects)) },
+          { particular: "Simple payback period", value: formatPaybackDisplay(es.simplePaybackPeriod || weightedPayback(projects)) },
+          { particular: "CO2 reduction potential", value: formatNumberDisplay(es.co2ReductionPotential) || "[Calculation pending]" },
+        ]} />
+      </div>
+
+      <SectionHeader number="1.8" title="Energy Saving Potential" />
+      {renderList(es.energySavingPotentialNarrative, [
+        "Substantial energy savings can be achieved through a combination of enhanced system controls, elimination of avoidable losses, and targeted equipment upgrades.",
+        "The projected energy reductions are grounded in verified baseline data and conservative engineering calculations to ensure reliable and achievable outcomes."
+      ])}
+      <div className="mb-4">
+        <ReportTable compact columns={[
+          { key: "projectNo", label: "ECM No." },
+          { key: "project", label: "Energy Saving Project" },
+          { key: "system", label: "System" },
+          { key: "investment", label: "Investment" },
+          { key: "saving", label: "Annual Saving" },
+          { key: "energy", label: "Energy Saving kWh/y" },
+        ]} rows={projects.map((project: any, index: number) => ({
+          projectNo: formatEcmNumber(project) || `ECM ${index + 1}`,
+          project: firstNonEmpty(project.projectTitle, project.title, project.ecmName),
+          system: project.system,
+          investment: formatCurrencyDisplay(project.estimatedInvestment || project.investment),
+          saving: formatCurrencyDisplay(project.expectedAnnualCostSaving || project.annualSaving),
+          energy: formatNumberDisplay(project.expectedEnergySaving || project.energySaving),
+        }))} />
+      </div>
+
+      <SectionHeader number="1.9" title="Recommended Implementation Approach" />
+      {renderList(es.recommendedImplementationApproach || es.conclusionAndWayForward, [
+        "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures.",
+        "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins.",
+        "Develop detailed engineering, technical specifications, and integration requirements for the shortlisted measures, including instrumentation, controls, and safety interfaces.",
+        "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks."
+      ])}
+      
+      <div className="mt-4 mb-4 font-bold text-sm">1.9.1 Project Grouping</div>
+      <div className="mb-4">
+        {renderOptionalTable([
+          { key: "groupNo", label: "Group No." },
+          { key: "groupName", label: "Group Name" },
+          { key: "ecmsIncluded", label: "ECMs Included" },
+          { key: "count", label: "No. of ECMs" },
+          { key: "investment", label: "Total Investment" },
+          { key: "saving", label: "Annual Saving" },
+          { key: "energy", label: "Energy Saving" },
+          { key: "payback", label: "Group Payback" },
+        ], data.projectGrouping || categorySummaryRows, "[To be updated after site data verification]")}
+      </div>
+
+      <div className="mt-4 mb-4 font-bold text-sm">1.9.2 Recommended Implementation Priority</div>
+      <div className="mb-4">
+        {renderOptionalTable([
+          { key: "level", label: "Priority Level" },
+          { key: "ecms", label: "ECM Numbers" },
+          { key: "reason", label: "Reason for Priority" },
+          { key: "investment", label: "Investment" },
+          { key: "saving", label: "Annual Saving" },
+          { key: "payback", label: "Payback" },
+          { key: "note", label: "Implementation Note" },
+        ], data.implementationPriority || priorityRows, "[To be updated after site data verification]")}
+      </div>
+      
+      <div className="mt-4 mb-4 font-bold text-sm">1.9.3 Action Plan</div>
       {renderOptionalTable([
         { key: "step", label: "Step" }, { key: "action", label: "Action" }
-      ], data.summary || es.conclusionAndWayForward || [
+      ], data.summary || [
         { step: 1, action: "Site verification" },
         { step: 2, action: "Vendor quotation / detailed engineering" },
         { step: 3, action: "Implementation scheduling" },
