@@ -1,43 +1,32 @@
-/**
- * lightweightExcelExtractor.js
- *
- * Deterministic, synchronous Excel extractor.
- * Uses the `xlsx` library (SheetJS) — no background queues, no OCR, no caching.
- *
- * Returns a structured object with:
- *   - sheets: Array<{ name, rows: Array<Array<string>> }>
- *   - projects: Array of ECM project objects extracted from the primary sheet
- *   - rawText: flat text dump for fallback / LLM context
- */
-
 const XLSX = require("xlsx");
 const path = require("path");
 const fs = require("fs");
 
 /**
- * Extract all data from an Excel file.
- * @param {string} filePath  – absolute path to the .xlsx / .xls file
- * @returns {{ sheets, projects, rawText, warnings }}
+ * Deterministic lightweight excel extraction.
+ * @param {string} filePath - absolute path to the .xlsx / .xls file
+ * @param {object} file - the file object
+ * @returns {object} { success: true, parserUsed: 'lightweight_xlsx', fileName, sheetNames, totalRows, projects, projectCount }
  */
-function extractExcel(filePath) {
-  const warnings = [];
-
+function extractLightweightExcelData(filePath, file) {
+  const fileName = file?.filename || path.basename(filePath);
+  
   if (!filePath || !fs.existsSync(filePath)) {
-    warnings.push(`File not found: ${filePath}`);
-    return { sheets: [], projects: [], rawText: "", warnings };
+    return { success: false, error: "File not found", fileName };
   }
 
   let workbook;
   try {
     workbook = XLSX.readFile(filePath, { cellDates: true, sheetStubs: true });
   } catch (err) {
-    warnings.push(`Failed to read workbook: ${err.message}`);
-    return { sheets: [], projects: [], rawText: "", warnings };
+    return { success: false, error: err.message, fileName };
   }
 
+  const sheetNames = workbook.SheetNames;
   const sheets = [];
+  let totalRows = 0;
 
-  for (const sheetName of workbook.SheetNames) {
+  for (const sheetName of sheetNames) {
     const ws = workbook.Sheets[sheetName];
     if (!ws) continue;
 
@@ -47,24 +36,27 @@ function extractExcel(filePath) {
       blankrows: false,
     });
 
-    // Filter completely empty rows
     const filteredRows = rows
       .map((row) => row.map((cell) => String(cell ?? "").trim()))
       .filter((row) => row.some((cell) => cell !== ""));
 
+    totalRows += filteredRows.length;
     sheets.push({ name: sheetName, rows: filteredRows });
   }
 
   const projects = extractProjects(sheets);
-  const rawText = sheetsToText(sheets);
 
-  return { sheets, projects, rawText, warnings };
+  return {
+    success: true,
+    parserUsed: "lightweight_xlsx",
+    fileName,
+    sheetNames,
+    totalRows,
+    projects,
+    projectCount: projects.length
+  };
 }
 
-/**
- * Extract ECM project rows from sheets.
- * Looks for header rows containing keywords like "ECM", "Project", "Saving", "Investment".
- */
 function extractProjects(sheets) {
   const projects = [];
 
@@ -72,13 +64,11 @@ function extractProjects(sheets) {
     const { name: sheetName, rows } = sheet;
     if (!rows || rows.length < 2) continue;
 
-    // Find the header row
     const headerRowIdx = findHeaderRow(rows);
     if (headerRowIdx === -1) continue;
 
     const headers = rows[headerRowIdx].map((h) => String(h).toLowerCase().trim());
 
-    // Map column indices
     const colIdx = {
       ecmNo:        findCol(headers, ["ecm no", "ecm#", "sr no", "sr.", "no.", "sl no"]),
       system:       findCol(headers, ["system", "energy system", "category"]),
@@ -95,8 +85,6 @@ function extractProjects(sheets) {
 
       const description = getValue(row, colIdx.description);
       if (!description) continue;
-
-      // Skip sub-total / total rows
       if (/^(total|sub.?total|grand total)/i.test(description)) continue;
 
       projects.push({
@@ -112,14 +100,12 @@ function extractProjects(sheets) {
       });
     }
 
-    // If we found projects in this sheet, stop looking
     if (projects.length > 0) break;
   }
 
   return projects;
 }
 
-/** Find the first row that looks like a header */
 function findHeaderRow(rows) {
   const keywords = ["description", "project", "ecm", "saving", "investment", "system", "measure"];
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
@@ -130,7 +116,6 @@ function findHeaderRow(rows) {
   return -1;
 }
 
-/** Find the column index by checking for any of the candidate header strings */
 function findCol(headers, candidates) {
   for (const candidate of candidates) {
     const idx = headers.findIndex((h) => h.includes(candidate));
@@ -150,15 +135,4 @@ function parseNum(str) {
   return isNaN(num) ? null : num;
 }
 
-/** Convert all sheets to a flat text blob */
-function sheetsToText(sheets) {
-  return sheets
-    .map((sheet) => {
-      const headerLine = `=== Sheet: ${sheet.name} ===`;
-      const dataLines = sheet.rows.map((row) => row.join(" | ")).join("\n");
-      return `${headerLine}\n${dataLines}`;
-    })
-    .join("\n\n");
-}
-
-module.exports = { extractExcel };
+module.exports = { extractLightweightExcelData };

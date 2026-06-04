@@ -2392,6 +2392,9 @@ export default function PublicReports() {
         );
         showToast(`Generation failed: ${res.error}`, "error");
       } else {
+        if (res.dbSaveFailed || res.warning) {
+          showToast(res.warning || "Report generated but database save failed. Preview is available.", "warning");
+        }
         setGeneratedReport(res.report);
         setPipelineDebugData((prev) =>
           mergePipelineDebug(prev || {}, res?.pipelineDebug || {})
@@ -2431,10 +2434,8 @@ export default function PublicReports() {
     } catch (err) {
       showToast("Generation error: " + err.message, "error");
     } finally {
-      if (USE_AI_DURING_GENERATION && !SKIP_LLM_FOR_DEV) {
-        setAiProgress((prev) => ({ ...prev, active: false }));
-      }
       setGenerating(false);
+      setAiProgress((prev) => ({ ...prev, active: false }));
     }
   };
 
@@ -2490,29 +2491,12 @@ export default function PublicReports() {
         }
       }
     } catch (err) {
-      const statusObj =
-        err?.response?.data?.report?.aiEnhancementStatus ||
-        err?.response?.data?.aiEnhancementStatus;
-      if (
-        statusObj?.status === "quota_exceeded" ||
-        err?.response?.data?.report?.retryAfterSeconds
-      ) {
-        const seconds = err?.response?.data?.report?.retryAfterSeconds || 60;
-        setGeminiCooldownSeconds(seconds);
-        toast.info(formatGeminiQuotaMessage(seconds));
-        return;
-      }
+      const message =
+        err?.message ||
+        err?.data?.error ||
+        "AI enhancement could not be applied.";
 
-      if (statusObj) {
-        showAiEnhancementToast(statusObj, showToast);
-        return;
-      }
-
-      const cleanReason = cleanAiFailureMessage(err.message);
-      showAiEnhancementToast(
-        { status: "failed_non_blocking", failureReason: cleanReason },
-        showToast
-      );
+      toast.warning(`${message} Deterministic report is ready.`);
     } finally {
       stopAiCountdown();
       setAiEnhancing(false);

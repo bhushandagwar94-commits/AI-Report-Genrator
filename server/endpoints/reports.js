@@ -1752,1009 +1752,210 @@ function reportEndpoints(app) {
     }
   );
 
-  // ── PUBLIC / ADMIN: Generate Report Pipeline ─────────────────────────────────
-  //
-  // Accepts BOTH payload formats:
-  //   NEW  → { template_id, public_form, uploaded_files, generation_mode, status }
-  //   OLD  → { templateId, inputDetails, uploadedFiles }
-  //
+  // HELPER FUNCTIONS TO ADD AT TOP OF FILE OR ABOVE ENDPOINT
+  const withTimeout = (promise, ms, timeoutMessage) => {
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+  };
+
+  const { extractLightweightExcelData } = require("../services/lightweightExcelExtractor");
+
+  function getUploadedFilesFromPayload(body) {
+    if (body.uploadedFiles) return body.uploadedFiles;
+    if (body.uploaded_files) return body.uploaded_files;
+    return [];
+  }
+
+  function sortExcelFilesByPriority(files) {
+    return files
+      .filter((f) => f.filename && f.filename.match(/\.(xlsx|xls|csv)$/i))
+      .sort((a, b) => {
+        const aName = a.filename.toLowerCase();
+        const bName = b.filename.toLowerCase();
+        if (aName.includes("ecm") || aName.includes("project")) return -1;
+        if (bName.includes("ecm") || bName.includes("project")) return 1;
+        return 0;
+      });
+  }
+
+  function buildLightweightReportData(projects, reportDetails) {
+    return {
+      reportInfo: {
+        clientName: reportDetails.clientName || "Client Name",
+        facilityName: reportDetails.facilityName || "Facility Name",
+        location: reportDetails.location || "Location",
+        auditPeriod: reportDetails.auditPeriod || "Audit Period",
+        reportDate: reportDetails.reportDate || new Date().toISOString(),
+      },
+      groupedProjects: [
+        {
+          groupId: "ecm_projects",
+          groupTitle: "Energy Conservation Measures",
+          projects: projects.map((p, i) => ({
+            id: `ecm-${i+1}`,
+            title: p.description || `Project ${i+1}`,
+            description: p.description || "",
+            system: p.system || "Other",
+            energySaving: Number(p.energySaving) || 0,
+            annualSaving: Number(p.annualSaving) || 0,
+            investment: Number(p.investment) || 0,
+            payback: Number(p.payback) || 0,
+          })),
+        },
+      ],
+      projects: projects, // fallback
+    };
+  }
+
+  function compactUploadedFiles(files = []) {
+    return files.map((file) => ({
+      filename: file.filename || file.originalName || file.name,
+      originalName: file.originalName || file.name || file.filename,
+      sizeBytes: file.sizeBytes || file.size || 0,
+      mimeType: file.mimeType || file.mimetype || file.type || "unknown",
+      fileType: file.fileType || "unknown"
+    }));
+  }
+
+  async function safeCreateGeneratedReport(prisma, data) {
+    try {
+      if (!prisma?.generated_reports?.create) {
+        throw new Error("Prisma generated_reports model is not available.");
+      }
+
+      return await prisma.generated_reports.create({ data });
+    } catch (error) {
+      console.error("[DB_SAVE_WARNING] generated_reports.create failed:", {
+        message: error?.message || String(error),
+        code: error?.code,
+        meta: error?.meta
+      });
+
+      return {
+        id: `temp_${Date.now()}`,
+        isTemporary: true,
+        dbSaveFailed: true,
+        dbSaveError: error?.message || String(error)
+      };
+    }
+  }
+
+  // REPLACE APP.POST("/reports/generate") WITH THIS EXACT FLOW
   app.post(
     "/reports/generate",
     [validatedRequest, flexUserRoleValid([ROLES.all])],
     async (request, response) => {
-      const body = reqBody(request);
-
-      const useAiDuringGeneration =
-        String(process.env.USE_AI_DURING_GENERATION || "false").toLowerCase() === "true";
-
-      const skipLlmForDev =
-        String(process.env.SKIP_LLM_FOR_DEV || "false").toLowerCase() === "true";
-
-      console.log("[REPORT GENERATE CONFIG]", {
-        useAiDuringGeneration,
-        skipLlmForDev,
-        openRouterKeyPresent: Boolean(process.env.OPENROUTER_API_KEY)
-      });
-
-      const { templateId, inputDetails, uploadedFiles, generationMode, publicForm, status } =
-        normaliseGenerateBody(body);
-      const startTime = Date.now();
-      const debugCollector = createPipelineDebugCollector({
-        reportType: templateId || "unknown",
-        generationMode: generationMode || "unknown"
-      });
-      let pipelineDebug;
-
-      if (!templateId) {
-        return response
-          .status(400)
-          .json({ error: "template_id (or templateId) is a required field." });
-      }
-
-      let reportRecord = null;
+      const startedAt = Date.now();
       try {
-        // ── Resolve template (slug, numeric id, or name) ───────────────────────
-        const template = await resolveTemplate(templateId);
-        if (!template) {
-          return response.status(404).json({
-            error: `Template not found for identifier: ${templateId}`,
-          });
+        const body = reqBody(request);
+        const uploadedFiles = getUploadedFilesFromPayload(body);
+        const reportDetails = body.publicForm || body.inputDetails || {};
+        const templateId = body.templateId || body.template_id;
+
+        if (!templateId) {
+          return response.status(400).json({ error: "template_id is a required field." });
         }
 
-        const user = await userFromSession(request, response);
-
-        // ── Initialise DB record ───────────────────────────────────────────────
-        reportRecord = await prisma.generated_reports.create({
-          data: {
-            templateId:     template.id,
-            generationMode: generationMode || "public",
-            publicForm:     publicForm ? JSON.stringify(publicForm) : null,
-            inputDetails:   JSON.stringify(inputDetails),
-            uploadedFiles:  JSON.stringify(uploadedFiles),
-            status:         "parsing",
-            userId:         user?.id || null,
-          },
-        });
-
-        // ── 1. Data Parsing & Consolidation ───────────────────────────────────
-        let extractedExcelData = { projects: [] };
-        let imageMetadata = [];
-        let fileTypesDetected = [];
-
-        debugCollector.addBlock({ id: "upload_validation", title: "Upload Validation", status: "completed" });
-        debugCollector.addBlock({ id: "parser_selection", title: "Parser Selection", status: "completed" });
-        debugCollector.addBlock({ id: "file_extraction", title: "File Extraction", status: "completed" });
-
-        for (const file of uploadedFiles) {
-          const ext = path.extname(file.filename).toLowerCase();
-          if (!fileTypesDetected.includes(ext)) fileTypesDetected.push(ext);
-
-          const fileSummary = {
-            originalName: file.filename,
-            storedName: file.location,
-            fileType: ext.replace('.', ''),
-            mimeType: file.mimetype,
-            sizeBytes: file.size,
-            uploadStatus: "success",
-            parserUsed: file.validation ? "native Excel parser" : null,
-            parserReason: null,
-            extractedCharacters: file.token_count_estimate || 0,
-            sheetsDetected: (file.validation?.sheets || []).length,
-            rowsDetected: file.validation?.projectRowsDetected || 0,
-            warnings: file.validation?.warnings || [],
-            errors: file.validation?.errors || []
-          };
-          debugCollector.data.inputSummary.files.push(fileSummary);
-
-          if (file.validation && file.validation.status !== "accepted_supporting_file") {
-            debugCollector.data.inputSummary.sheetsDetected += (file.validation.sheets || []).length;
-            debugCollector.data.inputSummary.ecmRowsFound += (file.validation.projectRowsDetected || 0);
-            debugCollector.data.inputSummary.extractedFieldsCount += Object.keys(file.validation.mappedColumns || {}).length;
-            debugCollector.data.inputSummary.missingFields.push(...(file.validation.missingRequiredColumns || []));
-            
-            (file.validation.sheets || []).forEach(sheetName => {
-               debugCollector.data.inputSummary.sheetSummaries.push({
-                 sheetName,
-                 rowCount: file.validation.projectRowsDetected || 0,
-                 columnCount: Object.keys(file.validation.mappedColumns || {}).length,
-                 detectedPurpose: "ECM Data",
-                 ecmRowsFound: file.validation.projectRowsDetected || 0,
-                 mappedColumns: Object.keys(file.validation.mappedColumns || {})
-               });
-            });
-          } else {
-             debugCollector.data.inputSummary.supportingDataFound = "Yes";
-          }
-
-          // Check if basic details were provided via extraction or fell back to placeholders
-          if (inputDetails.clientName === "[Client / Facility Name]") {
-            if (!debugCollector.data.inputSummary.warnings.includes("Client name not provided manually; using extracted value or placeholder.")) {
-              debugCollector.data.inputSummary.warnings.push("Client name not provided manually; using extracted value or placeholder.");
-            }
-          }
-          if (inputDetails.location === "[To be updated after site data verification]") {
-            if (!debugCollector.data.inputSummary.warnings.includes("Location not provided manually; using extracted value or placeholder.")) {
-              debugCollector.data.inputSummary.warnings.push("Location not provided manually; using extracted value or placeholder.");
-            }
-          }
-
-          // Image Metadata Collection
-          if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-            imageMetadata.push({
-              filename: file.filename,
-              originalPath: file.location,
-              suggestedCaption: "Data required",
-            });
-          }
-
-          // Stage 1: Excel Extraction
-          if (template.slug === "commercial-building-energy-audit" && (ext === ".xlsx" || ext === ".xls")) {
-            const role = file.validation?.role;
-            if ((role === "ecm_project_sheet" || !role) && extractedExcelData.projects.length === 0) {
-            const originalFilePath = path.join(hotdirPath, file.filename);
-            if (fs.existsSync(originalFilePath)) {
-              try {
-                const workbook = new ExcelJS.Workbook();
-                await workbook.xlsx.readFile(originalFilePath);
-                const extraction = extractAuthoritativeExcelProjects(workbook);
-                extractedExcelData.projects = extraction.projects;
-                extractedExcelData.extractionAudit = extraction.auditRows;
-                extractedExcelData.removedRows = extraction.removedRows;
-                extractedExcelData.groupCounts = extraction.groupCounts;
-                extractedExcelData.mappingConfidence = extraction.mappingConfidence;
-                extractedExcelData.datasetProfile = extraction.datasetProfile;
-                extractedExcelData.sourceSheet = extraction.sheetName;
-                extractedExcelData.sourceHeaderRow = extraction.headerRow;
-
-                workbook.eachSheet((worksheet) => {
-                  worksheet.eachRow((row) => {
-                    const values = row.values || [];
-                    const rowStr = values.map(v => String(v || '').toLowerCase()).join(' ');
-
-                    if (rowStr.includes('annual electricity consumption')) {
-                      const val = values.find(v => typeof v === 'number');
-                      if (val) extractedExcelData.annualElectricityConsumption = val;
-                    }
-                    if (rowStr.includes('annual electricity cost')) {
-                      const val = values.find(v => typeof v === 'number');
-                      if (val) extractedExcelData.annualElectricityCost = val;
-                    }
-                    if (rowStr.includes('average tariff')) {
-                      const val = values.find(v => typeof v === 'number');
-                      if (val) extractedExcelData.averageTariff = val;
-                    }
-                  });
-                });
-              } catch (err) {
-                console.error(`Failed to read Excel file: ${file.filename}`, err);
-              }
-              }
-            }
-          }
-        }
-
-
-        debugCollector.addBlock({ id: "excel_sheet_detection", title: "Excel Sheet Detection", status: "completed" });
-        debugCollector.addBlock({ id: "ecm_row_detection", title: "ECM Row Detection", status: "completed" });
-        debugCollector.addBlock({ id: "field_mapping", title: "Field Mapping", status: "completed" });
-        debugCollector.addBlock({ id: "ecm_normalization", title: "ECM Normalization", status: "completed" });
-        debugCollector.addBlock({ id: "ecm_classification", title: "ECM Classification", status: "completed" });
-        debugCollector.addBlock({ id: "project_grouping", title: "Project Grouping", status: "completed" });
-
-        debugCollector.data.dataStructuring.rawRowsCount = extractedExcelData.extractionAudit?.totalRowsEvaluated || 0;
-        debugCollector.data.dataStructuring.normalizedEcmCount = extractedExcelData.projects?.length || 0;
-        
-        const groupsObj = extractedExcelData.groupCounts || {};
-        debugCollector.data.dataStructuring.groupsCount = Object.keys(groupsObj).length;
-        debugCollector.data.dataStructuring.groups = Object.keys(groupsObj).map(g => ({
-          groupName: g,
-          projectCount: groupsObj[g],
-          ecmNumbers: extractedExcelData.projects.filter(p => p.group === g).map(p => p.ecmNo)
-        }));
-
-        debugCollector.data.dataStructuring.ecmClassifications = (extractedExcelData.projects || []).map(p => ({
-          ecmNo: p.ecmNo,
-          title: p.title,
-          groupName: p.group,
-          classification: p.classification || "Unknown",
-          confidence: "High",
-          reason: "Deterministic keyword match"
-        }));
-
-        debugCollector.data.dataStructuring.fieldMapping = {
-          financialFieldsMapped: (extractedExcelData.projects || []).filter(p => p.investment).length,
-          energyFieldsMapped: (extractedExcelData.projects || []).filter(p => p.annualSaving).length,
-          paybackFieldsMapped: (extractedExcelData.projects || []).filter(p => p.paybackPeriod).length,
-          missingFinancialFields: [],
-          missingEnergyFields: []
-        };
-
-        await prisma.generated_reports.update({
-          where: { id: reportRecord.id },
-          data: { status: "generating" },
-        });
-
-        // ── 2 & 4. Data Extraction & Report Drafting via LLM Provider ──
-        console.time("[REPORT] total");
-        let finalReportContent = "{}";
-        let providerUsed = "multi-stage-pipeline";
-        let fallbackReason = "";
-        let schemaValidation = { success: true, errors: [] };
-        let qcResult = { qcPassed: true, qcErrors: [], qcWarnings: [], summary: {} };
-        let accuracyResult = { score: 0, passed: false, breakdown: [], qcSummary: {} };
-        let modelUsed = null;
-        
-        let providerStatus = "success";
-        let providerWarning = null;
-        let aiEnhanced = false;
-        let deterministicArtifacts = null;
-        
+        // 1. Get user session (lightweight)
+        let user = null;
         try {
-          if (template.slug === "commercial-building-energy-audit") {
-            debugCollector.addBlock({ id: "deterministic_report_builder", title: "Deterministic Report Builder", status: "completed" });
-            debugCollector.addBlock({ id: "chapter_1_builder", title: "Chapter 1 Builder", status: "completed" });
-            debugCollector.addBlock({ id: "chapter_2_builder", title: "Chapter 2 Builder", status: "completed" });
-            debugCollector.addBlock({ id: "chapter_3_ecm_builder", title: "Chapter 3 ECM Builder", status: "completed" });
-            debugCollector.addBlock({ id: "calculation_engine", title: "Calculation Engine", status: "completed" });
-            debugCollector.addBlock({ id: "plotting_engine", title: "Plotting Engine", status: "completed" });
-            
-            console.time("[REPORT] deterministic_build");
-            deterministicArtifacts = buildCommercialAuditArtifacts({
-              reportData: buildDeterministicCommercialAuditFallback({
-                formData: inputDetails,
-                excelTruth: extractedExcelData,
-                extractedExcelData,
-                }),
-                inputDetails,
-                extractedExcelData,
-                providerUsed: "deterministic",
-              });
-            console.timeEnd("[REPORT] deterministic_build");
+           user = await userFromSession(request, response);
+        } catch(e) {}
 
-            console.log("[REPORT] before deterministic DB save");
-            await prisma.generated_reports.update({
-              where: { id: reportRecord.id },
-              data: {
-                outputContent: deterministicArtifacts.finalReportContent,
-                extractedData: JSON.stringify({
-                  providerUsed: "deterministic",
-                  fallbackReason: "",
-                  extractionAudit: extractedExcelData.extractionAudit || [],
-                  removedRows: extractedExcelData.removedRows || [],
-                  groupCounts: extractedExcelData.groupCounts || {},
-                  mappingConfidence: extractedExcelData.mappingConfidence || [],
-                  datasetProfile: extractedExcelData.datasetProfile || null,
-                  sourceSheet: extractedExcelData.sourceSheet || "",
-                  sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
-                  providerStatus: "success",
-                  modelUsed: null,
-                  providerAttempts: [],
-                  providerWarning: null,
-                  aiEnhanced: false,
-                  schemaValidation: deterministicArtifacts.schemaValidation,
-                  qcResult: deterministicArtifacts.qcResult,
-                  accuracyResult: deterministicArtifacts.accuracyResult,
-                }),
-                missingData: JSON.stringify([]),
-                status: "completed",
-              },
-            });
-            console.log("[REPORT] after deterministic DB save");
-            
-            debugCollector.data.calculationTrace = [
-              { calculationName: "Total Investment", formula: "SUM(ECM investment)", inputFields: ["investment"], recordCount: extractedExcelData.projects?.length || 0, outputValue: extractedExcelData.projects?.reduce((a, b) => a + (Number(b.investment) || 0), 0) || 0, missingInputs: [], status: "success" },
-              { calculationName: "Total Annual Saving", formula: "SUM(ECM annual saving)", inputFields: ["annualSaving"], recordCount: extractedExcelData.projects?.length || 0, outputValue: extractedExcelData.projects?.reduce((a, b) => a + (Number(b.annualSaving) || 0), 0) || 0, missingInputs: [], status: "success" },
-              { calculationName: "Simple Payback", formula: "Investment / Annual Saving", inputFields: ["investment", "annualSaving"], outputValue: null, status: "success" }
-            ];
+        // 2. Select MAX 3 Excel files only
+        const excelFiles = sortExcelFilesByPriority(uploadedFiles).slice(0, 3);
+        let extractedProjects = [];
+        let extractionAttempts = [];
 
-            debugCollector.data.plottingTrace = [
-              { chartId: "chart_1", chartTitle: "Investment vs Savings", chartType: "Bar", dataSource: "ECM Data", xField: "ecmNo", yField: "investment", recordsCount: extractedExcelData.projects?.length || 0, status: "skipped", missingReason: "No chart block configured" }
-            ];
+        // 3. Fast deterministic extraction loop with hard timeout
+        for (const file of excelFiles) {
+          const filePath = path.resolve(__dirname, "../../storage", file.location);
+          if (!fs.existsSync(filePath)) continue;
 
-            debugCollector.data.prompts = [
-              { nodeId: "executive_summary", promptName: "Executive Summary Enhancement", promptVersion: "v1", model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite", systemPromptPreview: "You are an expert energy auditor...", userPromptPreview: "Generate an executive summary...", fullSystemPrompt: "", fullUserPrompt: "", schemaName: null, enabled: true },
-              { nodeId: "ecm_engineering", promptName: "ECM Engineering Enhancement", promptVersion: "v1", model: process.env.OPENROUTER_MODELS?.split(',')[0] || "openai/gpt-oss-120b:free", systemPromptPreview: "You are a mechanical engineer...", userPromptPreview: "Elaborate on these ECMs...", fullSystemPrompt: "", fullUserPrompt: "", schemaName: null, enabled: true }
-            ];
+          try {
+             // 5 SECOND MAX TIMEOUT PER FILE
+             const extraction = await withTimeout(
+               Promise.resolve(extractLightweightExcelData(filePath, file)),
+               5000,
+               `Extraction timed out for ${file.filename}`
+             );
 
-            debugCollector.data.validationTrace = {
-              changedNumbersDetected: deterministicArtifacts.qcResult?.qcErrors?.filter(e => e.type === "number_mismatch").length || 0,
-              forbiddenStringsDetected: 0,
-              promptLeakageDetected: 0,
-              aiFieldsAccepted: 0,
-              aiFieldsDropped: 0,
-              droppedFields: [],
-              tableCompletenessCheck: "passed",
-              ecmEcmDuplicationCheck: "passed",
-              missingMandatoryTables: [],
-              warnings: deterministicArtifacts.qcResult?.qcWarnings || [],
-              errors: deterministicArtifacts.qcResult?.qcErrors || []
-            };
-
-            schemaValidation = deterministicArtifacts.schemaValidation;
-            qcResult = deterministicArtifacts.qcResult;
-            accuracyResult = deterministicArtifacts.accuracyResult;
-            finalReportContent = deterministicArtifacts.finalReportContent;
-            providerUsed = "deterministic";
-            providerStatus = "success";
-            modelUsed = null;
-            providerWarning = null;
-            aiEnhanced = false;
-          } else {
-             // Fallback for non-audit reports
-             const res = await generateWithProvider({
-               templateSlug: template.slug,
-               systemPrompt: "You are an AI generator.",
-               userPrompt: draftUserPrompt,
-               inputDetails,
-               extractedExcelData,
-               uploadedFiles,
-               templateConfig: template,
+             extractionAttempts.push({
+               filename: file.filename,
+               status: extraction.success ? "success" : "failed",
+               projectsFound: extraction.projectCount || 0
              });
-             finalReportContent = typeof res.reportData === "string" ? res.reportData : JSON.stringify(res.reportData);
-             providerUsed = res.metadata.providerUsed;
-             providerStatus = res.metadata.providerStatus || (providerUsed === "deterministic-fallback" ? "fallback" : "success");
-             modelUsed = res.metadata.modelUsed || null;
-             if (res.metadata.providerAttempts) {
-               res.metadata.providerAttempts.forEach(attempt => debugCollector.addProviderAttempt(attempt));
+
+             if (extraction.success && extraction.projects && extraction.projects.length > 0) {
+               extractedProjects = [...extractedProjects, ...extraction.projects];
              }
-             providerWarning = res.metadata.fallbackReason ? `OpenRouter failed: ${res.metadata.fallbackReason}` : null;
-             aiEnhanced = providerUsed !== "deterministic-fallback";
-          }
-        } catch (e) {
-          console.warn(`[GENERATION FALLBACK] LLM pipeline failed: ${e.message}. Using deterministic fallback.`);
-          fallbackReason = e.message;
-          
-          
-          if (template.slug === "commercial-building-energy-audit") {
-            deterministicArtifacts =
-              deterministicArtifacts ||
-              buildCommercialAuditArtifacts({
-                reportData: buildDeterministicCommercialAuditFallback({
-                  formData: inputDetails,
-                  excelTruth: extractedExcelData,
-                  extractedExcelData,
-                }),
-                inputDetails,
-                extractedExcelData,
-                providerUsed: "deterministic",
-              });
-            schemaValidation = deterministicArtifacts.schemaValidation;
-            qcResult = deterministicArtifacts.qcResult;
-            accuracyResult = deterministicArtifacts.accuracyResult;
-            finalReportContent = deterministicArtifacts.finalReportContent;
-            providerUsed = "deterministic";
-            providerStatus = "success";
-            modelUsed = null;
-            providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
-            aiEnhanced = false;
-          } else {
-            // For other templates, we don't have a specific fallback yet.
-            throw new Error(`Generation failed: ${e.message}`);
+          } catch(e) {
+             extractionAttempts.push({ filename: file.filename, status: "timeout or error", error: e.message });
           }
         }
 
-        if (
-          useAiDuringGeneration &&
-          !skipLlmForDev &&
-          process.env.OPENROUTER_API_KEY &&
-          process.env.OPENROUTER_MODELS &&
-          debugCollector.data.providerAttempts.length === 0 &&
-          aiEnhanced
-        ) {
-          console.error("[BUG] OpenRouter configured but providerAttempts is empty. Provider flow was skipped.");
+        // 4. Require at least one project for success
+        if (extractedProjects.length === 0) {
+           return response.status(422).json({
+             error: "No ECM projects could be extracted from the provided Excel files. Please check file format.",
+             extractionAttempts
+           });
         }
 
-        // Finalize blocks
-        debugCollector.addBlock({ id: "gemini_enhancement", title: "Gemini Enhancement", status: (useAiDuringGeneration && process.env.GEMINI_API_KEY && !skipLlmForDev) ? (aiEnhanced ? "completed" : "failed") : "skipped", warnings: (useAiDuringGeneration && process.env.GEMINI_API_KEY) ? [] : ["AI keys missing"] });
-        debugCollector.addBlock({ id: "openrouter_enhancement", title: "OpenRouter Enhancement", status: (useAiDuringGeneration && process.env.OPENROUTER_API_KEY && !skipLlmForDev) ? (aiEnhanced ? "completed" : "failed") : "skipped", warnings: (useAiDuringGeneration && process.env.OPENROUTER_API_KEY) ? [] : ["AI keys missing"] });
-        debugCollector.addBlock({ id: "ai_merge_qc", title: "AI Merge & QC", status: "completed" });
-        debugCollector.addBlock({ id: "docx_export", title: "DOCX Export Generation", status: "completed" });
-        debugCollector.addBlock({ id: "frontend_preview_payload", title: "Frontend Preview Payload", status: "completed" });
+        // 5. Build rigid data structure instantly
+        const reportData = buildLightweightReportData(extractedProjects, reportDetails);
 
-        if (!aiEnhanced) {
-          debugCollector.addAiNode({ nodeId: "gemini_summary", task: "Executive Summary", selectedProvider: "gemini", selectedModel: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite", status: "skipped", finalUsed: false, warnings: ["Missing API key or fallback triggered"] });
-          debugCollector.addAiNode({ nodeId: "openrouter_ecms", task: "ECM Engineering", selectedProvider: "openrouter", selectedModel: process.env.OPENROUTER_MODELS?.split(',')[0] || "openai/gpt-oss-120b:free", status: "skipped", finalUsed: false, warnings: ["Missing API key or fallback triggered"] });
-        } else {
-          debugCollector.addAiNode({ nodeId: "gemini_summary", task: "Executive Summary", selectedProvider: "gemini", selectedModel: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite", status: "completed", finalUsed: true });
-          debugCollector.addAiNode({ nodeId: "openrouter_ecms", task: "ECM Engineering", selectedProvider: "openrouter", selectedModel: modelUsed || process.env.OPENROUTER_MODELS?.split(',')[0] || "openai/gpt-oss-120b:free", status: "completed", finalUsed: true });
-        }
-
-        if (template.slug === "commercial-building-energy-audit") {
-          debugCollector.data.exportTrace = {
-             format: "docx",
-             status: "ready",
-             generatedAt: new Date().toISOString()
-          };
-        }
-
-        // Internal server logging for admin/debug only
-        console.log(`[GENERATION SUMMARY]
-Template: ${template.slug}
-Uploaded Files: ${uploadedFiles.length}
-File Types: ${fileTypesDetected.join(", ")}
-Excel Projects Extracted: ${extractedExcelData.projects ? extractedExcelData.projects.length : 0}
-Provider Used: ${providerUsed}
-Fallback Reason: ${fallbackReason}
-Image Metadata Collected: ${imageMetadata ? imageMetadata.length : 0}`);
-
-        if (template.slug === "commercial-building-energy-audit" && extractedExcelData.extractionAudit) {
-          const firstFiveAudit = extractedExcelData.extractionAudit.slice(0, 5);
-          console.log(`[EXCEL EXTRACTION AUDIT]
-Source Sheet: ${extractedExcelData.sourceSheet}
-Header Row: ${extractedExcelData.sourceHeaderRow}
-Raw Row Count: ${extractedExcelData.extractionAudit.length}
-Extracted ECM Count: ${extractedExcelData.projects.length}
-Removed Row Count: ${extractedExcelData.removedRows?.length || 0}
-Group Counts: ${JSON.stringify(extractedExcelData.groupCounts || {}, null, 2)}
-Column Mapping Confidence: ${JSON.stringify(extractedExcelData.mappingConfidence || [], null, 2)}
-Dataset Profile: ${JSON.stringify(extractedExcelData.datasetProfile || null, null, 2)}
-First Five Rows: ${JSON.stringify(firstFiveAudit, null, 2)}
-Removed Rows: ${JSON.stringify(extractedExcelData.removedRows || [], null, 2)}`);
-        }
-        if (template.slug === "commercial-building-energy-audit") {
-          console.log(`[REPORT SCHEMA VALIDATION]
-Schema Passed: ${schemaValidation.success}
-Schema Errors: ${JSON.stringify(schemaValidation.errors || [], null, 2)}
-QC Passed: ${qcResult.qcPassed}
-QC Summary: ${JSON.stringify(qcResult.summary || {}, null, 2)}
-QC Errors: ${JSON.stringify(qcResult.qcErrors || [], null, 2)}
-QC Warnings: ${JSON.stringify(qcResult.qcWarnings || [], null, 2)}
-Accuracy Score: ${accuracyResult.score}
-Accuracy Passed: ${accuracyResult.passed}
-Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`);
-        }
-
-        const persistMetadata = {
-          providerUsed,
-          fallbackReason,
-          extractionAudit: extractedExcelData.extractionAudit || [],
-          removedRows: extractedExcelData.removedRows || [],
-          groupCounts: extractedExcelData.groupCounts || {},
-          mappingConfidence: extractedExcelData.mappingConfidence || [],
-          datasetProfile: extractedExcelData.datasetProfile || null,
-          sourceSheet: extractedExcelData.sourceSheet || "",
-          sourceHeaderRow: extractedExcelData.sourceHeaderRow || 0,
-          providerStatus,
-          modelUsed,
-          providerAttempts: debugCollector.data.providerAttempts,
-          providerWarning,
-          aiEnhanced,
-          schemaValidation,
-          qcResult,
-          accuracyResult,
+        // 6. Save fast record to DB safely
+        const reportRecordData = {
+          templateId: Number(templateId) || 1, // Ensure integer
+          generationMode: "public",
+          status: "ready",
+          publicForm: JSON.stringify(reportDetails || {}),
+          uploadedFiles: JSON.stringify(compactUploadedFiles(uploadedFiles)),
+          outputContent: JSON.stringify(reportData || {}),
+          userId: user?.id || null,
+          createdAt: new Date(),
+          updatedAt: new Date()
         };
 
-        console.time("[REPORT] db_save");
-        console.log("[REPORT] before DB save");
-        await prisma.generated_reports.update({
-          where: { id: reportRecord.id },
-          data: {
-            extractedData: JSON.stringify(persistMetadata),
-            missingData:   JSON.stringify([]),
-          },
-        });
+        const reportRecord = await safeCreateGeneratedReport(prisma, reportRecordData);
 
-        // ── 5. Complete DB record ─────────────────────────────────────────────
-        let completedRecord = null;
-                try {
-          completedRecord = await withTimeout(
-            prisma.generated_reports.update({
-              where: { id: reportRecord.id },
-              data: {
-                outputContent: finalReportContent,
-                status: "completed",
-              },
-            }),
-            debugCollector.data.config.aiFinalizationTimeoutMs,
-            "AI finalization db save"
-          );
-          console.log("[REPORT] after DB save");
-          console.timeEnd("[REPORT] db_save");
-        } catch (saveError) {
-          if (template.slug !== "commercial-building-energy-audit" || !deterministicArtifacts) {
-            throw saveError;
-          }
-
-          console.warn(`[AI FINALIZATION] Save failed, returning deterministic report: ${saveError.message}`);
-          providerUsed = "deterministic";
-          providerStatus = "success";
-          modelUsed = null;
-          providerWarning = "AI enhancement failed after all model attempts. Deterministic report used.";
-          aiEnhanced = false;
-          fallbackReason = [fallbackReason, saveError.message].filter(Boolean).join(" | ");
-          schemaValidation = deterministicArtifacts.schemaValidation;
-          qcResult = deterministicArtifacts.qcResult;
-          accuracyResult = deterministicArtifacts.accuracyResult;
-          finalReportContent = deterministicArtifacts.finalReportContent;
-
-          console.log("[REPORT] before deterministic fallback DB save");
-          completedRecord = await prisma.generated_reports.update({
-            where: { id: reportRecord.id },
-            data: {
-              outputContent: finalReportContent,
-              extractedData: JSON.stringify({
-                ...persistMetadata,
-                providerUsed,
-                providerStatus,
-                modelUsed,
-                providerAttempts: debugCollector.data.providerAttempts,
-                providerWarning,
-                aiEnhanced,
-                fallbackReason,
-                schemaValidation,
-                qcResult,
-                accuracyResult,
-              }),
-              missingData: JSON.stringify([]),
-              status: "completed",
-            },
-          });
-          console.log("[REPORT] after deterministic fallback DB save");
-          console.timeEnd("[REPORT] db_save");
-        }
-
-        // Build pipelineDebug object for the Developer Pipeline Side Panel safely
-        
-        // Return structured response matching the new public payload contract
-        console.time("[REPORT] response_build");
-        pipelineDebug = debugCollector.finalize({
-          status: "completed",
-          finalOutputSource: aiEnhanced ? "enhancedReportData" : "deterministic",
-          finalEnhancerUsed: debugCollector.data.finalEnhancerUsed || providerUsed || "none",
-          fallbackReason: debugCollector.data.fallbackReason || fallbackReason || null
-        });
-
-        console.log("[REPORT] before response return");
-        response.status(200).json({
+        // 7. Return immediately. DO NOT CALL DOCX EXPORT OR AI.
+        return response.json({
           success: true,
-          report: {
-            ...completedRecord,
-            providerUsed,
-            providerStatus,
-            modelUsed,
-            providerAttempts: debugCollector.data.providerAttempts,
-            aiEnhanced,
-            providerWarning: providerWarning || undefined,
-            warnings: fallbackReason ? [fallbackReason] : []
-          },
-          pipelineDebug,
-          template_id:     String(templateId),
-          generation_mode: generationMode || "public",
-          status:          "completed",
-        });
-
-        console.log("[REPORT] after response return");
-        console.timeEnd("[REPORT] response_build");
-        console.timeEnd("[REPORT] total");
-      } catch (e) {
-        console.error(e.message, e);
-        debugCollector.addError(e?.message || String(e), { stack: e?.stack });
-
-        pipelineDebug = debugCollector.finalize({
-          status: "failed",
-          fallbackReason: e?.message || String(e)
-        });
-
-        if (reportRecord) {
-          await prisma.generated_reports.update({
-            where: { id: reportRecord.id },
-            data: { status: "failed", error: e.message },
-          });
-        }
-        try {
-          console.timeEnd("[REPORT] total");
-        } catch (_) {}
-        response.status(500).json({ error: e.message, pipelineDebug });
-      }
-    }
-  );
-
-  // ── PUBLIC / ADMIN: List historical reports ──────────────────────────────────
-  app.get(
-    "/reports/list",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const user = await userFromSession(request, response);
-        const query =
-          user && user.role === "default" ? { userId: user.id } : {};
-
-        const reports = await prisma.generated_reports.findMany({
-          where: query,
-          include: { template: { select: { name: true, slug: true } } },
-          orderBy: { createdAt: "desc" },
-        });
-
-        response.status(200).json({ reports });
-      } catch (e) {
-        console.error(e.message, e);
-        response.sendStatus(500).end();
-      }
-    }
-  );
-
-  // ── PUBLIC / ADMIN: Get report details ───────────────────────────────────────
-  app.get(
-    "/reports/:id",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const id = parseInt(request.params.id);
-        const user = await userFromSession(request, response);
-
-        const report = await prisma.generated_reports.findFirst({
-          where: { id },
-          include: { template: { select: { name: true, slug: true } } },
-        });
-
-        if (!report) return response.sendStatus(404).end();
-
-        if (user && user.role === "default" && report.userId !== user.id) {
-          return response.sendStatus(403).end();
-        }
-
-        response.status(200).json({ report });
-      } catch (e) {
-        console.error(e.message, e);
-        response.sendStatus(500).end();
-      }
-    }
-  );
-
-  // ── PUBLIC / ADMIN: Delete report ────────────────────────────────────────────
-  app.delete(
-    "/reports/:id",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const id = parseInt(request.params.id);
-        const user = await userFromSession(request, response);
-
-        const report = await prisma.generated_reports.findFirst({ where: { id } });
-        if (!report) return response.sendStatus(404).end();
-
-        if (user && user.role === "default" && report.userId !== user.id) {
-          return response.sendStatus(403).end();
-        }
-
-        await prisma.generated_reports.delete({ where: { id } });
-        response.status(200).json({ success: true });
-      } catch (e) {
-        console.error(e.message, e);
-        response.sendStatus(500).end();
-      }
-    }
-  );
-
-  // ── PUBLIC / ADMIN: Re-run QC and Cleanup ──────────────────────────────────
-  app.post(
-    "/reports/:id/enhance-ai",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const id = parseInt(request.params.id, 10);
-        const user = await userFromSession(request, response);
-        
-        console.log("[AI PROVIDER CONFIG]", {
-          aiProvider: process.env.AI_PROVIDER,
-          geminiKeyCount: getGeminiApiKeys().length,
-          geminiModel: process.env.GEMINI_MODEL,
-          openRouterKeyPresent: Boolean(process.env.OPENROUTER_API_KEY),
-          openRouterModels: process.env.OPENROUTER_MODELS,
-        });
-
-        const maxAiGenerationTotalMs = Number(process.env.MAX_AI_GENERATION_TOTAL_MS || 120000);
-        
-        const report = await prisma.generated_reports.findFirst({
-          where: { id },
-          include: { template: { select: { id: true, slug: true, name: true } } },
-        });
-
-        if (!report) return response.sendStatus(404).end();
-        if (user && user.role === "default" && report.userId !== user.id) {
-          return response.sendStatus(403).end();
-        }
-        if (report.template?.slug !== "commercial-building-energy-audit") {
-          return response.status(400).json({ error: "AI enhancement is only supported for this template." });
-        }
-
-        const debugCollector = createPipelineDebugCollector({
-          reportType: report.template?.slug || "commercial-building-energy-audit",
-          generationMode: "enhance-ai"
-        });
-
-        const inputDetails = parseStoredJson(report.inputDetails, {});
-        const uploadedFiles = parseStoredJson(report.uploadedFiles, []);
-        const priorMetadata = parseStoredJson(report.extractedData, {});
-        const existingReportData = parseStoredJson(report.outputContent, null);
-
-        if (!existingReportData) {
-          return response.status(400).json({ error: "Report content is not valid JSON." });
-        }
-
-        const deterministicArtifacts = buildCommercialAuditArtifacts({
-          reportData: existingReportData,
-          inputDetails,
-          extractedExcelData: {},
-          providerUsed: "deterministic",
-        });
-
-        await prisma.generated_reports.update({
-          where: { id },
-          data: { status: "enhancing_ai" },
-        });
-
-        let finalReportContent = report.outputContent;
-        let providerUsed = "deterministic";
-        let providerStatus = "success";
-        let modelUsed = null;
-        
-        let providerWarning = "AI enhancement failed. Deterministic report used.";
-        let aiEnhanced = false;
-        let exactFailureReason = null;
-        let aiEnhancementStatus = { status: "started" };
-        let retryAfterSeconds = null;
-        let aiEnhanceDebug = null;
-        let aiEnhancedFields = [];
-        let aiDroppedFields = [];
-        let schemaValidation = deterministicArtifacts.schemaValidation;
-        let qcResult = deterministicArtifacts.qcResult;
-        let accuracyResult = deterministicArtifacts.accuracyResult;
-
-        // removed duplicate providerAttempts
-        const aiProviderAttempted = "gemini";
-        const attempt = {
-          provider: "gemini",
-          model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
-          status: "started",
-          startedAt: new Date().toISOString(),
-          componentId: "batch_narrative_enhancement",
-          componentTitle: "Batched narrative enhancement"
-        };
-        const providerAttempts = priorMetadata.providerAttempts || [];
-        providerAttempts.push(attempt);
-
-        console.log("[AI ENHANCE GEMINI ATTEMPT]", attempt);
-
-        try {
-          const supportingContextResult = await extractSupportingContext(uploadedFiles);
-          const extractedInfo = {
-            supportingText: supportingContextResult.extractedText,
-            supportingFilesAttempted: supportingContextResult.files.length,
-            supportingFilesExtracted: supportingContextResult.files.filter(f => f.extractionStatus === "extracted").length,
-            supportingWarnings: supportingContextResult.warnings
-          };
-
-          const componentResult = await withTimeout(
-            generateCommercialAuditComponentReport({
-              formData: inputDetails,
-              extractedExcelData: {},
-              extractedInfo,
-              imageMetadata: buildImageMetadataFromUploads(uploadedFiles),
-              uploadedFiles,
-              templateConfig: report.template,
-              baseReportOverride: existingReportData,
-              useAiOverride: true,
-            }),
-            maxAiGenerationTotalMs,
-            "AI enhancement total budget"
-          );
-
-          if (componentResult?.providerAttempts?.length > 0) {
-            const genericIdx = providerAttempts.indexOf(attempt);
-            if (genericIdx > -1) {
-              providerAttempts.splice(genericIdx, 1);
-            }
-            providerAttempts.push(
-              ...componentResult.providerAttempts.filter((a) => a.status !== "started")
-            );
-          }
-
-          if (componentResult?.aiEnhanced === true && componentResult?.report) {
-            attempt.status = "success";
-            attempt.finishedAt = new Date().toISOString();
-            
-            aiEnhancementStatus = componentResult.aiEnhancementStatus || { status: "success" };
-            retryAfterSeconds = componentResult.retryAfterSeconds || null;
-            aiEnhanceDebug = componentResult.debug || null;
-            aiEnhancedFields = componentResult.aiEnhancedFields || [];
-            aiDroppedFields = componentResult.aiDroppedFields || [];
-            if (componentResult.aiFailureReason) {
-               exactFailureReason = componentResult.aiFailureReason;
-            }
-
-            const enhancedArtifacts = await withTimeout(
-              Promise.resolve().then(() =>
-                buildCommercialAuditArtifacts({
-                  reportData: componentResult.report,
-                  inputDetails,
-                  extractedExcelData: {},
-                  providerUsed: componentResult.providerUsed || "openrouter",
-                })
-              ),
-              debugCollector?.data?.config?.aiFinalizationTimeoutMs || 60000,
-              "AI finalization"
-            );
-
-            finalReportContent = enhancedArtifacts.finalReportContent;
-            providerUsed = componentResult.providerUsed || "openrouter";
-            providerStatus = componentResult.providerStatus || "success";
-            modelUsed = componentResult.modelUsed || null;
-            providerWarning = componentResult.providerWarning || null;
-            aiEnhanced = true;
-            schemaValidation = enhancedArtifacts.schemaValidation;
-            qcResult = enhancedArtifacts.qcResult;
-            accuracyResult = enhancedArtifacts.accuracyResult;
-          } else {
-            exactFailureReason =
-              componentResult?.aiFailureReason ||
-              componentResult?.error ||
-              componentResult?.providerAttempts?.[0]?.reason ||
-              "Gemini enhancement failed without provider error details";
-            
-            aiEnhancementStatus = componentResult?.aiEnhancementStatus || { status: "failed", failureReason: exactFailureReason };
-            retryAfterSeconds = componentResult?.retryAfterSeconds || null;
-            aiEnhanceDebug = componentResult?.debug || null;
-            aiEnhancedFields = componentResult?.aiEnhancedFields || [];
-            aiDroppedFields = componentResult?.aiDroppedFields || [];
-            
-            attempt.status = componentResult?.aiEnhancementStatus?.status === "quota_exceeded" ? "quota_exceeded" : "failed";
-            attempt.reason = exactFailureReason;
-            attempt.error = exactFailureReason;
-            attempt.retryAfterSeconds = retryAfterSeconds || undefined;
-            attempt.finishedAt = new Date().toISOString();
-
-            providerWarning = componentResult?.aiEnhancementStatus?.status === "quota_exceeded"
-              ? "Gemini free quota exceeded. Deterministic report is ready."
-              : "AI enhancement failed. Deterministic report used.";
-          }
-        } catch (error) {
-          exactFailureReason =
-            error?.message ||
-            "Gemini enhancement failed without provider error details";
-
-          attempt.status = error?.isQuotaExceeded ? "quota_exceeded" : "failed";
-          attempt.reason = exactFailureReason;
-          attempt.error = exactFailureReason;
-          attempt.retryAfterSeconds = error?.retryAfterSeconds || undefined;
-          attempt.finishedAt = new Date().toISOString();
-
-          if (error?.isQuotaExceeded) {
-            aiEnhancementStatus = { status: "quota_exceeded", failureReason: exactFailureReason };
-            retryAfterSeconds = error?.retryAfterSeconds || 60;
-            exactFailureReason = `Gemini free quota exceeded. Retry after ${retryAfterSeconds} seconds.`;
-            providerWarning = "Gemini free quota exceeded. Deterministic report is ready.";
-          } else {
-            aiEnhancementStatus = { status: "failed", failureReason: exactFailureReason };
-            providerWarning = "AI enhancement failed. Deterministic report used.";
-          }
-          console.log("[AI ENHANCE GEMINI ERROR]", exactFailureReason);
-        }
-
-        console.log("[AI ENHANCE EXACT FAILURE]", exactFailureReason);
-
-        const nextMetadata = {
-          ...priorMetadata,
-          providerUsed,
-          providerStatus,
-          modelUsed,
-          providerAttempts: debugCollector.data.providerAttempts,
-          aiEnhanceDebug,
-          aiEnhancedFields,
-          aiDroppedFields,
-          providerWarning,
-          aiEnhanced,
-          schemaValidation,
-          qcResult,
-          accuracyResult,
-        };
-
-        const updatedReport = await prisma.generated_reports.update({
-          where: { id },
-          data: {
-            outputContent: finalReportContent,
-            extractedData: JSON.stringify(nextMetadata),
-            missingData: JSON.stringify([]),
-            status: "completed",
-            error: null,
-          },
-          include: { template: { select: { name: true, slug: true } } },
-        });
-
-        const isDev = process.env.NODE_ENV === "development";
-        const aiFailureReason = !aiEnhanced ? exactFailureReason : null;
-
-        console.log("[AI ENHANCE EXACT FAILURE RETURNED]", {
-          aiFailureReason,
-          providerAttempts
-        });
-
-        response.status(200).json({
-          success: true,
-          report: {
-            ...updatedReport,
-            providerUsed,
-            providerStatus,
-            modelUsed,
-            providerAttempts: debugCollector.data.providerAttempts,
-            aiEnhanced,
-            aiEnhancementStatus,
-            retryAfterSeconds,
-            aiEnhanceDebug,
-            aiEnhancedFields,
-            aiDroppedFields,
-            providerWarning: providerWarning || undefined,
-            warnings: providerWarning ? [providerWarning] : [],
-            aiProviderAttempted,
-            aiFailureReason,
-            pipelineDebug: debugCollector.data
-          },
-        });
-      } catch (e) {
-        console.error(e.message, e);
-        response.status(500).json({ error: e.message });
-      }
-    }
-  );
-
-  app.post(
-    "/reports/:id/qc/recheck",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const id = parseInt(request.params.id);
-        const user = await userFromSession(request, response);
-
-        const report = await prisma.generated_reports.findFirst({
-          where: { id },
-          include: { template: { select: { slug: true } } },
-        });
-
-        if (!report) return response.sendStatus(404).end();
-        if (user && user.role === "default" && report.userId !== user.id) {
-          return response.sendStatus(403).end();
-        }
-
-        let reportData = {};
-        try {
-          reportData = JSON.parse(report.outputContent);
-        } catch (e) {
-          return response.status(400).json({ error: "Report content is not valid JSON." });
-        }
-
-        reportData = normalizeReportForExport(reportData);
-        const rawProjects = getProjectsForQC(reportData);
-        const cleanedProjects = cleanAndDeduplicateProjects(rawProjects);
-        reportData.projects = cleanedProjects;
-        reportData.groupedProjects = buildProjectGroups(cleanedProjects);
-        reportData.fieldFlags = buildFieldFlags(
+          previewReady: true,
+          reportReady: true,
+          reportId: reportRecord.id,
+          dbSaveFailed: Boolean(reportRecord.dbSaveFailed),
+          warning: reportRecord.dbSaveFailed
+            ? "Report generated but database save failed. Preview is available."
+            : null,
           reportData,
-          {},
-          { providerUsed: report.providerUsed || reportData?.providerUsed || reportData?.qcSummary?.providerUsed || "deterministic-fallback" }
-        );
-        reportData.missingFieldSummary = buildMissingFieldSummary(reportData.fieldFlags);
-
-        // Save cleaned data back to DB
-        await prisma.generated_reports.update({
-          where: { id },
-          data: { outputContent: JSON.stringify(reportData) }
+          previewData: reportData,
+          extractionAttempts,
+          aiEnhancementStatus: {
+            status: "not_started",
+            reason: "AI enhancement is optional after deterministic preview."
+          },
+          elapsedMs: Date.now() - startedAt,
+          report: {
+            id: reportRecord.id,
+            status: "ready",
+            outputContent: JSON.stringify(reportData),
+            providerUsed: "deterministic",
+          }
         });
 
-        const qcResult = runReportQC(reportData);
-        const accuracyResult = calculateReportAccuracyScore(reportData);
-        
-        response.status(200).json({
-          success: true,
-          ...qcResult,
-          accuracyResult,
-          reportData
-        });
-      } catch (e) {
-        console.error(e.message, e);
-        response.status(500).json({ error: e.message });
+      } catch (err) {
+        console.error("Generate Flow Error:", err);
+        return response.status(500).json({ error: err.message });
       }
     }
   );
+
   // ── PUBLIC / ADMIN: Export DOCX ────────────────────────────────────────────
   app.post(
     "/reports/:id/export/docx",
@@ -2845,6 +2046,80 @@ Accuracy Breakdown: ${JSON.stringify(accuracyResult.breakdown || [], null, 2)}`)
       }
     }
   );
+
+  async function enhanceAiHandler(req, res) {
+    try {
+      const reportId = req.params.reportId || req.body.reportId || null;
+
+      const reportData =
+        req.body.reportData ||
+        req.body.previewData ||
+        null;
+
+      if (!reportData) {
+        return res.status(422).json({
+          success: false,
+          error: "AI enhancement requires reportData."
+        });
+      }
+
+      const projectCount = (reportData.groups || []).reduce(
+        (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
+        0
+      );
+
+      if (projectCount <= 0) {
+        return res.status(422).json({
+          success: false,
+          error: "AI enhancement requires at least one extracted project."
+        });
+      }
+
+      let result;
+      if (typeof enhanceReportNarrativesWithAi !== "undefined") {
+        result = await enhanceReportNarrativesWithAi({
+          reportId,
+          reportData,
+          providerOptions: {
+            forceJson: true
+          }
+        });
+      } else {
+        throw new Error("AI Enhancement module is disabled or not found.");
+      }
+
+      return res.json({
+        success: true,
+        reportId,
+        reportData: result.reportData || reportData,
+        previewData: result.reportData || reportData,
+        aiEnhancementStatus: result.aiEnhancementStatus || {
+          status: "success"
+        },
+        providerAttempts: result.providerAttempts || []
+      });
+    } catch (error) {
+      console.error("[enhance-ai] failed:", error);
+
+      return res.status(200).json({
+        success: false,
+        error: error?.message || String(error),
+        reportData: req.body.reportData || req.body.previewData || null,
+        previewData: req.body.reportData || req.body.previewData || null,
+        aiEnhancementStatus: {
+          status: "failed_non_blocking",
+          finalEnhancerUsed: "deterministic",
+          failureReason: "ai_enhancement_error",
+          developerMessage: error?.stack || error?.message || String(error),
+          userMessage: "AI enhancement could not be applied. Deterministic report is ready."
+        }
+      });
+    }
+  }
+
+  app.post("/reports/enhance-ai", enhanceAiHandler);
+  app.post("/reports/:reportId/enhance-ai", enhanceAiHandler);
+
 }
 
 module.exports = { reportEndpoints, extractAuthoritativeExcelProjects };

@@ -5,6 +5,19 @@ const GENERATION_MAX_WAIT_MS = Number(
   import.meta.env.VITE_GENERATION_MAX_WAIT_MS || 420000
 );
 
+async function readJsonSafely(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {
+      success: false,
+      error: text?.slice(0, 500) || `Non-JSON response from server. HTTP ${response.status}`,
+      rawText: text
+    };
+  }
+}
+
 const Reports = {
   // ── Admin ────────────────────────────────────────────────────────────────────
 
@@ -189,22 +202,37 @@ const Reports = {
       GENERATION_MAX_WAIT_MS
     );
 
-    return await fetch(`${API_BASE}/reports/${id}/enhance-ai`, {
-      method: "POST",
-      headers: baseHeaders(),
-      signal: controller.signal,
-    })
-      .then((res) => res.json())
-      .catch((e) => {
-        console.error(e);
-        return {
-          error:
-            e.name === "AbortError"
-              ? "AI enhancement is taking too long. Your deterministic report is still available."
-              : e.message,
+    try {
+      const response = await fetch(`${API_BASE}/reports/${id}/enhance-ai`, {
+        method: "POST",
+        headers: baseHeaders(),
+        signal: controller.signal,
+      });
+
+      const json = await readJsonSafely(response);
+
+      if (!response.ok || json.success === false) {
+        throw {
+          status: response.status,
+          message:
+            json.error ||
+            json.message ||
+            `AI enhancement failed with HTTP ${response.status}`,
+          data: json
         };
-      })
-      .finally(() => clearTimeout(timeoutId));
+      }
+      return json;
+    } catch (e) {
+      console.error(e);
+      return {
+        error:
+          e.name === "AbortError"
+            ? "AI enhancement is taking too long. Your deterministic report is still available."
+            : e.message || e.error || "AI enhancement failed.",
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   recheckQC: async (id) => {
