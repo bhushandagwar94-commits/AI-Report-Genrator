@@ -13,11 +13,16 @@ const {
 } = require("docx");
 const { asArray, normalizeReportForExport } = require("./llmProviderService");
 const { enforceReportQuality } = require("./reportQualityEnforcer");
+const {
+  cleanBulletLines: sharedCleanBulletLines,
+  removeInternalPhrases,
+  sanitizeReportOutput,
+} = require("./reportOutputSanitizer");
 
 function safeText(value) {
   if (value === null || value === undefined || value === "") return "";
   if (["string", "number", "boolean"].includes(typeof value)) {
-    const s = String(value).trim();
+    const s = removeInternalPhrases(String(value)).trim();
     if (/^(data required|null|undefined|\[draft.*?\])$/i.test(s)) return "";
     return s;
   }
@@ -180,7 +185,7 @@ function classifyEcmType(ecm) {
 }
 
 function sanitizePromptLeakageText(text, ecmType) {
-  let safe = String(text || "").trim();
+  let safe = removeInternalPhrases(String(text || "")).trim();
   safe = safe.replace(/explain\s+cooling[^.]*\.?/gi, "");
   safe = safe.replace(/explain\s+hydraulic[^.]*\.?/gi, "");
   safe = safe.replace(/explain\s+thermal[^.]*\.?/gi, "");
@@ -807,28 +812,51 @@ function heading3(text) {
   });
 }
 
-function cleanBulletText(value) {
-  return String(value || "")
+let cleanupFinalReportData = (data) => data;
+let cleanBulletLines = (text) =>
+  String(text || "")
     .split(/\n+/)
     .map((line) =>
       line
         .replace(/^\s*\d+\.\s*/g, "")
         .replace(/^\s*[-–—]\s*/g, "")
         .replace(/^\s*•\s*/g, "")
-        .replace(/^\s*-\s*•\s*/g, "")
-        .replace(/^\s*\d+\.\s*-\s*•\s*/g, "")
         .trim()
     )
     .filter(Boolean);
+
+try {
+  const cleanupService = require("./finalReportCleanupService");
+  cleanupFinalReportData =
+    cleanupService.cleanupFinalReportData || cleanupFinalReportData;
+  cleanBulletLines = cleanupService.cleanBulletLines || cleanBulletLines;
+  console.log("[DOCX_CLEANUP_IMPORT_OK]");
+} catch (error) {
+  console.warn("[DOCX_CLEANUP_IMPORT_SKIPPED]", error.message);
 }
 
-function bulletParagraphsFromText(text) {
-  return cleanBulletText(text).map((line) =>
-    new Paragraph({
-      text: line,
-      bullet: { level: 0 },
-      spacing: { after: 120 }
-    })
+function narrativeParagraphs(text) {
+  const lines = cleanBulletLines(text);
+
+  if (!lines.length) {
+    return [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "[To be updated after site data verification]"
+          })
+        ],
+        spacing: { after: 100 }
+      })
+    ];
+  }
+
+  return lines.map(
+    (line) =>
+      new Paragraph({
+        children: [new TextRun({ text: `• ${line}` })],
+        spacing: { after: 100 }
+      })
   );
 }
 
@@ -1028,7 +1056,7 @@ function generateCoverPage(info) {
     new Paragraph({
       children: [
         new TextRun({
-          text: "Commercial Building Energy Audit Report Format",
+          text: "Industrial Energy Audit Report Format",
           size: 24,
           color: "5F6B76",
         }),
@@ -1546,21 +1574,12 @@ function generateBuildingProfile(report) {
         { key: "benchmark", label: "Recommended Benchmark" },
       ],
       [
-        { buildingType: "Office building", benchmark: "kWh/sq.ft/year" },
-        {
-          buildingType: "IT park",
-          benchmark: "kWh/sq.ft/year and kWh/workstation/year",
-        },
-        { buildingType: "Hotel", benchmark: "kWh/occupied room night" },
-        {
-          buildingType: "Hospital",
-          benchmark: "kWh/bed/day or kWh/sq.ft/year",
-        },
-        { buildingType: "Mall", benchmark: "kWh/sq.ft/year" },
-        {
-          buildingType: "Educational building",
-          benchmark: "kWh/student/year or kWh/sq.ft/year",
-        },
+        { buildingType: "Production areas", benchmark: "kWh/kg product or kWh/machine-hour" },
+        { buildingType: "Utility block", benchmark: "kWh/ton utility output or kWh/day" },
+        { buildingType: "Compressed air system", benchmark: "kW/CFM or kWh/Nm3" },
+        { buildingType: "Chiller plant", benchmark: "kW/TR and kWh/TRh" },
+        { buildingType: "Dryer section", benchmark: "kWh/kg moisture removed" },
+        { buildingType: "Clean room / AHU area", benchmark: "kWh/sq.ft/year or kWh/air-change" },
       ]
     ),
     mandatoryKeyValueTable({
@@ -1587,38 +1606,14 @@ function generateBuildingProfile(report) {
       asArray(report.majorEnergyConsumingSystems).length
         ? report.majorEnergyConsumingSystems
         : [
-            {
-              system: "HVAC",
-              majorEquipment: "Chiller / VRF / AHU / pumps / cooling tower",
-            },
-            {
-              system: "Lighting",
-              majorEquipment: "Indoor / outdoor / parking / facade",
-            },
-            {
-              system: "Pumps",
-              majorEquipment: "Domestic / STP / hot water / HVAC",
-            },
-            {
-              system: "Plug loads",
-              majorEquipment: "Office equipment / appliances",
-            },
-            {
-              system: "Server / IT loads",
-              majorEquipment: "UPS, PAC, server room",
-            },
-            {
-              system: "Kitchen / laundry",
-              majorEquipment: "Hotel / hospital loads",
-            },
-            {
-              system: "Hot water system",
-              majorEquipment: "Boiler / heat pump / solar",
-            },
-            {
-              system: "Lifts / escalators",
-              majorEquipment: "Vertical transport",
-            },
+            { system: "Production areas", majorEquipment: "ASB / EBM / molding machines / process drives" },
+            { system: "Utility block", majorEquipment: "Chillers / cooling towers / pumps / AHUs" },
+            { system: "Compressed air system", majorEquipment: "Air compressors / dryers / receivers / piping network" },
+            { system: "Dryer section", majorEquipment: "Dryers / heaters / blowers / exhaust systems" },
+            { system: "Electrical room / APFC", majorEquipment: "Transformers / APFC panels / capacitor banks / MCCs" },
+            { system: "Pumps and motors", majorEquipment: "Process pumps / utility pumps / motor-driven auxiliaries" },
+            { system: "Cooling tower", majorEquipment: "Cooling tower cells / fans / condenser water pumping" },
+            { system: "Clean room / AHU", majorEquipment: "AHUs / FCUs / ventilation / clean room controls" },
           ]
     ),
 
@@ -1635,18 +1630,18 @@ function generateBuildingProfile(report) {
       asArray(report.hvacSystemDetails).length
         ? report.hvacSystemDetails
         : [
-            { equipment: "Chiller / VRF outdoor unit" },
+            { equipment: "Chiller / process cooling unit" },
             { equipment: "AHU" },
-            { equipment: "FCU" },
+            { equipment: "Clean room AHU / make-up air unit" },
             { equipment: "Cooling tower" },
             { equipment: "Chilled water pump" },
             { equipment: "Condenser water pump" },
-            { equipment: "Fresh air unit" },
+            { equipment: "Fresh air unit / ventilation fan" },
             { equipment: "Exhaust / ventilation fan" },
           ]
     ),
     paragraph(
-      "The HVAC system is one of the major energy-consuming systems in the building. During the audit, operating hours, loading pattern, temperature settings, pump and fan operation, control philosophy and maintenance condition should be reviewed. The main opportunities may relate to variable speed operation, AHU scheduling, chiller efficiency, fresh air optimization, cooling tower performance or set point optimization."
+      "The utility cooling and ventilation systems are major energy-consuming assets in an industrial facility. During the audit, operating hours, thermal load variation, chilled-water temperature control, pump and fan operation, clean-room or process ventilation requirements, and maintenance condition should be reviewed. Key opportunities may relate to variable speed operation, chiller efficiency, flow optimization, cooling tower performance, AHU scheduling, and set-point discipline."
     ),
 
     heading2("2.9 Lighting System Details"),
@@ -1662,16 +1657,16 @@ function generateBuildingProfile(report) {
       asArray(report.lightingSystemDetails).length
         ? report.lightingSystemDetails
         : [
-            { area: "Office area" },
-            { area: "Corridor" },
-            { area: "Parking" },
-            { area: "Outdoor" },
-            { area: "Back-of-house" },
-            { area: "Guest room / ward" },
+            { area: "Production hall" },
+            { area: "Utility block" },
+            { area: "Compressor room" },
+            { area: "Dryer section" },
+            { area: "Electrical room" },
+            { area: "Warehouse / dispatch" },
           ]
     ),
     paragraph(
-      "Lighting energy consumption can be reduced through LED retrofit, lux optimization and occupancy-based controls. Corridors, parking areas, toilets, staircases and service areas are usually suitable for sensors or timer-based control."
+      "Lighting energy consumption in industrial facilities can be reduced through LED retrofits, lux optimization, zoning, and occupancy or schedule-based controls. Production aisles, utility rooms, warehouses, and support areas should be reviewed for over-lighting, legacy fixtures, and control opportunities."
     ),
 
     heading2("2.10 Pumps and Motors"),
@@ -1688,12 +1683,12 @@ function generateBuildingProfile(report) {
       asArray(report.pumpAndMotorDetails).length
         ? report.pumpAndMotorDetails
         : [
-            { name: "Domestic water pump" },
-            { name: "Hydro-pneumatic pump" },
-            { name: "STP pump / blower" },
-            { name: "Hot water pump" },
-            { name: "HVAC pump" },
-            { name: "Exhaust fan" },
+            { name: "Process cooling pump" },
+            { name: "Chilled water pump" },
+            { name: "Condenser water pump" },
+            { name: "Cooling tower fan motor" },
+            { name: "Dryer blower motor" },
+            { name: "Utility exhaust fan" },
           ]
     ),
 
@@ -1826,7 +1821,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.2 Existing System Description
     heading3(`${ecmSectionNumber}.2 Existing System Description`),
-    ...bulletParagraphsFromText(
+    ...narrativeParagraphs(
       sanitizePromptLeakageText(
         project.existingSystemDescription ||
           project.existingOperatingCondition ||
@@ -1857,7 +1852,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.4 Problem / Gap Identified
     heading3(`${ecmSectionNumber}.4 Problem / Gap Identified`),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
     mandatoryTable(
       [
         { key: "system", label: "System" },
@@ -1897,7 +1892,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.5 Proposed Project
     heading3(`${ecmSectionNumber}.5 Proposed Project`),
-    ...bulletParagraphsFromText(
+    ...narrativeParagraphs(
       sanitizePromptLeakageText(
         project.proposedProjectDescription || project.proposedIntervention || project.proposedProject,
         ecmType
@@ -1924,7 +1919,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.7 Rationale for Energy Saving
     heading3(`${ecmSectionNumber}.7 Rationale for Energy Saving`),
-    ...bulletParagraphsFromText(
+    ...narrativeParagraphs(
       sanitizePromptLeakageText(project.rationaleForEnergySaving, ecmType)
     ),
     mandatoryTable(
@@ -2068,7 +2063,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     heading3(
       `${ecmSectionNumber}.13 Precautions / Aspects to be Taken Care Of`
     ),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.aspectsToBeTakenCareOf || project.precautions, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.aspectsToBeTakenCareOf || project.precautions, ecmType)),
     createTable(
       [
         { key: "area", label: "Area" },
@@ -2114,7 +2109,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.14 Measurement and Verification Plan
     heading3(`${ecmSectionNumber}.14 Measurement and Verification Plan`),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.measurementVerificationPlan || project.mvPlan, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.measurementVerificationPlan || project.mvPlan, ecmType)),
     createTable(
       [
         { key: "parameter", label: "Parameter" },
@@ -2139,7 +2134,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.15 Benefits Other Than Energy Saving
     heading3(`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.benefitsOtherThanEnergySaving || project.benefits, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.benefitsOtherThanEnergySaving || project.benefits, ecmType)),
     createTable(
       [
         { key: "benefit", label: "Benefit" },
@@ -2158,11 +2153,11 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.17 Case Study / Reference Application
     heading3(`${ecmSectionNumber}.17 Case Study / Reference Application`),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.caseStudy, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.caseStudy, ecmType)),
 
     // 3.x.18 Project Conclusion
     heading3(`${ecmSectionNumber}.18 Project Conclusion`),
-    ...bulletParagraphsFromText(sanitizePromptLeakageText(project.conclusion || project.finalConclusion, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.conclusion || project.finalConclusion, ecmType)),
   ];
 
   return lines;
@@ -2225,7 +2220,24 @@ function removeDataRequired(obj) {
   return obj;
 }
 async function buildCommercialBuildingEnergyAuditDocx(rawReportData) {
-  const enforcedReportData = enforceReportQuality(rawReportData);
+  let exportReportData = cleanupFinalReportData(rawReportData);
+
+  console.log("[DOCX_FINAL_CLEANUP_APPLIED]", {
+    finalCleanupApplied: exportReportData.finalCleanupApplied === true,
+    projectCount: (exportReportData.groups || []).reduce(
+      (sum, group) => sum + ((group.projects || []).length),
+      0
+    ),
+    ecm2System: (exportReportData.groups || [])
+      .flatMap((group) => group.projects || [])
+      .find((project) => String(project.ecmNo || "").includes("2"))?.system,
+    internalPhraseCount: JSON.stringify(exportReportData).toLowerCase().match(
+      /deterministic project data|source of truth|must be evaluated with reference|project team should document baseline|engineering review should confirm/g
+    )?.length || 0
+  });
+
+  const sanitizedInput = sanitizeReportOutput(exportReportData);
+  const enforcedReportData = enforceReportQuality(sanitizedInput);
   const cleanReportData = removeDataRequired(enforcedReportData);
   const report = normalizeReportForExport(cleanReportData);
   const projects = asArray(report.projects);

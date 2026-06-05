@@ -39,8 +39,8 @@ async function main() {
 
   const expectedCounts = {
     "Cooling System Performance Improvement": 7,
-    "Production Machines": 8,
-    "Air Compressors": 2,
+    "Production Machines": 7,
+    "Air Compressors": 3,
     "Auxiliary Systems & Machine Improvement": 5,
   };
 

@@ -2,279 +2,677 @@ const XLSX = require("xlsx");
 const path = require("path");
 const fs = require("fs");
 
-/**
- * Deterministic lightweight excel extraction.
- * @param {string} filePath - absolute path to the .xlsx / .xls file
- * @param {object} file - the file object
- * @returns {object} { success: true, parserUsed: 'lightweight_xlsx', fileName, sheetNames, totalRows, projects, projectCount }
- */
-function extractLightweightExcelData(filePath, file) {
-  const fileName = file?.filename || path.basename(filePath);
+const FIELD_SYNONYMS = {
+  ecmNo: ["ecm", "ecm no", "ecm number", "sr no", "project no", "measure no"],
+  title: [
+    "project",
+    "project title",
+    "ecm name",
+    "ecm description",
+    "energy saving project",
+    "measure",
+    "description",
+    "recommendation",
+  ],
+  investment: [
+    "investment",
+    "total investment",
+    "capex",
+    "project cost",
+    "estimated investment",
+    "implementation cost",
+  ],
+  annualSaving: [
+    "annual saving",
+    "annual savings",
+    "cost saving",
+    "cost savings",
+    "annual cost saving",
+    "annual savings rs",
+    "saving inr",
+    "monetary saving",
+    "financial saving",
+  ],
+  energySaving: [
+    "energy saving",
+    "energy savings",
+    "kwh saving",
+    "annual kwh saving",
+    "kwh/year",
+    "kwh/yr",
+    "units saving",
+  ],
+  payback: ["payback", "simple payback", "roi", "spb", "years", "months"],
+};
 
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { success: false, error: "File not found", fileName };
+const KNOWN_MTL_BADDI_COLUMN_MAP = {
+  ecmNo: 0,
+  title: 5,
+  investment: 15,
+  annualSaving: 14,
+  energySaving: 13,
+  payback: 16,
+};
+
+function normalizeHeader(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[₹â‚¹()]/g, "")
+    .trim();
+}
+
+function columnLetter(index) {
+  return String.fromCharCode(65 + Number(index || 0));
+}
+
+function isKnownMtlBaddiEcmFile(fileName = "") {
+  const name = String(fileName).toLowerCase();
+  return name.includes("mtl") && name.includes("baddi") && name.includes("ecm");
+}
+
+function shouldForceKnownColumnMap(fileName, headerRow = []) {
+  const headerText = headerRow.map(normalizeHeader).join(" ");
+  return (
+    isKnownMtlBaddiEcmFile(fileName) &&
+    /(sr|ecm|project)/.test(headerText) &&
+    /investment|capex/.test(headerText) &&
+    /annual\s*saving|annual\s*savings|cost\s*saving|savings\s*in\s*rs/.test(headerText) &&
+    /energy\s*saving|saving\s*kwh|kwh/.test(headerText) &&
+    /payback/.test(headerText)
+  );
+}
+
+function buildForcedKnownColumnMap(headerRow = []) {
+  return Object.fromEntries(
+    Object.entries(KNOWN_MTL_BADDI_COLUMN_MAP).map(([field, columnIndex]) => [
+      field,
+      {
+        columnIndex,
+        column: columnLetter(columnIndex),
+        header: headerRow[columnIndex] || "",
+        score: 100,
+        source: "forced_known_mtl_baddi_map",
+      },
+    ])
+  );
+}
+
+function parseNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const cleaned = String(value)
+    .replace(/[₹â‚¹]/g, "")
+    .replace(/rs\.?/gi, "")
+    .replace(/inr/gi, "")
+    .replace(/kwh\/year/gi, "")
+    .replace(/kwh\/yr/gi, "")
+    .replace(/kwh/gi, "")
+    .replace(/units/gi, "")
+    .replace(/years?/gi, "")
+    .replace(/,/g, "")
+    .trim();
+
+  if (!cleaned || cleaned === "-" || cleaned.toLowerCase() === "na") return null;
+
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parsePaybackOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const text = String(value).toLowerCase().trim();
+  if (!text || text === "-" || text === "na") return null;
+
+  if (text.includes("month")) {
+    const months = parseNumberOrNull(text);
+    return months === null ? null : months / 12;
+  }
+
+  return parseNumberOrNull(text);
+}
+
+function formatMoney(num) {
+  if (num === null || num === undefined) return "[To be verified from source data]";
+  return `₹${Math.round(num).toLocaleString("en-IN")}`;
+}
+
+function formatEnergy(num) {
+  if (num === null || num === undefined) return "[To be verified from source data]";
+  return Math.round(num).toLocaleString("en-IN");
+}
+
+function formatPayback(num) {
+  if (num === null || num === undefined) return "[To be verified from source data]";
+  return Number(num).toFixed(2);
+}
+
+function scoreInputFile(file) {
+  const name = String(
+    file?.originalname || file?.originalName || file?.filename || file?.name || ""
+  ).toLowerCase();
+
+  let score = 0;
+  if (name.includes("ecm")) score += 1000;
+  if (name.includes("baddi")) score += 100;
+  if (name.includes("power analysis")) score += 700;
+  if (name.includes("equipment")) score += 650;
+  if (name.includes("energy audit data")) score += 600;
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) score += 100;
+  return score;
+}
+
+function matchScore(header, synonyms) {
+  const normalizedHeader = normalizeHeader(header);
+  let best = 0;
+
+  for (const synonym of synonyms) {
+    const normalizedSynonym = normalizeHeader(synonym);
+    if (normalizedHeader === normalizedSynonym) best = Math.max(best, 100);
+    else if (normalizedHeader.includes(normalizedSynonym)) best = Math.max(best, 80);
+    else if (
+      normalizedSynonym.includes(normalizedHeader) &&
+      normalizedHeader.length > 3
+    ) {
+      best = Math.max(best, 60);
+    }
+  }
+
+  return best;
+}
+
+function scoreHeaderRow(row = []) {
+  let hits = 0;
+  let hasEcm = false;
+  let hasTitle = false;
+  let hasInvestment = false;
+
+  row.forEach((cell) => {
+    if (matchScore(cell, FIELD_SYNONYMS.ecmNo) > 0) hasEcm = true;
+    if (matchScore(cell, FIELD_SYNONYMS.title) > 0) hasTitle = true;
+    if (matchScore(cell, FIELD_SYNONYMS.investment) > 0) hasInvestment = true;
+    if (matchScore(cell, FIELD_SYNONYMS.annualSaving) > 0) hits += 1;
+    if (matchScore(cell, FIELD_SYNONYMS.energySaving) > 0) hits += 1;
+    if (matchScore(cell, FIELD_SYNONYMS.payback) > 0) hits += 1;
+  });
+
+  let score = hits * 10;
+  if (hasEcm) score += 20;
+  if (hasTitle) score += 20;
+  if (hasInvestment) score += 20;
+  return score;
+}
+
+function countLikelyEcmRows(rows = []) {
+  let count = 0;
+  rows.forEach((row) => {
+    const hasKeyword = row.some((cell) =>
+      /(improvement|optimization|retrofit|replacement|installation|upgrade|saving|recovery|vfd|system)/i.test(
+        String(cell)
+      )
+    );
+    if (hasKeyword && row.length >= 3) count += 1;
+  });
+  return count;
+}
+
+function scoreSheet(sheetName, rows = []) {
+  let score = 0;
+  const name = String(sheetName || "").toLowerCase();
+
+  if (/ecm|category|catergory|saving|project|proposal|summary/.test(name)) {
+    score += 100;
+  }
+
+  const headerScores = rows.slice(0, 60).map((row, index) => ({
+    index,
+    score: scoreHeaderRow(row),
+  }));
+
+  const bestHeader = [...headerScores].sort((a, b) => b.score - a.score)[0];
+  if (bestHeader) score += bestHeader.score;
+
+  const validRows = countLikelyEcmRows(rows);
+  score += validRows * 5;
+
+  return {
+    sheetName,
+    score,
+    bestHeaderRowIndex: bestHeader?.index ?? null,
+    validRows,
+  };
+}
+
+function buildColumnCandidates(headerRow = []) {
+  const candidates = {};
+
+  for (const field of Object.keys(FIELD_SYNONYMS)) {
+    candidates[field] = [];
+    headerRow.forEach((cell, columnIndex) => {
+      const score = matchScore(cell, FIELD_SYNONYMS[field]);
+      if (score > 0) {
+        candidates[field].push({
+          field,
+          columnIndex,
+          column: columnLetter(columnIndex),
+          header: cell,
+          score,
+          source: "header_match",
+        });
+      }
+    });
+    candidates[field].sort((a, b) => b.score - a.score);
+  }
+
+  return candidates;
+}
+
+function pickColumn(candidates, field, usedColumns = new Set()) {
+  const list = candidates[field] || [];
+  for (const candidate of list) {
+    if (!usedColumns.has(candidate.columnIndex)) {
+      usedColumns.add(candidate.columnIndex);
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function isLikelyProjectRow(row = [], columnMap = {}) {
+  const title = row[columnMap.title?.columnIndex];
+  const ecmNo = row[columnMap.ecmNo?.columnIndex];
+  const titleText = String(title || "").trim();
+  const text = titleText.toLowerCase();
+
+  const hasTitle = titleText.length > 3;
+  const hasEcm = /\d+/.test(String(ecmNo || ""));
+
+  if (!hasTitle && !hasEcm) return false;
+  if (/^(total|subtotal|summary|group total)$/i.test(text)) return false;
+  if (/^ecm\s*name$/i.test(text)) return false;
+  return true;
+}
+
+function validateEcmExtraction(projects = []) {
+  const warnings = [];
+
+  const annualSavingZeroCount = projects.filter(
+    (p) => Number(p.annualSavingRaw || 0) === 0
+  ).length;
+
+  const energySavingZeroCount = projects.filter(
+    (p) => Number(p.energySavingRaw || 0) === 0
+  ).length;
+
+  const investmentNonZeroCount = projects.filter(
+    (p) => Number(p.investmentRaw || 0) > 0
+  ).length;
+
+  if (
+    projects.length >= 5 &&
+    investmentNonZeroCount > 0 &&
+    annualSavingZeroCount / projects.length > 0.8
+  ) {
+    warnings.push({
+      code: "ANNUAL_SAVING_NOT_EXTRACTED",
+      message:
+        "Annual Saving is zero for most ECMs while investment is available. Column D is probably not mapped.",
+    });
+  }
+
+  if (
+    projects.length >= 5 &&
+    investmentNonZeroCount > 0 &&
+    energySavingZeroCount / projects.length > 0.8
+  ) {
+    warnings.push({
+      code: "ENERGY_SAVING_NOT_EXTRACTED",
+      message:
+        "Energy Saving is zero for most ECMs while investment is available. Column E is probably not mapped.",
+    });
+  }
+
+  return warnings;
+}
+
+function resolveUploadedFilePath(baseStorageDir, file) {
+  const candidates = [
+    file?.location,
+    file?.path,
+    file?.storedPath,
+    file?.absolutePath,
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const resolved = path.isAbsolute(candidate)
+      ? candidate
+      : path.resolve(baseStorageDir, candidate);
+    if (fs.existsSync(resolved)) return resolved;
+  }
+
+  return null;
+}
+
+function buildProjectFromRow({
+  row,
+  rowIndex,
+  columnMap,
+  fileName,
+  sheetName,
+}) {
+  const ecmNoValue = row[columnMap.ecmNo?.columnIndex];
+  const titleValue = row[columnMap.title?.columnIndex];
+  const investmentValue = row[columnMap.investment?.columnIndex];
+  const annualSavingValue = row[columnMap.annualSaving?.columnIndex];
+  const energySavingValue = row[columnMap.energySaving?.columnIndex];
+  const paybackValue = row[columnMap.payback?.columnIndex];
+
+  const investmentRaw = parseNumberOrNull(investmentValue);
+  const annualSavingRaw = parseNumberOrNull(annualSavingValue);
+  const energySavingRaw = parseNumberOrNull(energySavingValue);
+  const paybackRaw = parsePaybackOrNull(paybackValue);
+
+  const ecmNo = String(ecmNoValue || "").trim() || String(rowIndex);
+  const title = String(titleValue || "").trim();
+
+  return {
+    ecmNo,
+    projectNo: ecmNo,
+    title,
+    projectTitle: title,
+    description: title,
+    system: "Energy Saving Measures",
+
+    investmentRaw,
+    annualSavingRaw,
+    energySavingRaw,
+    paybackRaw,
+
+    investment: formatMoney(investmentRaw),
+    annualSaving: formatMoney(annualSavingRaw),
+    energySaving: formatEnergy(energySavingRaw),
+    payback: formatPayback(paybackRaw),
+
+    sourceFile: fileName,
+    sourceSheet: sheetName,
+    sourceRow: rowIndex,
+
+    fieldSources: {
+      ecmNo: {
+        column: columnMap.ecmNo?.column,
+        columnIndex: columnMap.ecmNo?.columnIndex,
+        rawValue: ecmNoValue,
+      },
+      title: {
+        column: columnMap.title?.column,
+        columnIndex: columnMap.title?.columnIndex,
+        rawValue: titleValue,
+      },
+      investment: {
+        column: columnMap.investment?.column,
+        columnIndex: columnMap.investment?.columnIndex,
+        rawValue: investmentValue,
+      },
+      annualSaving: {
+        column: columnMap.annualSaving?.column,
+        columnIndex: columnMap.annualSaving?.columnIndex,
+        rawValue: annualSavingValue,
+      },
+      energySaving: {
+        column: columnMap.energySaving?.column,
+        columnIndex: columnMap.energySaving?.columnIndex,
+        rawValue: energySavingValue,
+      },
+      payback: {
+        column: columnMap.payback?.column,
+        columnIndex: columnMap.payback?.columnIndex,
+        rawValue: paybackValue,
+      },
+    },
+  };
+}
+
+function projectCompletenessScore(project) {
+  let score = 0;
+  if (project.title) score += Math.min(project.title.length, 200);
+  if (project.investmentRaw !== null) score += 50;
+  if (project.annualSavingRaw !== null) score += 50;
+  if (project.energySavingRaw !== null) score += 50;
+  if (project.paybackRaw !== null) score += 25;
+  return score;
+}
+
+function dedupeProjectsByEcmNo(projects = []) {
+  const bestByEcm = new Map();
+
+  for (const project of projects) {
+    const key = String(project.ecmNo || "").trim();
+    if (!key) continue;
+
+    const existing = bestByEcm.get(key);
+    if (!existing) {
+      bestByEcm.set(key, project);
+      continue;
+    }
+
+    if (projectCompletenessScore(project) > projectCompletenessScore(existing)) {
+      bestByEcm.set(key, project);
+    }
+  }
+
+  return [...bestByEcm.values()].sort((a, b) => {
+    const left = Number(String(a.ecmNo || "").match(/\d+/)?.[0] || 9999);
+    const right = Number(String(b.ecmNo || "").match(/\d+/)?.[0] || 9999);
+    return left - right;
+  });
+}
+
+function extractMultiFileExcelData(files = [], baseStorageDir) {
+  const normalizedFiles = Array.isArray(files) ? files : [];
+  const extractionDebug = {
+    filesReceived: normalizedFiles.map(
+      (file) => file?.filename || file?.originalname || file?.originalName || file?.name
+    ),
+    selectedPrimaryEcmFile: null,
+    sheetsScanned: [],
+    selectedEcmSheet: null,
+    headerRowIndex: null,
+    columnMap: {},
+    extractedProjectsSample: [],
+    validationWarnings: [],
+    sourceUsage: {
+      ecmFileUsed: false,
+      powerAnalysisUsed: false,
+      equipmentListUsed: false,
+      energyAuditDataUsed: false,
+    },
+  };
+
+  const scoredFiles = normalizedFiles
+    .map((file) => ({ file, score: scoreInputFile(file) }))
+    .sort((a, b) => b.score - a.score);
+
+  const primaryFile = scoredFiles[0]?.file;
+  if (!primaryFile) {
+    return {
+      success: false,
+      error: "No valid excel files provided",
+      extractionDebug,
+    };
+  }
+
+  const primaryFileName =
+    primaryFile.filename ||
+    primaryFile.originalname ||
+    primaryFile.originalName ||
+    primaryFile.name;
+  extractionDebug.selectedPrimaryEcmFile = primaryFileName;
+  console.log("[PRIMARY_ECM_FILE_SELECTED]", primaryFileName);
+
+  const primaryFilePath = resolveUploadedFilePath(baseStorageDir, primaryFile);
+  if (!primaryFilePath) {
+    return {
+      success: false,
+      error: "Primary file not found",
+      extractionDebug,
+    };
   }
 
   let workbook;
   try {
-    workbook = XLSX.readFile(filePath, { cellDates: true, sheetStubs: true });
-  } catch (err) {
-    return { success: false, error: err.message, fileName };
+    workbook = XLSX.readFile(primaryFilePath, {
+      cellDates: true,
+      sheetStubs: true,
+    });
+    extractionDebug.sourceUsage.ecmFileUsed = true;
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      extractionDebug,
+    };
   }
 
   const sheetNames = workbook.SheetNames;
-  const sheets = [];
-  let totalRows = 0;
+  const scannedSheets = [];
 
   for (const sheetName of sheetNames) {
-    const ws = workbook.Sheets[sheetName];
-    if (!ws) continue;
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) continue;
 
-    const rows = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      defval: "",
-      blankrows: false,
-    });
+    const rows = XLSX.utils
+      .sheet_to_json(worksheet, { header: 1, defval: "", blankrows: false })
+      .map((row) => row.map((cell) => String(cell ?? "").trim()));
 
-    const filteredRows = rows
-      .map((row) => row.map((cell) => String(cell ?? "").trim()))
-      .filter((row) => row.some((cell) => cell !== ""));
-
-    totalRows += filteredRows.length;
-    sheets.push({ name: sheetName, rows: filteredRows });
+    const scoreInfo = scoreSheet(sheetName, rows);
+    scannedSheets.push({ sheetName, rows, scoreInfo });
   }
 
-  const projects = extractProjects(sheets);
-  const financialValidation = validateFinancialColumns(projects);
+  extractionDebug.sheetsScanned = scannedSheets.map((sheet) => sheet.scoreInfo);
+
+  const bestSheet = [...scannedSheets].sort(
+    (a, b) => b.scoreInfo.score - a.scoreInfo.score
+  )[0];
+
+  if (!bestSheet || bestSheet.scoreInfo.score <= 0) {
+    return {
+      success: false,
+      error: "No valid ECM sheet found in primary file",
+      extractionDebug,
+    };
+  }
+
+  const headerRowIndex = bestSheet.scoreInfo.bestHeaderRowIndex;
+  if (headerRowIndex === null || headerRowIndex === undefined) {
+    return {
+      success: false,
+      error: "No ECM header row detected in selected sheet",
+      extractionDebug,
+    };
+  }
+
+  extractionDebug.selectedEcmSheet = bestSheet.sheetName;
+  extractionDebug.headerRowIndex = headerRowIndex;
+
+  console.log("[ECM_SHEET_SELECTED]", {
+    sheetName: bestSheet.sheetName,
+    score: bestSheet.scoreInfo.score,
+    headerRowIndex,
+    validRows: bestSheet.scoreInfo.validRows,
+  });
+
+  const headerRow = bestSheet.rows[headerRowIndex] || [];
+  let columnMap = {};
+
+  if (shouldForceKnownColumnMap(primaryFileName, headerRow)) {
+    columnMap = buildForcedKnownColumnMap(headerRow);
+    console.log("[FORCED_MTL_BADDI_ECM_COLUMN_MAP]", columnMap);
+  } else {
+    const candidates = buildColumnCandidates(headerRow);
+    const usedColumns = new Set();
+    for (const field of [
+      "ecmNo",
+      "title",
+      "investment",
+      "annualSaving",
+      "energySaving",
+      "payback",
+    ]) {
+      columnMap[field] = pickColumn(candidates, field, usedColumns);
+    }
+  }
+
+  extractionDebug.columnMap = columnMap;
+  console.log("[DEVELOPER_PIPELINE_ECM_COLUMN_MAP]", columnMap);
+
+  const projects = [];
+  for (let rowIndex = headerRowIndex + 1; rowIndex < bestSheet.rows.length; rowIndex += 1) {
+    const row = bestSheet.rows[rowIndex];
+    if (!row || !row.some((cell) => String(cell || "").trim())) continue;
+    if (!isLikelyProjectRow(row, columnMap)) continue;
+
+    const project = buildProjectFromRow({
+      row,
+      rowIndex: rowIndex + 1,
+      columnMap,
+      fileName: primaryFileName,
+      sheetName: bestSheet.sheetName,
+    });
+
+    if (!project.title) continue;
+    if (/^(total|subtotal|summary)$/i.test(project.title)) continue;
+    projects.push(project);
+  }
+
+  const dedupedProjects = dedupeProjectsByEcmNo(projects);
+  const warnings = validateEcmExtraction(dedupedProjects);
+  extractionDebug.validationWarnings.push(...warnings);
+  extractionDebug.extractedProjectsSample = dedupedProjects.slice(0, 5);
+
+  if (warnings.length) {
+    console.warn("[ECM_EXTRACTION_VALIDATION_WARNINGS]", warnings);
+  }
+
+  const lowerNames = normalizedFiles.map((file) =>
+    String(file?.filename || file?.originalname || file?.originalName || file?.name || "").toLowerCase()
+  );
+  extractionDebug.sourceUsage.powerAnalysisUsed = lowerNames.some((name) =>
+    name.includes("power analysis")
+  );
+  extractionDebug.sourceUsage.equipmentListUsed = lowerNames.some((name) =>
+    name.includes("equipment")
+  );
+  extractionDebug.sourceUsage.energyAuditDataUsed = lowerNames.some((name) =>
+    name.includes("energy audit data")
+  );
 
   return {
     success: true,
-    parserUsed: "lightweight_xlsx",
-    fileName,
+    parserUsed: "lightweight_xlsx_multi",
+    fileName: primaryFileName,
     sheetNames,
-    totalRows,
-    projects,
-    projectCount: projects.length,
-    warning: financialValidation.warning ? financialValidation.message : undefined
+    totalRows: bestSheet.rows.length,
+    projects: dedupedProjects,
+    projectCount: dedupedProjects.length,
+    extractionDebug,
+    warning: warnings[0]?.message,
   };
 }
 
-function extractProjects(sheets) {
-  const projects = [];
-  
-  console.log(`[ECM EXTRACTION] Workbook sheets found: ${sheets.map(s => s.name).join(", ")}`);
-
-  for (const sheet of sheets) {
-    const { name: sheetName, rows } = sheet;
-    if (!rows || rows.length < 2) continue;
-
-    const headerRowIdx = findHeaderRow(rows);
-    if (headerRowIdx === -1) continue;
-    
-    console.log(`[ECM EXTRACTION] Selected sheet: ${sheetName}`);
-    console.log(`[ECM EXTRACTION] Header row detected at index: ${headerRowIdx}`);
-
-    const headers = rows[headerRowIdx].map((h) =>
-      String(h).toLowerCase().trim()
-    );
-
-    const colIdx = {
-      ecmNo: findCol(headers, [
-        "ecm no",
-        "ecm#",
-        "sr no",
-        "sr.",
-        "no.",
-        "sl no",
-      ]),
-      system: findCol(headers, ["system", "energy system", "category"]),
-      description: findCol(headers, [
-        "description",
-        "project",
-        "measure",
-        "recommendation",
-        "ecm description",
-      ]),
-      energySaving: findCol(headers, [
-        "energy saving",
-        "energy saved",
-        "kwh",
-        "units saved",
-      ]),
-      annualSaving: findCol(headers, [
-        "annual saving",
-        "cost saving",
-        "rs.",
-        "inr",
-        "annual cost",
-      ]),
-      investment: findCol(headers, [
-        "investment",
-        "cost",
-        "capital cost",
-        "capex",
-      ]),
-      payback: findCol(headers, ["payback", "simple payback", "spb"]),
-    };
-
-    for (let i = headerRowIdx + 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || row.every((cell) => cell === "")) continue;
-
-      const description = getValue(row, colIdx.description);
-      if (!description) continue;
-      if (/^(total|sub.?total|grand total)/i.test(description)) continue;
-      
-      // Hard Validation: Reject rows that only contain machine name / asset tag.
-      // Must contain action words typically found in titles/recommendations/measures/descriptions
-      const lowerDesc = description.toLowerCase();
-      const hasActionWord = /(improvement|optimization|retrofit|replacement|installation|upgrade|saving|recovery|insulation|reduction|vfd|system|control|management|integration)/i.test(lowerDesc);
-      
-      const isJustMachineName = /^[\w\d\-\s]+$/.test(lowerDesc) && lowerDesc.length < 15 && !hasActionWord;
-      
-      if (isJustMachineName || lowerDesc === "70 dph" || lowerDesc === "12m" || lowerDesc === "50mb") {
-        console.log(`[ECM EXTRACTION] Rejected invalid ECM row ${i+1}: ${description}`);
-        continue;
-      }
-
-      const p = {
-        ecmNo: getValue(row, colIdx.ecmNo) || String(projects.length + 1),
-        system: getValue(row, colIdx.system) || "",
-        title: description, // Mapping description as title for pipeline
-        description,
-        energySaving: parseNum(getValue(row, colIdx.energySaving)),
-        annualSaving: parseNum(getValue(row, colIdx.annualSaving)),
-        investment: parseNum(getValue(row, colIdx.investment)),
-        payback: parseNum(getValue(row, colIdx.payback)),
-        sourceSheet: sheetName,
-        sourceRow: i + 1,
-      };
-      
-      console.log(`[ECM EXTRACTION] Extracted:
-{
-  rowNumber: ${i + 1},
-  ecmNo: "${p.ecmNo}",
-  title: "${p.title}",
-  description: "${p.description}",
-  sourceSheet: "${p.sourceSheet}",
-  sourceRow: ${p.sourceRow}
-}`);
-
-      projects.push(p);
-    }
-
-    if (projects.length > 0) break;
-  }
-  
-  console.log(`[ECM EXTRACTION] Total ECMs Extracted: ${projects.length}`);
-
-  // Fallback: If no projects extracted via headers, scan rows for keywords
-  if (projects.length === 0) {
-    for (const sheet of sheets) {
-      const { name: sheetName, rows } = sheet;
-      if (!rows || rows.length < 2) continue;
-
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.every((cell) => cell === "")) continue;
-
-        const rowText = row.join(" ").toLowerCase();
-        
-        // Skip header-like rows or total rows
-        if (/^(total|sub.?total|grand total)/i.test(rowText)) continue;
-        if (rowText.includes("description") && rowText.includes("saving")) continue;
-
-        const keywordRegex = /\b(ecm|energy|saving|motor|pump|compressor|hvac|chiller|boiler|vfd|led|lighting)\b/i;
-        
-        if (keywordRegex.test(rowText)) {
-          // Find the longest string in the row as description
-          const strings = row.filter(cell => typeof cell === "string" && isNaN(parseNum(cell)));
-          const description = strings.sort((a, b) => b.length - a.length)[0] || rowText.substring(0, 50);
-
-          // Find the first few numbers
-          const numbers = row.map(cell => parseNum(cell)).filter(n => n !== null);
-          
-          if (description && description.length > 5) {
-            projects.push({
-              ecmNo: String(projects.length + 1),
-              system: "Fallback ECM",
-              description,
-              energySaving: numbers[0] || null,
-              annualSaving: numbers[1] || null,
-              investment: numbers[2] || null,
-              payback: numbers[3] || null,
-              sourceSheet: sheetName,
-              sourceRow: i + 1,
-              isFallback: true
-            });
-          }
-        }
-      }
-      
-      if (projects.length > 0) break;
-    }
-  }
-
-  return projects;
-}
-
-function findHeaderRow(rows) {
-  const keywords = [
-    "description",
-    "project",
-    "ecm",
-    "saving",
-    "investment",
-    "system",
-    "measure",
-  ];
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
-    const rowText = rows[i].join(" ").toLowerCase();
-    const hits = keywords.filter((kw) => rowText.includes(kw)).length;
-    if (hits >= 2) return i;
-  }
-  return -1;
-}
-
-function findCol(headers, candidates) {
-  for (const candidate of candidates) {
-    const idx = headers.findIndex((h) => h.includes(candidate));
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
-
-function getValue(row, idx) {
-  if (idx === -1 || idx >= row.length) return "";
-  return String(row[idx] ?? "").trim();
-}
-
-function parseNum(str) {
-  if (!str) return null;
-  const num = parseFloat(String(str).replace(/[^0-9.\-]/g, ""));
-  return isNaN(num) ? null : num;
-}
-
-function validateFinancialColumns(projects = []) {
-  const sameCount = projects.filter((p) =>
-    String(p.investment || "").replace(/[₹,\s]/g, "") ===
-    String(p.annualSaving || "").replace(/[₹,\s]/g, "")
-  ).length;
-
-  if (projects.length > 5 && sameCount / projects.length > 0.8) {
-    console.warn("[FINANCIAL_COLUMN_MAPPING_SUSPICIOUS]", {
-      projectCount: projects.length,
-      sameInvestmentAndSavingCount: sameCount
-    });
-
-    return {
-      warning: true,
-      message:
-        "Investment and annual saving are identical for most ECMs. Please verify Excel column mapping."
-    };
-  }
-
-  return { warning: false };
-}
-
-module.exports = { extractLightweightExcelData };
+module.exports = {
+  extractMultiFileExcelData,
+  extractLightweightExcelData: extractMultiFileExcelData,
+  parseNumberOrNull,
+  validateEcmExtraction,
+  isKnownMtlBaddiEcmFile,
+  shouldForceKnownColumnMap,
+};

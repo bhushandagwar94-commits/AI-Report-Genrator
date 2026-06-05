@@ -11,6 +11,10 @@ const LOCKED_FIELDS = [
   "annualSaving",
   "investment",
   "payback",
+  "investmentRaw",
+  "annualSavingRaw",
+  "energySavingRaw",
+  "paybackRaw",
   "sourceSheet",
   "sourceRow",
   "fallbackGenerated",
@@ -85,13 +89,13 @@ function validateEnhancementDidNotReduce(beforeReportData, afterReportData) {
 function buildAiSystemPrompt() {
   return `You are a senior energy auditor, electrical engineer, HVAC utility expert, and industrial energy efficiency consultant.
 
-You are enhancing a deterministic energy audit report created from uploaded Excel/project data.
+You are enhancing an energy audit report created from uploaded Excel/project data.
 
 Your job is NOT to summarize.
 Your job is to expand the report into detailed engineering analysis while preserving every extracted input fact.
 
 Mandatory rules:
-1. Never reduce, shorten, delete, or summarize the deterministic input information.
+1. Never reduce, shorten, delete, or summarize the extracted input information.
 2. Preserve every ECM title exactly.
 3. Preserve every numeric value exactly, including energy saving, annual saving, investment, payback, equipment ratings, quantities, operating hours, and source references.
 4. Do not invent numbers.
@@ -110,10 +114,10 @@ Mandatory rules:
 }
 
 function buildAiUserPrompt(reportData) {
-  return `Enhance the following deterministic energy audit report.
+  return `Enhance the following energy audit report.
 
 Important:
-The deterministic reportData is the source of truth. You must preserve all extracted information and expand it.
+Preserve all extracted information and expand it with project-specific engineering detail.
 
 For each ECM/project:
 - Keep ecmNo exactly same.
@@ -157,7 +161,7 @@ Do not return markdown.
 Do not wrap JSON in code fences.
 Return JSON only.
 
-Deterministic reportData:
+Report data:
 ${JSON.stringify(reportData || {}, null, 2)}`;
 }
 

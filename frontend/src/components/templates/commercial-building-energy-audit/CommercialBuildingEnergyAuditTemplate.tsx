@@ -94,9 +94,52 @@ function asArray<T = any>(value: T | T[] | null | undefined): T[] {
   return [];
 }
 
+function removeInternalPhrases(value: unknown): string {
+  const forbiddenPhrases = [
+    "deterministic project data must remain the source of truth",
+    "values for energy saving, annual saving, investment and payback should not be altered",
+    "report should preserve all extracted values",
+    "purpose of this section is to explain the technical logic",
+    "before implementation, the site team should confirm equipment nameplate details",
+    "narrative enhancement"
+  ];
+
+  let output = String(value || "");
+
+  for (const phrase of forbiddenPhrases) {
+    const regex = new RegExp(`.*${phrase}.*`, "gi");
+    output = output.replace(regex, "");
+  }
+
+  return output
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function cleanBulletLines(value: unknown): string[] {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line) =>
+      line
+        .replace(/^\s*\d+\.\s*/g, "")
+        .replace(/^\s*[-–—]\s*/g, "")
+        .replace(/^\s*•\s*/g, "")
+        .replace(/^\s*-\s*•\s*/g, "")
+        .replace(/^\s*\d+\.\s*-\s*•\s*/g, "")
+        .trim()
+    )
+    .filter(Boolean);
+}
+
+function cleanBulletText(value: unknown): string[] {
+  return cleanBulletLines(removeInternalPhrases(value));
+}
+
 function isMeaningful(value: any): boolean {
   if (value === null || value === undefined || value === "") return false;
-  const s = String(value).trim().toLowerCase();
+  const s = removeInternalPhrases(String(value)).trim().toLowerCase();
   if (!s || s === "data required" || s === "undefined" || s === "null" || s.startsWith("[draft") || s.includes("explain ") || s.includes("discuss ") || s.includes(".xlsx") || s.includes(".pdf")) return false;
   return true;
 }
@@ -106,7 +149,7 @@ function fallbackText(value: any, placeholder = "[To be updated after site data 
     if (value.value !== undefined) return fallbackText(value.value, placeholder);
     if (value.text !== undefined) return fallbackText(value.text, placeholder);
   }
-  return isMeaningful(value) ? String(value).trim() : placeholder;
+  return isMeaningful(value) ? removeInternalPhrases(String(value)).trim() : placeholder;
 }
 
 function firstNonEmpty(...values: any[]): string {
@@ -144,15 +187,15 @@ function numberFrom(value: ReportValue): number {
 }
 
 function totalInvestment(projects: CommercialBuildingProject[] = []) {
-  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.estimatedInvestment || p.investment), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.estimatedInvestment ?? p.investment), 0);
 }
 
 function totalSavings(projects: CommercialBuildingProject[] = []) {
-  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedAnnualCostSaving || p.annualSaving), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedAnnualCostSaving ?? p.annualSaving), 0);
 }
 
 function totalEnergy(projects: CommercialBuildingProject[] = []) {
-  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedEnergySaving || p.energySaving), 0);
+  return asArray(projects).reduce((sum, p) => sum + numberFrom(p.expectedEnergySaving ?? p.energySaving), 0);
 }
 
 function weightedPayback(projects: CommercialBuildingProject[] = []) {
@@ -162,7 +205,7 @@ function weightedPayback(projects: CommercialBuildingProject[] = []) {
 }
 
 function getPriorityLevel(project: any) {
-  const pb = numberFrom(project.simplePaybackPeriod || project.payback);
+  const pb = numberFrom(project.simplePaybackPeriod ?? project.payback);
   if (pb > 0 && pb <= 1.5) return "High Priority";
   if (pb > 1.5 && pb <= 3.0) return "Medium Priority";
   if (pb > 3.0) return "Long-Term Priority";
@@ -255,7 +298,7 @@ function getMvParamValue(ecmType: string) {
 }
 
 function sanitizePromptLeakageText(text: any, ecmType: string) {
-  let safe = String(text || "").trim();
+  let safe = removeInternalPhrases(String(text || "")).trim();
   safe = safe.replace(/\[DRAFT - QC REVIEW REQUIRED\]/gi, "");
   safe = safe.replace(/data required[^.]*\.?/gi, "");
   safe = safe.replace(/undefined/gi, "");
@@ -288,13 +331,13 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
     else if (ecmType === "blower_direct_drive_retrofit") safe = "The existing blower drive arrangement includes avoidable transmission losses and requires verification of airflow and pressure stability for optimized operation.";
     else safe = "The existing system operates under baseline conditions that present measurable opportunities for energy performance optimization.";
   }
-  return safe;
+  return removeInternalPhrases(safe);
 }
 
 
 function safeText(val: any) {
   if (val === null || val === undefined || val === "" || val === "[To be updated after site data verification]") return "";
-  return String(val).trim();
+  return removeInternalPhrases(String(val)).trim();
 }
 
 function buildProjectSummaryRows(ecm: any, cleanTitle: string, ecmNo: string) {
@@ -605,7 +648,7 @@ function CoverPage({ data }: { data: ReportInfo }) {
         <img src="/assets/seetech-logo.png" alt="SEE-Tech Logo" style={{ height: 40, objectFit: "contain" }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         <div>
           <div style={{ color: colors.primaryBlue, fontSize: 18, fontWeight: 800 }}>SEE-Tech Solutions</div>
-          <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Commercial Building Energy Audit Report Format</div>
+          <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Industrial Energy Audit Report Format</div>
         </div>
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -613,7 +656,7 @@ function CoverPage({ data }: { data: ReportInfo }) {
           {fallbackText(data.reportTitle, "Detailed Energy Audit Report")}
         </h1>
         <div style={{ height: 5, width: 120, background: colors.secondaryGreen, borderRadius: 99, marginBottom: 24 }} />
-        <p style={{ color: colors.textMuted, fontSize: 16, maxWidth: 560, lineHeight: 1.55 }}>Commercial Buildings: Office | IT Park | Hotel | Hospital | Mall | Others</p>
+        <p style={{ color: colors.textMuted, fontSize: 16, maxWidth: 560, lineHeight: 1.55 }}>Industrial Facility: Production | Utilities | Cooling | Compressed Air | Electrical | Support Areas</p>
         <p style={{ color: colors.text, fontSize: 15, maxWidth: 600, lineHeight: 1.6 }}>Purpose: To identify implementable energy-saving projects with clear investment, savings, payback and execution roadmap.</p>
         <div style={{ marginTop: 34, border: `1px solid ${colors.border}`, borderRadius: 14, overflow: "hidden" }}>
           {[
@@ -945,12 +988,12 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "buildingType", label: "Building Type" },
         { key: "benchmark", label: "Recommended Benchmark" },
       ], [
-        { buildingType: "Office building", benchmark: "kWh/sq.ft/year" },
-        { buildingType: "IT park", benchmark: "kWh/sq.ft/year and kWh/workstation/year" },
-        { buildingType: "Hotel", benchmark: "kWh/occupied room night" },
-        { buildingType: "Hospital", benchmark: "kWh/bed/day or kWh/sq.ft/year" },
-        { buildingType: "Mall", benchmark: "kWh/sq.ft/year" },
-        { buildingType: "Educational building", benchmark: "kWh/student/year or kWh/sq.ft/year" }
+        { buildingType: "Production areas", benchmark: "kWh/kg product or kWh/machine-hour" },
+        { buildingType: "Utility block", benchmark: "kWh/ton utility output or kWh/day" },
+        { buildingType: "Compressed air system", benchmark: "kW/CFM or kWh/Nm3" },
+        { buildingType: "Chiller plant", benchmark: "kW/TR and kWh/TRh" },
+        { buildingType: "Dryer section", benchmark: "kWh/kg moisture removed" },
+        { buildingType: "Clean room / AHU area", benchmark: "kWh/sq.ft/year or kWh/air-change" }
       ])}
       <br/>
       {renderMandatoryKeyValueTable({
@@ -970,14 +1013,14 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "estimatedShare", label: "Estimated Share of Energy Consumption" },
         { key: "remarks", label: "Remarks" },
       ], asArray(data.majorEnergyConsumingSystems).length ? data.majorEnergyConsumingSystems : [
-        { system: "HVAC", majorEquipment: "Chiller / VRF / AHU / pumps / cooling tower" },
-        { system: "Lighting", majorEquipment: "Indoor / outdoor / parking / facade" },
-        { system: "Pumps", majorEquipment: "Domestic / STP / hot water / HVAC" },
-        { system: "Plug loads", majorEquipment: "Office equipment / appliances" },
-        { system: "Server / IT loads", majorEquipment: "UPS, PAC, server room" },
-        { system: "Kitchen / laundry", majorEquipment: "Hotel / hospital loads" },
-        { system: "Hot water system", majorEquipment: "Boiler / heat pump / solar" },
-        { system: "Lifts / escalators", majorEquipment: "Vertical transport" }
+        { system: "Production areas", majorEquipment: "ASB / EBM / molding machines / process drives" },
+        { system: "Utility block", majorEquipment: "Chillers / cooling towers / pumps / AHUs" },
+        { system: "Compressed air system", majorEquipment: "Air compressors / dryers / receivers / piping network" },
+        { system: "Dryer section", majorEquipment: "Dryers / heaters / blowers / exhaust systems" },
+        { system: "Electrical room / APFC", majorEquipment: "Transformers / APFC panels / capacitor banks / MCCs" },
+        { system: "Pumps and motors", majorEquipment: "Process pumps / utility pumps / motor-driven auxiliaries" },
+        { system: "Cooling tower", majorEquipment: "Cooling tower cells / fans / condenser water pumping" },
+        { system: "Clean room / AHU", majorEquipment: "AHUs / FCUs / ventilation / clean room controls" }
       ])}
 
       <SectionHeader number="2.8" title="HVAC System Details" />
@@ -989,16 +1032,16 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "controlSystem", label: "Control System" },
         { key: "remarks", label: "Remarks" },
       ], asArray(data.hvacSystemDetails).length ? data.hvacSystemDetails : [
-        { equipment: "Chiller / VRF outdoor unit" },
+        { equipment: "Chiller / process cooling unit" },
         { equipment: "AHU" },
-        { equipment: "FCU" },
+        { equipment: "Clean room AHU / make-up air unit" },
         { equipment: "Cooling tower" },
         { equipment: "Chilled water pump" },
         { equipment: "Condenser water pump" },
-        { equipment: "Fresh air unit" },
+        { equipment: "Fresh air unit / ventilation fan" },
         { equipment: "Exhaust / ventilation fan" }
       ])}
-      <p className="text-sm leading-snug mb-2">The HVAC system is one of the major energy-consuming systems in the building. During the audit, operating hours, loading pattern, temperature settings, pump and fan operation, control philosophy and maintenance condition should be reviewed. The main opportunities may relate to variable speed operation, AHU scheduling, chiller efficiency, fresh air optimization, cooling tower performance or set point optimization.</p>
+      <p className="text-sm leading-snug mb-2">The utility cooling and ventilation systems are major energy-consuming assets in an industrial facility. During the audit, operating hours, thermal load variation, chilled-water temperature control, pump and fan operation, clean-room or process ventilation requirements, and maintenance condition should be reviewed. Key opportunities may relate to variable speed operation, chiller efficiency, flow optimization, cooling tower performance, AHU scheduling, and set-point discipline.</p>
 
       <SectionHeader number="2.9" title="Lighting System Details" />
       {renderMandatoryTable([
@@ -1009,12 +1052,12 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "operatingHours", label: "Operating Hours" },
         { key: "control", label: "Control Type" },
       ], asArray(data.lightingSystemDetails).length ? data.lightingSystemDetails : [
-        { area: "Office area" },
-        { area: "Corridor" },
-        { area: "Parking" },
-        { area: "Outdoor" },
-        { area: "Back-of-house" },
-        { area: "Guest room / ward" }
+        { area: "Production hall" },
+        { area: "Utility block" },
+        { area: "Compressor room" },
+        { area: "Dryer section" },
+        { area: "Electrical room" },
+        { area: "Warehouse / dispatch" }
       ])}
       <p className="text-sm leading-snug mb-2">Lighting energy consumption can be reduced through LED retrofit, lux optimization and occupancy-based controls. Corridors, parking areas, toilets, staircases and service areas are usually suitable for sensors or timer-based control.</p>
 
@@ -1069,38 +1112,13 @@ function BuildingEnergyProfilePage({ data }: any) {
   );
 }
 
-function cleanBulletText(value: unknown) {
-  return String(value || "")
-    .split(/\n+/)
-    .map((line) =>
-      line
-        .replace(/^\s*\d+\.\s*/g, "")
-        .replace(/^\s*[-–—]\s*/g, "")
-        .replace(/^\s*•\s*/g, "")
-        .replace(/^\s*-\s*•\s*/g, "")
-        .replace(/^\s*\d+\.\s*-\s*•\s*/g, "")
-        .trim()
-    )
-    .filter(Boolean);
-}
-
-const renderBulletTheory = (value: unknown) => {
-  const text = String(value || "").trim();
-
-  if (!text) {
-    return (
-      <p className="text-sm text-slate-600">
-        [To be updated after site data verification]
-      </p>
-    );
-  }
-
-  const lines = cleanBulletText(text);
+function renderBulletTheory(value: unknown) {
+  const lines = cleanBulletText(value);
 
   if (!lines.length) {
     return (
-      <p className="text-sm text-slate-700 leading-relaxed">
-        {text}
+      <p className="text-sm text-slate-600">
+        [To be updated after site data verification]
       </p>
     );
   }
@@ -1112,7 +1130,7 @@ const renderBulletTheory = (value: unknown) => {
       ))}
     </ul>
   );
-};
+}
 
 const getTheoryField = (project: any, field: string, fallback?: string) => {
   const value = project?.[field];

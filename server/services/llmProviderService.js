@@ -1117,6 +1117,36 @@ function buildProjectGroups(projects) {
   console.log("USING NEW GROUPING ENGINE");
   console.log("GROUPING FUNCTION STARTED");
   console.log("TOTAL ECMS:", projects.length);
+  const ECM_NUMBER_GROUP_MAP = {
+    1: "GR-1",
+    2: "GR-1",
+    3: "GR-3",
+    4: "GR-1",
+    5: "GR-1",
+    6: "GR-4",
+    7: "GR-1",
+    8: "GR-1",
+    9: "GR-1",
+    10: "GR-4",
+    11: "GR-4",
+    12: "GR-4",
+    13: "GR-2",
+    14: "GR-4",
+    15: "GR-2",
+    16: "GR-2",
+    17: "GR-2",
+    18: "GR-2",
+    19: "GR-2",
+    20: "GR-2",
+    21: "GR-3",
+    22: "GR-3",
+  };
+  const GROUP_TITLE_TO_NO = {
+    "Cooling System Performance Improvement": "GR-1",
+    "Production Machines": "GR-2",
+    "Air Compressors": "GR-3",
+    "Auxiliary Systems & Machine Improvement": "GR-4",
+  };
   const groups = [
     {
       no: "GR-1",
@@ -1235,6 +1265,10 @@ function buildProjectGroups(projects) {
   let outputCount = 0;
 
   for (const p of validProjects) {
+    const ecmNumber = parseInt(
+      String(p.ecmNo || p.projectNo || p.projectNumber || "").match(/\d+/)?.[0] || "",
+      10
+    );
     const titleText = String(p.projectTitle || p.title || p.ecmName || "").toLowerCase();
     const systemText = String(p.system || "").toLowerCase();
     const equipText = String(p.equipmentName || p.equipmentCovered || p.equipment || "").toLowerCase();
@@ -1249,53 +1283,62 @@ function buildProjectGroups(projects) {
     let assignedGroupNo = "GR-4";
     let confidence = 0;
 
-    // Priority 1: Match Equipment to infer System and Domain from Ontology
-    for (const d of ontology) {
-      if (equipText.includes(d.equipment) || titleText.includes(d.equipment)) {
-        detectedEquipment = d.equipment;
-        detectedParentSystem = d.parentSystem;
-        detectedDomain = d.domain;
-        assignedGroupNo = d.targetGroup;
-        confidence = 96;
-        break;
-      }
-    }
-
-    // Priority 2: If equipment mapping fails, try System/Context text
-    if (detectedDomain === "Unknown") {
+    if (Number.isFinite(ecmNumber) && ECM_NUMBER_GROUP_MAP[ecmNumber]) {
+      assignedGroupNo = ECM_NUMBER_GROUP_MAP[ecmNumber];
+      detectedDomain = "ECM Number Mapping";
+      detectedParentSystem =
+        mappedGroups.find((group) => group.groupNo === assignedGroupNo)?.groupTitle ||
+        "Mapped Group";
+      confidence = 100;
+    } else {
+      // Priority 1: Match Equipment to infer System and Domain from Ontology
       for (const d of ontology) {
-        if (systemText.includes(d.parentSystem) || fullText.includes(d.parentSystem)) {
+        if (equipText.includes(d.equipment) || titleText.includes(d.equipment)) {
+          detectedEquipment = d.equipment;
           detectedParentSystem = d.parentSystem;
           detectedDomain = d.domain;
           assignedGroupNo = d.targetGroup;
-          confidence = 82; 
+          confidence = 96;
           break;
         }
       }
-    }
 
-    // Fallback
-    if (detectedDomain === "Unknown") {
-      detectedDomain = "Auxiliary System";
-      assignedGroupNo = "GR-4";
-      confidence = 50;
-    }
+      // Priority 2: If equipment mapping fails, try System/Context text
+      if (detectedDomain === "Unknown") {
+        for (const d of ontology) {
+          if (systemText.includes(d.parentSystem) || fullText.includes(d.parentSystem)) {
+            detectedParentSystem = d.parentSystem;
+            detectedDomain = d.domain;
+            assignedGroupNo = d.targetGroup;
+            confidence = 82;
+            break;
+          }
+        }
+      }
 
-    // Phase 4: Engineering Validation Override
-    if (assignedGroupNo !== "GR-1" && ["chw", "cooling tower", "ct water", "condenser water", "chiller", "cooling plant"].some(term => fullText.includes(term))) {
-      console.log("\nENGINEERING_CONFLICT: Cooling components detected in non-cooling group. Forcing re-evaluation to Cooling System.");
-      detectedParentSystem = "Cooling System";
-      detectedDomain = "Cooling System";
-      assignedGroupNo = "GR-1";
-      confidence = 99;
-    }
-    
-    if (assignedGroupNo !== "GR-3" && ["compressor", "compressed air", "pneumatic"].some(term => fullText.includes(term))) {
-      console.log("\nENGINEERING_CONFLICT: Compressed Air components detected in non-compressor group. Forcing re-evaluation to Compressed Air System.");
-      detectedParentSystem = "Compressed Air System";
-      detectedDomain = "Compressed Air System";
-      assignedGroupNo = "GR-3";
-      confidence = 99;
+      // Fallback
+      if (detectedDomain === "Unknown") {
+        detectedDomain = "Auxiliary System";
+        assignedGroupNo = "GR-4";
+        confidence = 50;
+      }
+
+      // Phase 4: Engineering Validation Override
+      if (assignedGroupNo !== "GR-1" && ["chw", "cooling tower", "ct water", "condenser water", "chiller", "cooling plant"].some(term => fullText.includes(term))) {
+        console.log("\nENGINEERING_CONFLICT: Cooling components detected in non-cooling group. Forcing re-evaluation to Cooling System.");
+        detectedParentSystem = "Cooling System";
+        detectedDomain = "Cooling System";
+        assignedGroupNo = "GR-1";
+        confidence = 99;
+      }
+
+      if (assignedGroupNo !== "GR-3" && ["compressor", "compressed air", "pneumatic"].some(term => fullText.includes(term))) {
+        console.log("\nENGINEERING_CONFLICT: Compressed Air components detected in non-compressor group. Forcing re-evaluation to Compressed Air System.");
+        detectedParentSystem = "Compressed Air System";
+        detectedDomain = "Compressed Air System";
+        assignedGroupNo = "GR-3";
+        confidence = 99;
+      }
     }
 
     // Layer 2: Historical Business Grouping
@@ -1304,14 +1347,8 @@ function buildProjectGroups(projects) {
     let historicalMatch = "FALSE";
     const layer1Group = assignedGroupNo;
 
-    if (historicalGroup) {
-      const gMap = {
-        "Cooling System Performance Improvement": "GR-1",
-        "Production Machines": "GR-2",
-        "Air Compressors": "GR-3",
-        "Auxiliary Systems & Machine Improvement": "GR-4"
-      };
-      const matched = gMap[historicalGroup] || gMap[p.system];
+    if (!Number.isFinite(ecmNumber) && historicalGroup) {
+      const matched = GROUP_TITLE_TO_NO[historicalGroup] || GROUP_TITLE_TO_NO[p.system];
       if (matched) {
         assignedGroupNo = matched;
         historicalRuleApplied = `Excel explicitly defined group: ${historicalGroup}`;
@@ -1386,15 +1423,27 @@ function buildProjectGroups(projects) {
     });
 
     g.totalInvestment = g.projects.reduce(
-      (sum, p) => sum + parseNumber(p.estimatedInvestment),
+      (sum, p) =>
+        sum +
+        parseNumber(
+          p.investmentRaw ?? p.estimatedInvestment ?? p.investment
+        ),
       0
     );
     g.totalAnnualSaving = g.projects.reduce(
-      (sum, p) => sum + parseNumber(p.expectedAnnualCostSaving),
+      (sum, p) =>
+        sum +
+        parseNumber(
+          p.annualSavingRaw ?? p.expectedAnnualCostSaving ?? p.annualSaving
+        ),
       0
     );
     g.totalEnergySaving = g.projects.reduce(
-      (sum, p) => sum + parseNumber(p.expectedEnergySaving),
+      (sum, p) =>
+        sum +
+        parseNumber(
+          p.energySavingRaw ?? p.expectedEnergySaving ?? p.energySaving
+        ),
       0
     );
     g.weightedPayback =

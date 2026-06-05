@@ -112,10 +112,10 @@ function ecmSpecificBullets(project = {}, section = "existingSystemDescription")
   const type = classifyEcm(project);
 
   const common = [
-    `${facts.ecmNo} - ${facts.title} must remain tied to the deterministic values already extracted from ${facts.sourceSheet}. The narrative is only allowed to explain the engineering basis while preserving energy saving ${facts.energySaving}, annual saving ${facts.annualSaving}, estimated investment ${facts.investment}, and simple payback ${facts.payback}.`,
+    `${facts.ecmNo} - ${facts.title} should stay aligned with the extracted project data from ${facts.sourceSheet}, including energy saving ${facts.energySaving}, annual saving ${facts.annualSaving}, estimated investment ${facts.investment}, and simple payback ${facts.payback}.`,
     `This section should ${sectionIntent(section)} for the ${facts.system} application serving ${facts.equipment} in ${facts.department}.`,
     `The write-up should stay project-specific, refer to the actual equipment and operating context, and avoid generic audit filler that could apply to any unrelated ECM.`,
-    `Before final implementation approval, the site team should confirm connected load, operating hours, seasonal behavior, control philosophy, loading variation, maintenance constraints, shutdown opportunities, and any process dependency that can change the actual saving realization.`,
+    `Before implementation, the project team should confirm connected load, operating hours, seasonal behavior, control philosophy, loading variation, maintenance constraints, shutdown opportunities, and process dependencies that can influence the realized saving.`,
     `Where measurements are still pending, the report must state the required measurement openly instead of inventing hidden assumptions. The quality of this ECM depends on baseline confirmation, engineering review, execution planning, and post-implementation validation.`,
   ];
 

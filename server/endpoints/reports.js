@@ -64,6 +64,42 @@ try {
   console.error("[AI_ENHANCER_IMPORT_FAILED]", error?.stack || error?.message || error);
 }
 
+let cleanupFinalReportData = (data) => data;
+
+try {
+  ({ cleanupFinalReportData } = require("../services/finalReportCleanupService"));
+  console.log("[FINAL_REPORT_CLEANUP_SERVICE_READY]");
+} catch (error) {
+  console.warn("[FINAL_REPORT_CLEANUP_SERVICE_NOT_LOADED]", error.message);
+}
+
+function countInternalPhrases(reportData) {
+  const text = JSON.stringify(reportData || {}).toLowerCase();
+  const phrases = [
+    "deterministic project data",
+    "source of truth",
+    "narrative enhancement",
+    "must remain unchanged",
+    "project team should document baseline condition",
+    "engineering review should confirm site constraints"
+  ];
+
+  return phrases.reduce((count, phrase) => {
+    return count + (text.includes(phrase) ? 1 : 0);
+  }, 0);
+}
+
+function logSafeCleanupCheck(reportData, label) {
+  console.log(`[SAFE_FINAL_CLEANUP_CHECK] [${label}]`, {
+    projectCount: (reportData.groups || []).reduce((s, g) => s + ((g.projects || []).length), 0),
+    internalPhraseCount: countInternalPhrases(reportData),
+    ecm2System: (reportData.groups || [])
+      .flatMap((g) => g.projects || [])
+      .find((p) => String(p.ecmNo || "").includes("2"))?.system,
+    finalCleanupApplied: reportData.finalCleanupApplied === true
+  });
+}
+
 const HIGH_RISK_FIELDS = new Set([
   "projectTitle",
   "system",
@@ -1148,8 +1184,8 @@ function detectDatasetProfile(projects = []) {
       expectedEcmCount: 22,
       expectedGroups: {
         "Cooling System Performance Improvement": 7,
-        "Production Machines": 8,
-        "Air Compressors": 2,
+        "Production Machines": 7,
+        "Air Compressors": 3,
         "Auxiliary Systems & Machine Improvement": 5,
       },
     };
@@ -2324,6 +2360,20 @@ function reportEndpoints(app) {
       });
   }
 
+  function nullishNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    const parsed = Number(String(value).replace(/[^\d.-]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function sumNumbers(values = []) {
+    return values.reduce((sum, value) => {
+      const parsed = nullishNumber(value);
+      return parsed === null ? sum : sum + parsed;
+    }, 0);
+  }
+
   function buildLightweightReportData(projects, reportDetails) {
     const mappedProjects = projects.map((p, i) => ({
       projectNo: p.ecmNo || p.projectNo || `ECM ${i + 1}`,
@@ -2331,13 +2381,22 @@ function reportEndpoints(app) {
       title: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
       system: p.system || "Other",
       category: p.system || "Other",
-      expectedEnergySaving: p.energySaving || 0,
-      expectedAnnualCostSaving: p.annualSaving || 0,
-      estimatedInvestment: p.investment || 0,
-      simplePaybackPeriod: p.payback || 0,
+      expectedEnergySaving: p.energySavingRaw ?? nullishNumber(p.energySaving),
+      expectedAnnualCostSaving: p.annualSavingRaw ?? nullishNumber(p.annualSaving),
+      estimatedInvestment: p.investmentRaw ?? nullishNumber(p.investment),
+      simplePaybackPeriod: p.paybackRaw ?? nullishNumber(p.payback),
+      energySavingRaw: p.energySavingRaw ?? nullishNumber(p.energySaving),
+      annualSavingRaw: p.annualSavingRaw ?? nullishNumber(p.annualSaving),
+      investmentRaw: p.investmentRaw ?? nullishNumber(p.investment),
+      paybackRaw: p.paybackRaw ?? nullishNumber(p.payback),
+      energySaving: p.energySaving,
+      annualSaving: p.annualSaving,
+      investment: p.investment,
+      payback: p.payback,
       equipmentCovered: p.equipmentCovered || p.equipment || "Various",
       groupTitle: p.groupTitle || "",
-      sourceSheet: p.sheetName || "",
+      sourceSheet: p.sourceSheet || p.sheetName || "",
+      sourceRow: p.sourceRow || null,
       department: p.department || "",
       area: p.area || "",
       observation: p.observation || "",
@@ -2346,6 +2405,19 @@ function reportEndpoints(app) {
 
     const cleaned = cleanAndDeduplicateProjects(mappedProjects);
     const grouped = buildProjectGroups(cleaned);
+    const totalEstimatedInvestment = sumNumbers(
+      cleaned.map((project) => project.investmentRaw ?? project.estimatedInvestment)
+    );
+    const totalAnnualCostSavingPotential = sumNumbers(
+      cleaned.map((project) => project.annualSavingRaw ?? project.expectedAnnualCostSaving)
+    );
+    const totalEnergySavingPotential = sumNumbers(
+      cleaned.map((project) => project.energySavingRaw ?? project.expectedEnergySaving)
+    );
+    const simplePaybackPeriod =
+      totalAnnualCostSavingPotential > 0
+        ? totalEstimatedInvestment / totalAnnualCostSavingPotential
+        : null;
 
     let finalGroups = grouped;
     if ((!finalGroups || finalGroups.length === 0) && mappedProjects.length > 0) {
@@ -2367,7 +2439,12 @@ function reportEndpoints(app) {
         reportDate: reportDetails.reportDate || new Date().toISOString(),
       },
       executiveSummary: {
-        summaryOfIdentifiedProjects: cleaned
+        summaryOfIdentifiedProjects: cleaned,
+        numberOfProjects: cleaned.length,
+        totalEstimatedInvestment,
+        totalAnnualCostSavingPotential,
+        totalEnergySavingPotential,
+        simplePaybackPeriod,
       },
       groups: finalGroups,
       groupedProjects: grouped,
@@ -2434,48 +2511,41 @@ function reportEndpoints(app) {
           user = await userFromSession(request, response);
         } catch (e) {}
 
-        // 2. Select MAX 3 Excel files only
-        const excelFiles = sortExcelFilesByPriority(uploadedFiles).slice(0, 3);
+        // 2. Take all Excel files
+        const excelFiles = uploadedFiles.filter(f => {
+          const ext = path.extname(f.filename || f.originalName || f.name || "").toLowerCase();
+          return [".xlsx", ".xls"].includes(ext);
+        });
+        
         let extractedProjects = [];
         let extractionAttempts = [];
+        let extractionDebug = null;
 
-        // 3. Fast deterministic extraction loop with hard timeout
-        for (const file of excelFiles) {
-          const filePath = path.resolve(
-            __dirname,
-            "../../storage",
-            file.location
-          );
-          if (!fs.existsSync(filePath)) continue;
-
+        // 3. Fast deterministic multi-file extraction
+        if (excelFiles.length > 0) {
+          const baseStorageDir = path.resolve(__dirname, "../../storage");
           try {
-            // 5 SECOND MAX TIMEOUT PER FILE
+            // Give 15 seconds for multi-file extraction
             const extraction = await withTimeout(
-              Promise.resolve(extractLightweightExcelData(filePath, file)),
-              5000,
-              `Extraction timed out for ${file.filename}`
+              Promise.resolve(extractLightweightExcelData(excelFiles, baseStorageDir)),
+              15000,
+              `Extraction timed out`
             );
 
             extractionAttempts.push({
-              filename: file.filename,
+              filename: extraction.fileName || "multi-file",
               status: extraction.success ? "success" : "failed",
               projectsFound: extraction.projectCount || 0,
               warning: extraction.warning
             });
 
-            if (
-              extraction.success &&
-              extraction.projects &&
-              extraction.projects.length > 0
-            ) {
-              extractedProjects = [
-                ...extractedProjects,
-                ...extraction.projects,
-              ];
+            if (extraction.success && extraction.projects && extraction.projects.length > 0) {
+              extractedProjects = extraction.projects;
+              extractionDebug = extraction.extractionDebug;
             }
           } catch (e) {
             extractionAttempts.push({
-              filename: file.filename,
+              filename: "multi-file",
               status: "timeout or error",
               error: e.message,
             });
@@ -2497,6 +2567,12 @@ function reportEndpoints(app) {
         );
         reportData = filterReportProjects(reportData);
         reportData = enforceReportQuality(reportData);
+
+        if (extractionDebug) {
+          reportData.extractionDebug = extractionDebug;
+          if (!reportData.extractionSummary) reportData.extractionSummary = {};
+          reportData.extractionSummary.validationWarnings = extractionDebug.validationWarnings || [];
+        }
 
         const projectCount = (reportData.groups || []).reduce(
           (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
@@ -2557,6 +2633,9 @@ function reportEndpoints(app) {
         console.log("API RESPONSE GROUPS");
         console.log(JSON.stringify(reportData.groupedProjects?.map(g => ({ groupNo: g.groupNo, title: g.groupTitle, ecmCount: g.projects?.length })) || []));
 
+        reportData = cleanupFinalReportData(reportData);
+        logSafeCleanupCheck(reportData, "Generate");
+
         return response.json({
           success: true,
           previewReady: true,
@@ -2616,29 +2695,38 @@ function reportEndpoints(app) {
         }
 
         const requestBody = reqBody(request);
-        let reportData =
-          requestBody.reportData || requestBody.previewData || requestBody.generatedReportData || {};
+        let dbReportData = null;
+        try {
+          dbReportData = JSON.parse(report.outputContent);
+        } catch (e) {}
 
-        if (!Object.keys(reportData).length) {
-          try {
-            reportData = JSON.parse(report.outputContent);
-          } catch (e) {
-            return response
-              .status(400)
-              .json({ error: "Report content is not valid JSON." });
-          }
+        let exportReportData =
+          requestBody?.reportData ||
+          requestBody?.previewData ||
+          requestBody?.generatedReportData ||
+          dbReportData ||
+          null;
+
+        if (!exportReportData) {
+          return response.status(400).json({
+            success: false,
+            error: "No reportData available for DOCX export."
+          });
         }
 
-        if (requestBody.reportData || requestBody.previewData) {
+        if (requestBody?.reportData || requestBody?.previewData) {
           console.log(
             "[DOCX_EXPORT_REQUEST_BODY_DEBUG]",
-            enhancementSummary(normalizeActiveReportData(reportData))
+            enhancementSummary(normalizeActiveReportData(exportReportData))
           );
         }
 
-        let exportReportData = normalizeActiveReportData(reportData);
+        exportReportData = normalizeActiveReportData(exportReportData);
         exportReportData = filterReportProjects(exportReportData);
         exportReportData = expandReportEngineeringNarratives(exportReportData);
+        exportReportData = cleanupFinalReportData(exportReportData);
+        logSafeCleanupCheck(exportReportData, "DOCX");
+
         if (getAllProjects(exportReportData).length <= 0) {
           return response.status(400).json({
             error: "DOCX export requires at least one valid ECM project after filtering.",
@@ -2723,9 +2811,17 @@ function reportEndpoints(app) {
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
         response.send(buffer);
-      } catch (e) {
-        console.error(e.stack || e.message, e);
-        response.status(500).json({ error: e.message });
+      } catch (error) {
+        console.error("[DOCX_EXPORT_FAILED]", {
+          message: error.message,
+          stack: error.stack
+        });
+
+        return response.status(500).json({
+          success: false,
+          error: "Failed to generate Word document.",
+          details: error.message
+        });
       }
     }
   );
@@ -2787,6 +2883,9 @@ function reportEndpoints(app) {
 
       if (typeof enhanceReportNarrativesWithAi !== "function") {
         let finalReportData = expandReportEngineeringNarratives(reportData);
+        finalReportData = cleanupFinalReportData(finalReportData);
+        logSafeCleanupCheck(finalReportData, "Enhance Fallback");
+
         const expansionSummary = firstProjectSummary(finalReportData);
 
         console.log("[FORCED_ENGINEERING_EXPANSION_SUMMARY]", expansionSummary);
@@ -2823,6 +2922,9 @@ function reportEndpoints(app) {
         });
       }
       finalReportData = expandReportEngineeringNarratives(finalReportData);
+      finalReportData = cleanupFinalReportData(finalReportData);
+      logSafeCleanupCheck(finalReportData, "Enhance AI");
+
       const expansionSummary = firstProjectSummary(finalReportData);
       const finalEnhancementSummary = enhancementSummary(finalReportData);
       finalReportData.enhancementMeta = {
