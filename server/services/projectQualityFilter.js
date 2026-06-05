@@ -1,3 +1,4 @@
+const { normalizeReportGroups } = require("../utils/groupHelper");
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -192,23 +193,8 @@ function filterAndStabilizeProjects(projects = []) {
 }
 
 function normalizeGroups(reportData = {}) {
-  if (safeArray(reportData.groups).length) return safeArray(reportData.groups);
-  if (safeArray(reportData.groupedProjects).length) return safeArray(reportData.groupedProjects);
-  if (safeArray(reportData.projects).length) {
-    const hasGroupObjects = reportData.projects.some(
-      (item) => item && Array.isArray(item.projects)
-    );
-    if (hasGroupObjects) return reportData.projects;
-    return [
-      {
-        groupNo: "GR-1",
-        groupTitle: "Energy Saving Projects",
-        projects: reportData.projects,
-      },
-    ];
-  }
-  return [];
-}
+      return normalizeReportGroups(reportData).groups;
+    }
 
 function filterReportProjects(reportData = {}) {
   const groups = normalizeGroups(reportData);

@@ -1,87 +1,142 @@
-const fs = require("fs");
+const fs = require('fs');
+let reportsContent = fs.readFileSync('endpoints/reports.js', 'utf8');
 
-let code = fs.readFileSync("./endpoints/reports.js", "utf8");
-
-if (!code.includes("createPipelineDebugCollector")) {
-  code = code.replace(
-    'const { normaliseGenerateBody } = require("../utils/normaliseReports");',
-    'const { normaliseGenerateBody } = require("../utils/normaliseReports");\nconst { createPipelineDebugCollector } = require("../utils/pipelineDebugCollector");'
-  );
-}
-
-const generateFunctionStart = "const startTime = Date.now();";
-const newGenerateFunctionStart = `const startTime = Date.now();
-      const debugCollector = createPipelineDebugCollector({
-        reportType: templateId || "unknown",
-        generationMode: generationMode || "unknown"
-      });
-      let pipelineDebug;
-      try {
+const importsToAdd = `
+  const { detectWorkbookType } = require("../services/inputFileRouterService");
+  const { extractVrChennaiWorkbook } = require("../services/vrChennaiWorkbookExtractor");
+  const xlsx = require("xlsx");
 `;
-code = code.replace(generateFunctionStart, newGenerateFunctionStart);
 
-const endOfSuccessfulTry = `        console.log("[REPORT] after response return");
-        console.timeEnd("[REPORT] response_build");
-        console.timeEnd("[REPORT] total");`;
-
-const newEndOfSuccessfulTry = `
-        pipelineDebug = debugCollector.finalize({
-          status: "completed",
-          finalOutputSource: aiEnhanced ? "enhancedReportData" : "deterministic",
-          finalEnhancerUsed: debugCollector.data.finalEnhancerUsed || providerUsed || "none",
-          fallbackReason: debugCollector.data.fallbackReason || fallbackReason || null
-        });
-
-        console.log("[REPORT] after response return");
-        console.timeEnd("[REPORT] response_build");
-        console.timeEnd("[REPORT] total");`;
-
-code = code.replace(endOfSuccessfulTry, newEndOfSuccessfulTry);
-
-const catchStart = `      } catch (e) {
-        console.error(e.message, e);`;
-const newCatchStart = `      } catch (e) {
-        debugCollector.addError(e?.message || String(e), { stack: e?.stack });
-        pipelineDebug = debugCollector.finalize({
-          status: "failed",
-          fallbackReason: e?.message || String(e)
-        });
-        console.error(e.message, e);`;
-code = code.replace(catchStart, newCatchStart);
-
-code = code.replace(
-  /function safeBuildPipelineDebug[\s\S]*?errors: \["Pipeline debug generation crashed"\]\n {8}\}\);\n/,
-  ""
+reportsContent = reportsContent.replace(
+  `  const {
+    extractLightweightExcelData,
+  } = require("../services/lightweightExcelExtractor");`,
+  `  const {
+    extractLightweightExcelData,
+  } = require("../services/lightweightExcelExtractor");${importsToAdd}`
 );
 
-// Find `const pipelineDebug = safeBuildPipelineDebug(...)` replacement might have missed the variable itself if it wasn't matched perfectly.
-// Let's do a more robust regex for safeBuildPipelineDebug logic block.
-code = code.replace(
-  /\/\/ Build pipelineDebug object[\s\S]*?pipelineDebug generation crashed"\]\n\s*\}\);/g,
-  ""
+const newRoutingLogic = `
+        // 3. Fast deterministic multi-file extraction
+        if (excelFiles.length > 0) {
+          const baseStorageDir = path.resolve(__dirname, "../../storage");
+          let isVrChennai = false;
+          let vrChennaiResult = null;
+          
+          try {
+            // Check first file
+            const primaryFile = excelFiles[0];
+            const filePath = path.join(baseStorageDir, primaryFile.filename || primaryFile.originalName || primaryFile.name);
+            if (fs.existsSync(filePath)) {
+               const workbook = xlsx.readFile(filePath, { bookSheets: true });
+               const detection = detectWorkbookType(workbook, primaryFile.originalName);
+               if (detection.type === "vr_chennai_ecm_workbook_v1") {
+                  isVrChennai = true;
+                  const fullWorkbook = xlsx.readFile(filePath);
+                  vrChennaiResult = extractVrChennaiWorkbook(fullWorkbook, primaryFile.originalName);
+                  
+                  if (vrChennaiResult.validationErrors.length > 0) {
+                     return response.status(422).json({
+                        success: false,
+                        error: "VR Chennai extraction failed quality gate: " + vrChennaiResult.validationErrors.join(", "),
+                        extractionSummary: vrChennaiResult.extractionDebug
+                     });
+                  }
+                  
+                  extractedProjects = vrChennaiResult.projects;
+                  extractionDebug = vrChennaiResult.extractionDebug;
+                  extractionDebug.vrChennaiSpecificData = {
+                     energyProfile: vrChennaiResult.energyProfile,
+                     connectedLoad: vrChennaiResult.connectedLoad,
+                     costingData: vrChennaiResult.costingData
+                  };
+               }
+            }
+          } catch(e) {
+            console.error("Workbook detection error", e);
+          }
+          
+          if (!isVrChennai) {
+            try {
+              // Give 15 seconds for multi-file extraction
+              const extraction = await withTimeout(
+`;
+
+reportsContent = reportsContent.replace(
+  `        // 3. Fast deterministic multi-file extraction
+        if (excelFiles.length > 0) {
+          const baseStorageDir = path.resolve(__dirname, "../../storage");
+          try {
+            // Give 15 seconds for multi-file extraction
+            const extraction = await withTimeout(`,
+  newRoutingLogic
 );
 
-// Also, need to replace `response.status(200).json({ ... pipelineDebug` to just use the one from scope
-// Wait, it is already in scope because we declared `let pipelineDebug;`
-
-// In `reports.js`, let's search for `providerAttempts = e.providerAttempts || providerAttempts || [];` and replace it
-code = code.replace(
-  /providerAttempts = e\.providerAttempts \|\| providerAttempts \|\| \[\];/g,
-  ""
+reportsContent = reportsContent.replace(
+  `            if (extraction.success && extraction.projects && extraction.projects.length > 0) {
+              extractedProjects = extraction.projects;
+              extractionDebug = extraction.extractionDebug;
+            }
+          } catch (e) {`,
+  `            if (extraction.success && extraction.projects && extraction.projects.length > 0) {
+              extractedProjects = extraction.projects;
+              extractionDebug = extraction.extractionDebug;
+            }
+          } catch (e) {`
 );
 
-code = code.replace(/let providerAttempts = \[\];/g, "");
-code = code.replace(
-  /providerAttempts,/g,
-  "providerAttempts: debugCollector.data.providerAttempts,"
+// We need to close the !isVrChennai block.
+reportsContent = reportsContent.replace(
+  `          } catch (e) {
+            extractionAttempts.push({
+              filename: "multi-file",
+              status: "timeout or error",
+              error: e.message,
+            });
+          }
+        }`,
+  `          } catch (e) {
+            extractionAttempts.push({
+              filename: "multi-file",
+              status: "timeout or error",
+              error: e.message,
+            });
+          }
+         } // end !isVrChennai
+        }`
 );
 
-// Replace aiFinalizationTimeoutMs definitions. Since we can't reference it if we remove it, we should replace its usage with debugCollector.data.config.aiFinalizationTimeoutMs
-code = code.replace(/const aiFinalizationTimeoutMs = Number\([^;]+;\n/g, "");
-code = code.replace(
-  /aiFinalizationTimeoutMs,/g,
-  "debugCollector.data.config.aiFinalizationTimeoutMs,"
+
+// Now insert the vrChennai mapping in `reportData = filterReportProjects(reportData);`
+const mappingLogic = `
+        let reportData = buildLightweightReportData(
+          extractedProjects,
+          reportDetails
+        );
+        reportData = filterReportProjects(reportData);
+        reportData = enforceReportQuality(reportData);
+
+        if (extractionDebug?.vrChennaiSpecificData) {
+            reportData.energyProfile = extractionDebug.vrChennaiSpecificData.energyProfile;
+            reportData.connectedLoad = extractionDebug.vrChennaiSpecificData.connectedLoad;
+            reportData.costingData = extractionDebug.vrChennaiSpecificData.costingData;
+            
+            if (reportData.energyProfile) {
+                reportData.executiveSummary.totalEnergySavingPotential = extractionDebug.totalEnergySaving || reportData.executiveSummary.totalEnergySavingPotential;
+                reportData.executiveSummary.totalAnnualCostSavingPotential = extractionDebug.totalAnnualSaving || reportData.executiveSummary.totalAnnualCostSavingPotential;
+            }
+        }
+`;
+
+reportsContent = reportsContent.replace(
+  `        let reportData = buildLightweightReportData(
+          extractedProjects,
+          reportDetails
+        );
+        reportData = filterReportProjects(reportData);
+        reportData = enforceReportQuality(reportData);`,
+  mappingLogic
 );
 
-fs.writeFileSync("./endpoints/reports.js", code);
-console.log("patched reports.js");
+fs.writeFileSync('endpoints/reports.js', reportsContent);
+console.log("Applied changes to reports.js");

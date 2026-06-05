@@ -1,3 +1,4 @@
+const { normalizeReportGroups } = require("../utils/groupHelper");
 const MIN_THEORY_WORDS = 800;
 const MAX_THEORY_WORDS = 1400;
 
@@ -334,7 +335,7 @@ function enforceReportQuality(reportData = {}) {
   const cloned = JSON.parse(JSON.stringify(reportData || {}));
   const rejectedRows = [];
 
-  cloned.groups = safeArray(cloned.groups).map((group) => {
+  cloned = normalizeReportGroups(cloned); cloned.groups = cloned.groups.map((group) => {
     const cleanProjects = [];
 
     for (const project of safeArray(group.projects)) {
@@ -376,8 +377,8 @@ function enforceReportQuality(reportData = {}) {
   }
 
   console.log("[REPORT_QUALITY_ENFORCED]", {
-    groups: cloned.groups?.length || 0,
-    projects: cloned.groups?.reduce((s, g) => s + (g.projects?.length || 0), 0),
+    groups: cloned.groups.length || 0,
+    projects: cloned.groups.reduce((s, g) => s + (g.projects?.length || 0), 0),
     rejectedRows: cloned.extractionSummary?.rejectedRowCount || 0,
     theoryFormat: cloned.extractionSummary?.theoryFormat,
     minTheoryWords: cloned.extractionSummary?.minTheoryWords,

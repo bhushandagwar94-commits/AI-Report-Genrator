@@ -2565,8 +2565,29 @@ function reportEndpoints(app) {
           extractedProjects,
           reportDetails
         );
+        
+        if (!reportData) {
+          console.error("[GENERATE_REPORTDATA_NULL]", {
+            uploadedFiles: request.files?.map(f => f.originalname || f.filename),
+            message: "Extraction returned null reportData"
+          });
+
+          return response.status(400).json({
+            success: false,
+            error: "Report generation failed because no report data was built from uploaded files.",
+            details: "Extractor returned null reportData. Please check file format or extraction logs."
+          });
+        }
         reportData = filterReportProjects(reportData);
         reportData = enforceReportQuality(reportData);
+        reportData = normalizeReportGroups(reportData);
+        
+        console.log("[GENERATE_REPORTDATA_NORMALIZED]", {
+          hasReportData: !!reportData,
+          groupCount: reportData.groups.length,
+          projectCount: reportData.groups.reduce((sum, g) => sum + (g.projects || []).length, 0),
+          extractionFormat: reportData.extractionFormat
+        });
 
         if (extractionDebug) {
           reportData.extractionDebug = extractionDebug;
@@ -2574,8 +2595,8 @@ function reportEndpoints(app) {
           reportData.extractionSummary.validationWarnings = extractionDebug.validationWarnings || [];
         }
 
-        const projectCount = (reportData.groups || []).reduce(
-          (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
+        const projectCount = reportData.groups.reduce(
+          (sum, group) => sum + group.projects.length,
           0
         );
 

@@ -1,3 +1,4 @@
+const { normalizeReportGroups } = require("../utils/groupHelper");
 const llmProviderService = require("./llmProviderService");
 const { qcMergeAiEnhancement } = require("./aiQcMergeService");
 const { enhanceReportLocally } = require("./localNarrativeEnhancer");
