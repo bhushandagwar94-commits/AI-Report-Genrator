@@ -860,7 +860,7 @@ function BuildingEnergyProfilePage({ data }: any) {
     <section className="report-page" style={pageStyle}>
       <SectionHeader level={1} title="Chapter 2: Plant / Building Details and Energy Profile" />
       
-      <SectionHeader number="2.1" title="General Information" />
+      <SectionHeader number="2.1" title="About the Facility" />
       {renderMandatoryKeyValueTable({
         "Name of facility": bp.facilityName || data.reportInfo?.clientName,
         "Address": bp.address,
@@ -877,21 +877,21 @@ function BuildingEnergyProfilePage({ data }: any) {
         "SEE-Tech audit team": data.reportInfo?.preparedBy || "SEE-Tech Solutions",
       })}
 
-      <SectionHeader number="2.2" title="Building Operation Details" />
+      <SectionHeader number="2.2" title="Production Facility Operation Details" />
       {renderMandatoryTable([
         { key: "area", label: "Area / Function" },
         { key: "operatingHours", label: "Operating Hours" },
         { key: "remarks", label: "Remarks" },
       ], asArray(data.buildingOperationDetails).length ? data.buildingOperationDetails : [
-        { area: "Office area" },
-        { area: "Common area" },
-        { area: "Basement / parking" },
-        { area: "Server room / data room" },
-        { area: "Kitchen" },
-        { area: "Laundry" },
-        { area: "Guest rooms" },
-        { area: "Patient rooms / wards" },
-        { area: "OT / ICU / critical areas" }
+        { area: "Production areas" },
+        { area: "Utility block" },
+        { area: "Chiller plant" },
+        { area: "Compressor room" },
+        { area: "Dryer section" },
+        { area: "Injection/stretch blow molding machines" },
+        { area: "AHU/clean room area" },
+        { area: "Electrical room/APFC" },
+        { area: "Maintenance/utilities" },
       ])}
 
       <SectionHeader number="2.3" title="Utility and Energy Sources" />
@@ -1069,6 +1069,21 @@ function BuildingEnergyProfilePage({ data }: any) {
   );
 }
 
+function cleanBulletText(value: unknown) {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line) =>
+      line
+        .replace(/^\s*\d+\.\s*/g, "")
+        .replace(/^\s*[-–—]\s*/g, "")
+        .replace(/^\s*•\s*/g, "")
+        .replace(/^\s*-\s*•\s*/g, "")
+        .replace(/^\s*\d+\.\s*-\s*•\s*/g, "")
+        .trim()
+    )
+    .filter(Boolean);
+}
+
 const renderBulletTheory = (value: unknown) => {
   const text = String(value || "").trim();
 
@@ -1080,10 +1095,7 @@ const renderBulletTheory = (value: unknown) => {
     );
   }
 
-  const lines = text
-    .split(/\n+/)
-    .map((line) => line.replace(/^•\s*/, "").trim())
-    .filter(Boolean);
+  const lines = cleanBulletText(text);
 
   if (!lines.length) {
     return (

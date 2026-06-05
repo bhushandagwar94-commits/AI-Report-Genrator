@@ -275,8 +275,53 @@ function dedupeProjects(projects = []) {
   return output;
 }
 
+function classifyProjectSystem(project = {}) {
+  const title = String(project.title || project.ecmName || "").toLowerCase();
+  const ecmNo = String(project.ecmNo || "").toLowerCase();
+
+  const numberMatch = ecmNo.match(/(\d+)/);
+  const no = numberMatch ? Number(numberMatch[1]) : null;
+
+  const byNumber = {
+    1: "Chiller Plant / Cooling Tower",
+    2: "Chilled Water Secondary Pump",
+    3: "Compressed Air System",
+    4: "Chiller Primary Pump / Chiller Plant",
+    5: "Chiller Plant / Free Cooling",
+    6: "Cooling Tower Fan",
+    7: "Clean Room / AHU",
+    8: "CHW Secondary Pump Motor",
+    9: "CT Water Secondary Pump Motor",
+    10: "Cutting Grinder Motor Drive",
+    11: "PD Blower Drive",
+    12: "APFC / Electrical Power Quality",
+    13: "ASB Dryer Heat Recovery",
+    14: "Hot Flexible Duct Insulation",
+    15: "Barrel Heating / IR Heater",
+    16: "ASB 70 DPH Servo Motor",
+    17: "ASB 50 MB Servo Motor",
+    18: "EBM CMP 7.5 kW Servo Motor",
+    19: "EBM CMP 5.5 kW Servo Motor",
+    20: "EBM CMP 3.7 kW Servo Motor",
+    21: "Compressed Air Measurement & Management",
+    22: "Booster Compressor Motor & Automation"
+  };
+
+  if (byNumber[no]) return byNumber[no];
+
+  if (/chiller|cooling tower|ct|chw|ahu|free cooling/.test(title)) return "Cooling / HVAC Utility";
+  if (/compressor|compressed air/.test(title)) return "Compressed Air System";
+  if (/servo|asb|ebm|dryer|heater|barrel/.test(title)) return "Production Machine";
+  if (/apfc|kvar|power factor/.test(title)) return "Electrical Power Quality";
+  if (/blower|grinder|motor|pump/.test(title)) return "Motor Driven System";
+
+  return "Energy Conservation Measure";
+}
+
 function forceProjectQuality(project = {}) {
   const copy = { ...project };
+
+  copy.system = classifyProjectSystem(copy);
 
   for (const field of THEORY_FIELDS) {
     copy[field] = forceTheoryField(copy, field);

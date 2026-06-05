@@ -807,18 +807,29 @@ function heading3(text) {
   });
 }
 
-function bulletParagraphsFromText(text) {
-  return String(text || "")
+function cleanBulletText(value) {
+  return String(value || "")
     .split(/\n+/)
-    .map((line) => line.replace(/^•\s*/, "").trim())
-    .filter(Boolean)
     .map((line) =>
-      new Paragraph({
-        text: line,
-        bullet: { level: 0 },
-        spacing: { after: 120 }
-      })
-    );
+      line
+        .replace(/^\s*\d+\.\s*/g, "")
+        .replace(/^\s*[-–—]\s*/g, "")
+        .replace(/^\s*•\s*/g, "")
+        .replace(/^\s*-\s*•\s*/g, "")
+        .replace(/^\s*\d+\.\s*-\s*•\s*/g, "")
+        .trim()
+    )
+    .filter(Boolean);
+}
+
+function bulletParagraphsFromText(text) {
+  return cleanBulletText(text).map((line) =>
+    new Paragraph({
+      text: line,
+      bullet: { level: 0 },
+      spacing: { after: 120 }
+    })
+  );
 }
 
 function paragraph(text) {
@@ -1073,8 +1084,8 @@ function generateTableOfContents(groupedProjects) {
     tocLine("1.9 Recommended Implementation Approach", 1, false),
 
     tocLine("Chapter 2. Plant / Building Details and Energy Profile", 0, true),
-    tocLine("2.1 General Information", 1, false),
-    tocLine("2.2 Building Operation Details", 1, false),
+    tocLine("2.1 About the Facility", 1, false),
+    tocLine("2.2 Production Facility Operation Details", 1, false),
     tocLine("2.3 Utility and Energy Sources", 1, false),
     tocLine("2.4 Electrical Supply Details", 1, false),
     tocLine("2.5 Electricity Consumption and Billing Summary", 1, false),
@@ -1435,7 +1446,7 @@ function generateBuildingProfile(report) {
         report.reportInfo?.preparedBy || "SEE-Tech Solutions",
     }),
 
-    heading2("2.2 Building Operation Details"),
+    heading2("2.2 Production Facility Operation Details"),
     mandatoryTable(
       [
         { key: "area", label: "Area / Function" },
@@ -1445,15 +1456,15 @@ function generateBuildingProfile(report) {
       asArray(report.buildingOperationDetails).length
         ? report.buildingOperationDetails
         : [
-            { area: "Office area" },
-            { area: "Common area" },
-            { area: "Basement / parking" },
-            { area: "Server room / data room" },
-            { area: "Kitchen" },
-            { area: "Laundry" },
-            { area: "Guest rooms" },
-            { area: "Patient rooms / wards" },
-            { area: "OT / ICU / critical areas" },
+            { area: "Production areas" },
+            { area: "Utility block" },
+            { area: "Chiller plant" },
+            { area: "Compressor room" },
+            { area: "Dryer section" },
+            { area: "Injection/stretch blow molding machines" },
+            { area: "AHU/clean room area" },
+            { area: "Electrical room/APFC" },
+            { area: "Maintenance/utilities" },
           ]
     ),
 

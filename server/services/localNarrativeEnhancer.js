@@ -4,16 +4,28 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function repeatUntilMinWords(bullets, minWords = 800, maxWords = 1400) {
-  const result = [...bullets];
+const TARGETS = {
+  existingSystemDescription: { min: 220, max: 380 },
+  problemGapIdentified: { min: 220, max: 380 },
+  proposedProject: { min: 220, max: 420 },
+  rationaleForEnergySaving: { min: 220, max: 420 },
+  measurementVerificationPlan: { min: 220, max: 420 },
+  benefitsOtherThanEnergySaving: { min: 150, max: 260 },
+  conclusion: { min: 100, max: 180 }
+};
 
-  const countWords = (text) => String(text || "").split(/\s+/).filter(Boolean).length;
+function countWords(text) {
+  return String(text || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function repeatUntilTarget(bullets, minWords, maxWords) {
+  const result = [...bullets];
   const toText = () => result.map((b) => "• " + b).join("\n");
 
+  let i = 0;
   while (countWords(toText()) < minWords) {
-    result.push("The engineering team should verify baseline operating conditions through measured data rather than relying only on nameplate values, because actual energy saving depends on load profile, operating hours, control mode, equipment condition and process dependency.");
-    result.push("The implementation plan should include technical validation, site measurements, control logic review, installation planning, commissioning checks and post-implementation monitoring so that the saving can be proven in a transparent manner.");
-    result.push("The recommendation should preserve all available project values from the input data and use this section only to explain the engineering logic, execution method, risks, verification requirements and operational benefits.");
+    result.push(bullets[i % bullets.length] + " (Detailed engineering validation will confirm exact requirements for this specific site integration, ensuring proper operational stability).");
+    i++;
   }
 
   const words = toText().split(/\s+/);
@@ -24,115 +36,290 @@ function repeatUntilMinWords(bullets, minWords = 800, maxWords = 1400) {
   return toText();
 }
 
-function buildHvacEngineeringBullets(project) {
-  const title = project.title || project.ecmName || "HVAC energy saving project";
+function getEcmSpecificSectionBullets(project, section) {
+  const ecmNo = Number(String(project.ecmNo || "").match(/\d+/)?.[0]);
+  const title = project.title || project.ecmName || "Energy conservation measure";
 
-  return [
-    `${title} should be reviewed as a cooling-system performance improvement measure rather than only as an isolated equipment-level action.`,
-    "The first engineering step is to establish how the present system operates under actual load conditions, including chilled water flow, condenser water flow, cooling tower operation, pump operation, AHU demand and temperature control.",
-    "The audit team should verify whether the system is operating continuously at fixed capacity or whether control logic is available to match operation with actual cooling demand.",
-    "Where flow is higher than required, throttling loss, bypass flow, low temperature differential and unnecessary pump energy can increase operating cost without improving useful cooling.",
-    "Where temperature differential is poor, the plant may circulate more water than required and operate chillers, pumps or cooling tower fans inefficiently.",
-    "The proposed measure should therefore be validated through measurement of kW, flow, head, temperature difference, operating hours and equipment sequencing.",
-    "The final implementation should include control tuning, operating set-point review, VFD or automation logic where applicable, commissioning under multiple load conditions and operator training.",
-    "The expected benefit is not limited to electricity saving. It can also improve system stability, reduce equipment stress, support better monitoring and create a more disciplined operating method."
-  ];
-}
+  const getSectionSpecificBase = (ecmName, sys, prob, prop, rat, mv, ben, conc) => {
+    switch (section) {
+      case "existingSystemDescription": return sys;
+      case "problemGapIdentified": return prob;
+      case "proposedProject": return prop;
+      case "rationaleForEnergySaving": return rat;
+      case "measurementVerificationPlan": return mv;
+      case "benefitsOtherThanEnergySaving": return ben;
+      case "conclusion": return conc;
+      default: return sys;
+    }
+  };
 
-function buildMotorEngineeringBullets(project) {
-  const title = project.title || project.ecmName || "Motor/Pump/Fan energy saving project";
-  return [
-    `${title} focuses on optimizing the mechanical and electrical efficiency of the driven equipment.`,
-    "The baseline operation must be measured using a power analyzer and flow/pressure meters to determine the actual operating point on the performance curve.",
-    "Many systems are over-designed for peak loads that rarely occur, leading to inefficient part-load operation.",
-    "The proposed implementation will reduce energy consumption by matching the equipment output directly to the process demand.",
-    "This can be achieved by installing variable frequency drives, trimming impellers, replacing inefficient components, or adjusting control setpoints.",
-    "Energy savings are calculated based on the affinity laws or specific power consumption improvements.",
-    "The measurement and verification plan should track both the input kW and the useful output over a representative operating cycle.",
-    "Secondary benefits include reduced mechanical wear, lower starting currents, and better process control."
-  ];
-}
-
-function buildLightingEngineeringBullets(project) {
-  const title = project.title || project.ecmName || "Lighting energy saving project";
-  return [
-    `${title} involves upgrading the facility lighting system to improve efficiency and illumination quality.`,
-    "The baseline assessment requires a lux level survey and a count of existing fixtures along with their measured power consumption.",
-    "Inefficient lighting technologies waste significant energy as heat and require frequent maintenance.",
-    "The proposed project will implement high-efficiency LED fixtures, task lighting, or automated controls such as daylight harvesting and occupancy sensors.",
-    "The design must ensure that the new lighting meets the required standard for the specific work area without causing glare.",
-    "Energy savings are highly predictable as they depend directly on the difference in connected load and the operating hours.",
-    "Verification can be performed simply by measuring the current of lighting circuits before and after the retrofit.",
-    "Besides energy savings, the facility will benefit from reduced cooling loads, lower maintenance costs, and improved safety and productivity due to better visibility."
-  ];
-}
-
-function buildAirEngineeringBullets(project) {
-  const title = project.title || project.ecmName || "Compressed Air energy saving project";
-  return [
-    `${title} targets the reduction of energy wasted in the generation and distribution of compressed air.`,
-    "Compressed air is one of the most expensive utilities, with the majority of input energy lost as heat.",
-    "The baseline must quantify the specific power (kW/CFM), system pressure drop, and the percentage of air lost to leaks.",
-    "The proposed project will optimize the system through leak repairs, pressure reduction, improved compressor sequencing, or the installation of VFD compressors for trim load.",
-    "Attention must also be paid to end-use applications, ensuring air is not used for inappropriate tasks like cooling or sweeping.",
-    "Savings are calculated by the reduction in compressor kW required to meet the actual production demand.",
-    "The M&V plan should involve continuous monitoring of the system flow rate and total power consumption.",
-    "Additional benefits include stabilized plant pressure, reduced compressor wear, and extended equipment lifespan."
-  ];
-}
-
-function buildGenericEngineeringBullets(project) {
-  const title = project.title || project.ecmName || "Energy saving project";
-  return [
-    `${title} is an important initiative to improve overall facility efficiency.`,
-    "The baseline energy consumption and operating parameters must be thoroughly documented through field measurements and historical data analysis.",
-    "Current operations involve inefficiencies that result in excess energy usage and higher operating costs.",
-    "The proposed measure addresses these inefficiencies through equipment upgrades, process optimization, or improved operational controls.",
-    "A detailed engineering evaluation has confirmed the technical feasibility and economic viability of this project.",
-    "Savings estimates are based on engineering principles and industry standard practices for this type of system.",
-    "Post-implementation verification will require comparing the new operating data against the established baseline to confirm the expected reductions.",
-    "The project also offers non-energy benefits such as improved reliability, reduced maintenance, and a smaller environmental footprint."
-  ];
-}
-
-function getBulletsForSystem(project) {
-  const sys = String(project.system || "").toLowerCase();
-  const title = String(project.title || project.ecmName || "").toLowerCase();
-  
-  if (sys.includes("hvac") || sys.includes("chiller") || sys.includes("cooling") || sys.includes("ahu") || title.includes("chiller") || title.includes("hvac")) {
-    return buildHvacEngineeringBullets(project);
+  switch (ecmNo) {
+    case 1:
+      return getSectionSpecificBase(
+        title,
+        [
+          "The current chilled water plant incorporates multiple chillers and cooling towers operating in a combined header arrangement.",
+          "Cooling tower cells are currently operated without strict segregation between different chiller units.",
+          "Condenser water flow is distributed across all active cells irrespective of the actual heat rejection load.",
+          "The cooling tower fans operate based on a common basin temperature setpoint.",
+          "Current operation lacks isolation valves or logic to align specific towers to specific chillers."
+        ],
+        [
+          "The lack of segregation leads to mixed condenser water temperatures returning to the chillers.",
+          "Operating all cooling towers simultaneously reduces the temperature difference (delta-T) and causes inefficient heat transfer.",
+          "Chillers often operate with warmer condenser water than necessary, degrading their compressor efficiency.",
+          "Cooling tower fans and pumps consume excess energy due to unnecessary operation of multiple cells.",
+          "The system cannot optimize approach temperature effectively during partial load conditions."
+        ],
+        [
+          "Segregate the cooling tower cells to create dedicated condenser water loops for each chiller.",
+          "Install automated isolation valves to match cooling tower cells with active chillers.",
+          "Implement a control logic to sequence cooling tower fans based on dedicated chiller heat rejection requirements.",
+          "Optimize the condenser water pump operation to match the segregated flow.",
+          "Commission the system to ensure stable condenser water supply temperature to each active chiller."
+        ],
+        [
+          "Dedicated cooling tower cells will provide colder condenser water to the active chillers.",
+          "Lower condenser water temperature significantly improves chiller COP and reduces compressor kW/TR.",
+          "Fan energy is optimized by running only the necessary cooling tower cells at optimal speeds.",
+          "Pump energy is minimized by avoiding flow through inactive or unnecessary tower cells.",
+          "Overall plant efficiency is improved by tightly coupling heat rejection capacity with actual cooling load."
+        ],
+        [
+          "Measure chiller power consumption (kW) and cooling capacity (TR) before and after segregation.",
+          "Record condenser water supply and return temperatures to evaluate the improved approach.",
+          "Monitor cooling tower fan and condenser water pump power consumption.",
+          "Verify the operation of isolation valves and control sequences during different load profiles.",
+          "Calculate savings by comparing the baseline and post-implementation plant total kW/TR."
+        ],
+        [
+          "Improved chiller reliability due to optimal condenser water temperatures.",
+          "Reduced wear and tear on cooling tower fans and pumps.",
+          "Better control and monitoring of individual chiller performance.",
+          "Easier maintenance scheduling for isolated cooling tower cells."
+        ],
+        [
+          "Cooling tower segregation is a highly effective strategy to optimize chiller plant efficiency.",
+          "The project will deliver significant energy savings with a rapid payback period.",
+          "Implementation requires careful control integration but minimal mechanical disruption."
+        ]
+      );
+    case 2:
+      return getSectionSpecificBase(
+        title,
+        [
+          "The existing chilled water secondary pumping system distributes chilled water to various AHUs and process cooling loads.",
+          "The distribution loop consists of a common header with multiple secondary pumps.",
+          "The pumps are currently operated at fixed speed or with suboptimal differential pressure (DP) control.",
+          "Chilled water flow to individual loads is regulated by two-way or three-way modulating valves.",
+          "There is a bypass line intended to maintain minimum flow, which often allows continuous recirculation."
+        ],
+        [
+          "The system frequently experiences over-pumping, delivering more flow than required by the cooling loads.",
+          "The chilled water temperature differential (delta-T) is consistently lower than the design value.",
+          "Excessive pump head is generated, causing unnecessary energy consumption and noise.",
+          "The current control setpoint is too high or poorly located, leading to inefficient pump operation.",
+          "Bypass flow allows cold supply water to mix directly with return water, further degrading delta-T."
+        ],
+        [
+          "Optimize the secondary pump flow by implementing an advanced differential pressure (DP) reset strategy.",
+          "Install variable frequency drives (VFDs) on all secondary pumps if not already present.",
+          "Relocate or recalibrate DP sensors to accurately reflect the most hydraulically remote load.",
+          "Review and tune the valve authority and control logic at the AHUs to ensure proper modulation.",
+          "Minimize bypass flow through control logic adjustments and mechanical balancing."
+        ],
+        [
+          "According to the pump affinity laws, a reduction in flow and speed yields a cubic reduction in pump power.",
+          "Matching pump flow directly to the cooling demand minimizes unnecessary energy consumption.",
+          "Improving the chilled water delta-T enhances the overall efficiency of the chiller plant.",
+          "Reducing excessive pump head eliminates throttling losses at the control valves.",
+          "Optimized DP control ensures that the pumps only generate the pressure required to satisfy the critical load."
+        ],
+        [
+          "Measure secondary pump power (kW) and chilled water flow (GPM) across a full range of operating conditions.",
+          "Monitor the chilled water supply and return temperatures to evaluate delta-T improvements.",
+          "Record VFD operating frequencies and corresponding DP readings before and after optimization.",
+          "Verify that all cooling loads are satisfied under the new control strategy.",
+          "Calculate savings based on the reduction in pump energy consumption while maintaining required flow."
+        ],
+        [
+          "Reduced mechanical stress and wear on pump impellers, bearings, and seals.",
+          "Decreased noise and vibration in the chilled water distribution piping.",
+          "Improved control stability and comfort at the AHUs due to proper valve authority.",
+          "Extended equipment lifespan and reduced maintenance requirements."
+        ],
+        [
+          "Optimizing the CHW secondary pump flow is a proven method for substantial energy savings.",
+          "The project leverages existing infrastructure with advanced control strategies for high ROI.",
+          "Successful implementation will improve both pump efficiency and overall chiller plant performance."
+        ]
+      );
+    case 5:
+      return getSectionSpecificBase(
+        title,
+        [
+          "The current chiller plant operates year-round to satisfy the facility's cooling demand.",
+          "During winter conditions, the ambient wet bulb and dry bulb temperatures drop significantly.",
+          "The cooling towers are capable of producing cold condenser water during these periods.",
+          "Currently, the mechanical chillers run continuously, regardless of the low ambient temperatures.",
+          "The system lacks the necessary piping, heat exchangers, and controls for free cooling operation."
+        ],
+        [
+          "Running mechanical chillers during cold weather is highly inefficient and wastes significant energy.",
+          "The facility misses the opportunity to utilize the low ambient temperatures for free cooling.",
+          "Compressors endure unnecessary wear and tear during periods when natural cooling is available.",
+          "The overall annual plant efficiency is degraded due to the lack of a free cooling strategy.",
+          "The existing setup forces high energy consumption even when cooling loads are moderate and ambient conditions are favorable."
+        ],
+        [
+          "Install a free cooling system, potentially utilizing a plate heat exchanger to isolate the condenser and chilled water loops.",
+          "Implement piping modifications to allow chilled water to bypass the chillers and flow through the free cooling heat exchanger.",
+          "Upgrade the plant control system to monitor ambient wet bulb temperature and automatically initiate the free cooling mode.",
+          "Ensure proper interlocks between cooling tower fans, condenser pumps, and chilled water pumps.",
+          "Commission the system to seamlessly transition between mechanical cooling, partial free cooling, and full free cooling."
+        ],
+        [
+          "Free cooling drastically reduces or eliminates the need for mechanical compressor operation during favorable weather.",
+          "Cooling tower fans and pumps consume a fraction of the energy required by mechanical chillers.",
+          "By utilizing cold ambient air to chill the water, the system's overall energy consumption drops significantly.",
+          "Partial free cooling can also be used to pre-cool the chilled water, reducing the load on the mechanical chillers.",
+          "The energy savings are proportional to the number of hours the ambient temperature falls below the required threshold."
+        ],
+        [
+          "Monitor ambient wet bulb and dry bulb temperatures to determine the available free cooling hours.",
+          "Measure the total plant power consumption (kW) during both mechanical and free cooling modes.",
+          "Record the chilled water supply and return temperatures across the free cooling heat exchanger.",
+          "Verify the control logic transitions seamlessly without disrupting the facility's cooling supply.",
+          "Calculate savings by comparing the baseline winter energy consumption with the post-implementation data."
+        ],
+        [
+          "Significantly extended lifespan of mechanical chillers due to reduced operating hours.",
+          "Lower maintenance costs for compressors and related chiller components.",
+          "Increased overall plant reliability by providing an alternative cooling method.",
+          "Reduced carbon footprint due to minimized electricity consumption."
+        ],
+        [
+          "Implementing a free cooling system is a highly strategic energy conservation measure.",
+          "The project offers substantial savings, especially for facilities with year-round cooling needs in suitable climates.",
+          "It represents a major step towards optimizing the chiller plant's annual performance."
+        ]
+      );
+    case 12:
+      return getSectionSpecificBase(
+        title,
+        [
+          "The facility receives electrical power from the utility grid, distributed through various main and sub-panels.",
+          "A significant portion of the electrical load consists of inductive equipment such as motors, transformers, and lighting ballasts.",
+          "The current power factor correction (PFC) system is either inadequate, degraded, or entirely absent.",
+          "Capacitor banks may be fixed rather than automatically adjusting to the fluctuating load.",
+          "The electrical network experiences reactive power flows that do not perform useful work."
+        ],
+        [
+          "The facility suffers from a low power factor, resulting in high apparent power (kVA) demand.",
+          "The utility may impose penalties or higher billing rates based on kVAh consumption rather than just kWh.",
+          "Internal distribution transformers and cables are burdened with reactive current, reducing their effective capacity.",
+          "Excessive reactive current causes higher I2R (copper) losses in the electrical distribution system.",
+          "Voltage drops may occur at the extremities of the network during periods of high inductive load."
+        ],
+        [
+          "Install an Automatic Power Factor Correction (APFC) panel at the main incoming supply or near major inductive loads.",
+          "The APFC panel will consist of multiple capacitor steps controlled by a microprocessor-based relay.",
+          "The controller will continuously monitor the reactive power demand and dynamically switch capacitors in and out of the circuit.",
+          "Ensure the capacitor banks are equipped with detuned reactors if harmonic distortion is present in the network.",
+          "Commission the system to maintain a power factor close to unity (e.g., 0.99) under all operating conditions."
+        ],
+        [
+          "Improving the power factor directly reduces the apparent power (kVA) drawn from the utility.",
+          "This eliminates power factor penalties and reduces kVAh-based billing costs.",
+          "By neutralizing reactive current locally, the I2R losses in transformers and distribution cables are minimized.",
+          "The electrical system's capacity is effectively increased, allowing for future load additions without upgrading infrastructure.",
+          "Voltage profiles across the facility are stabilized, improving the performance of connected equipment."
+        ],
+        [
+          "Measure the facility's power factor, kVA demand, and active power (kW) before and after APFC installation.",
+          "Review utility bills to confirm the elimination of penalties and the reduction in kVAh charges.",
+          "Monitor the operation of the APFC controller to ensure proper stepping of capacitor banks.",
+          "Conduct a harmonic analysis to verify that the new capacitors do not create resonance issues.",
+          "Calculate savings based on the direct reduction in utility charges and estimated reduction in distribution losses."
+        ],
+        [
+          "Improved voltage stability, leading to better performance and longevity of motors and electronics.",
+          "Released capacity in existing transformers and switchgear.",
+          "Reduced heating in electrical cables and connections.",
+          "Enhanced overall safety and reliability of the electrical distribution system."
+        ],
+        [
+          "The installation of an APFC panel is a fundamental electrical efficiency upgrade.",
+          "It provides a very predictable and rapid return on investment through direct utility bill reductions.",
+          "The project is essential for maintaining a robust and cost-effective electrical infrastructure."
+        ]
+      );
+    default:
+      return getSectionSpecificBase(
+        title,
+        [
+          `The existing system related to ${title} operates under baseline conditions that were observed during the site audit.`,
+          "Current operating parameters, including energy consumption, flow rates, temperatures, and pressures, have been documented.",
+          "The equipment is currently controlled using legacy methods which may not dynamically adjust to the actual process requirements.",
+          "Maintenance records and operator feedback indicate standard operational practices without recent efficiency upgrades.",
+          "The system is a significant contributor to the facility's overall energy footprint."
+        ],
+        [
+          "Analysis of the baseline data reveals inefficiencies in the current operating mode.",
+          "The system frequently consumes more energy than necessary to meet the actual demand.",
+          "There is a notable gap between the current performance and industry best practices for similar equipment.",
+          "Energy is wasted through losses such as excessive friction, unrecovered heat, poor power quality, or lack of variable speed control.",
+          "The existing control strategy fails to optimize the equipment's performance during partial load conditions."
+        ],
+        [
+          `The proposed project for ${title} involves upgrading the equipment or modifying the control strategy to eliminate identified inefficiencies.`,
+          "Detailed engineering design will be required to select the appropriate technology, whether it be VFDs, heat recovery units, better insulation, or advanced automation.",
+          "The installation will be planned to minimize disruption to ongoing facility operations.",
+          "New sensors and control logic will be integrated to ensure the system responds dynamically to process demands.",
+          "Comprehensive testing and commissioning will be conducted to verify the system operates according to the new design parameters."
+        ],
+        [
+          "The energy savings are derived from fundamental engineering principles applicable to this specific technology.",
+          "By reducing unnecessary work, recovering waste energy, or improving conversion efficiency, the input power requirement is minimized.",
+          "The proposed modifications directly address the root causes of the energy waste identified in the baseline assessment.",
+          "Efficiency gains will be realized across the entire operating profile, particularly during off-peak or partial load periods.",
+          "The calculations are conservative and based on measured baseline data and manufacturer performance curves."
+        ],
+        [
+          "A robust M&V plan is crucial to confirm the predicted energy savings.",
+          "Baseline energy consumption and key operating metrics must be clearly established before implementation.",
+          "Post-implementation monitoring will involve measuring the same parameters under comparable operating conditions.",
+          "Data logging equipment may be installed temporarily or permanently to track performance.",
+          "Savings will be calculated by comparing the normalized baseline usage with the actual post-retrofit consumption."
+        ],
+        [
+          "Enhanced equipment reliability and reduced frequency of breakdowns.",
+          "Lower maintenance costs due to decreased wear and tear on mechanical components.",
+          "Improved process control, potentially leading to better product quality or increased throughput.",
+          "A safer and more comfortable working environment for facility personnel."
+        ],
+        [
+          `This energy conservation measure (${title}) is technically sound and economically viable.`,
+          "It addresses a clear inefficiency in the current system and offers a reliable stream of energy savings.",
+          "Implementation of this project is strongly recommended to advance the facility's energy management goals."
+        ]
+      );
   }
-  if (sys.includes("motor") || sys.includes("pump") || sys.includes("fan") || sys.includes("vfd") || title.includes("motor") || title.includes("pump") || title.includes("fan") || title.includes("vfd")) {
-    return buildMotorEngineeringBullets(project);
-  }
-  if (sys.includes("light") || title.includes("light") || title.includes("led")) {
-    return buildLightingEngineeringBullets(project);
-  }
-  if (sys.includes("air") || sys.includes("compress") || title.includes("air") || title.includes("compress")) {
-    return buildAirEngineeringBullets(project);
-  }
-  return buildGenericEngineeringBullets(project);
 }
 
 function enhanceProjectNarrative(project = {}) {
   const enhanced = { ...project };
-  const bullets = getBulletsForSystem(project);
 
-  const ENGINEERING_ANALYSIS_FIELDS = [
-    "existingSystemDescription",
-    "problemGapIdentified",
-    "proposedProject",
-    "rationaleForEnergySaving",
-    "measurementVerificationPlan",
-    "benefitsOtherThanEnergySaving",
-    "conclusion"
-  ];
-
-  for (const field of ENGINEERING_ANALYSIS_FIELDS) {
-    enhanced[field] = mergeAdditively(
-      enhanced[field],
-      repeatUntilMinWords(bullets)
-    );
+  for (const [section, limits] of Object.entries(TARGETS)) {
+    const rawBullets = getEcmSpecificSectionBullets(enhanced, section);
+    const existingContent = String(enhanced[section] || "").trim();
+    
+    let baseBullets = rawBullets;
+    if (existingContent.length > 50) {
+      baseBullets = [existingContent, ...rawBullets];
+    }
+    
+    enhanced[section] = repeatUntilTarget(baseBullets, limits.min, limits.max);
   }
 
   enhanced.numericFieldsLocked = true;

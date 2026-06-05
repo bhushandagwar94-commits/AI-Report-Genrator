@@ -45,6 +45,7 @@ function extractLightweightExcelData(filePath, file) {
   }
 
   const projects = extractProjects(sheets);
+  const financialValidation = validateFinancialColumns(projects);
 
   return {
     success: true,
@@ -54,6 +55,7 @@ function extractLightweightExcelData(filePath, file) {
     totalRows,
     projects,
     projectCount: projects.length,
+    warning: financialValidation.warning ? financialValidation.message : undefined
   };
 }
 
@@ -251,6 +253,28 @@ function parseNum(str) {
   if (!str) return null;
   const num = parseFloat(String(str).replace(/[^0-9.\-]/g, ""));
   return isNaN(num) ? null : num;
+}
+
+function validateFinancialColumns(projects = []) {
+  const sameCount = projects.filter((p) =>
+    String(p.investment || "").replace(/[₹,\s]/g, "") ===
+    String(p.annualSaving || "").replace(/[₹,\s]/g, "")
+  ).length;
+
+  if (projects.length > 5 && sameCount / projects.length > 0.8) {
+    console.warn("[FINANCIAL_COLUMN_MAPPING_SUSPICIOUS]", {
+      projectCount: projects.length,
+      sameInvestmentAndSavingCount: sameCount
+    });
+
+    return {
+      warning: true,
+      message:
+        "Investment and annual saving are identical for most ECMs. Please verify Excel column mapping."
+    };
+  }
+
+  return { warning: false };
 }
 
 module.exports = { extractLightweightExcelData };

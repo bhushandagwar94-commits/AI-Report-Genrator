@@ -2460,6 +2460,7 @@ function reportEndpoints(app) {
               filename: file.filename,
               status: extraction.success ? "success" : "failed",
               projectsFound: extraction.projectCount || 0,
+              warning: extraction.warning
             });
 
             if (
@@ -2501,6 +2502,11 @@ function reportEndpoints(app) {
           (sum, group) => sum + (Array.isArray(group.projects) ? group.projects.length : 0),
           0
         );
+
+        const anyWarning = extractionAttempts.find(a => a.warning)?.warning;
+        if (anyWarning && reportData.extractionSummary) {
+          reportData.extractionSummary.warning = anyWarning;
+        }
 
         console.log("[BACKEND_GENERATE_FILTERED]", {
           extractedProjectCount: extractedProjects.length,
