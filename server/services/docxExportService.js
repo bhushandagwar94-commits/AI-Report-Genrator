@@ -512,63 +512,49 @@ function buildEnergySavingCalculationRows(ecm) {
     ecm.calculationBasis ||
     ecm.assumptions ||
     [];
+  
   if (rows.length < 3) {
+    const bt = ecm.baselineTable || {};
     rows = [
+      {
+        parameter: "Equipment quantity",
+        unit: "Nos",
+        value: safeText(bt.quantity) || "[To be updated after site data verification]",
+      },
       {
         parameter: "Existing connected load / measured load",
         unit: "kW",
-        value: "[To be updated after site data verification]",
-      },
-      {
-        parameter: "Proposed load after project",
-        unit: "kW",
-        value: "[To be updated after site data verification]",
-      },
-      {
-        parameter: "Load reduction",
-        unit: "kW",
-        value: "[To be updated after site data verification]",
+        value: safeText(bt.existingConnectedLoad) || "[To be updated after site data verification]",
       },
       {
         parameter: "Operating hours",
         unit: "hours/year",
-        value: "[To be updated after site data verification]",
+        value: safeText(bt.annualOperatingHours) || "[To be updated after site data verification]",
+      },
+      {
+        parameter: "Baseline annual consumption",
+        unit: "kWh/year",
+        value: safeText(bt.baselineAnnualConsumption) || "[To be updated after site data verification]",
       },
       {
         parameter: "Annual energy saving",
         unit: "kWh/year",
-        value:
-          safeText(ecm.expectedEnergySaving) ||
-          safeText(ecm.energySaving) ||
-          "[Calculation pending]",
-      },
-      {
-        parameter: "Average tariff",
-        unit: "₹/kWh",
-        value: "[To be updated after site data verification]",
+        value: safeText(bt.expectedEnergySaving) || safeText(ecm.expectedEnergySaving) || safeText(ecm.energySaving) || "[Calculation pending]",
       },
       {
         parameter: "Annual cost saving",
         unit: "₹/year",
-        value:
-          safeText(ecm.expectedAnnualCostSaving) ||
-          safeText(ecm.annualSaving) ||
-          "[Calculation pending]",
+        value: safeText(bt.expectedAnnualCostSaving) || safeText(ecm.expectedAnnualCostSaving) || safeText(ecm.annualSaving) || "[Calculation pending]",
       },
       {
         parameter: "Estimated investment",
         unit: "₹",
-        value:
-          safeText(ecm.estimatedInvestment) ||
-          safeText(ecm.investment) ||
-          "[Calculation pending]",
+        value: safeText(bt.estimatedInvestment) || safeText(ecm.estimatedInvestment) || safeText(ecm.investment) || "[Calculation pending]",
       },
       {
         parameter: "Simple payback",
-        unit: "years",
-        value: safeText(ecm.simplePaybackPeriod)
-          ? Number(ecm.simplePaybackPeriod).toFixed(2)
-          : "[Calculation pending]",
+        unit: bt.simplePaybackPeriodMonths ? "months" : "years",
+        value: safeText(bt.simplePaybackPeriodMonths) || (safeText(ecm.simplePaybackPeriod) ? Number(ecm.simplePaybackPeriod).toFixed(2) : "[Calculation pending]"),
       },
     ];
   }
@@ -576,46 +562,59 @@ function buildEnergySavingCalculationRows(ecm) {
 }
 
 function buildKeyMetricRows(ecm) {
+  const bt = ecm.baselineTable || {};
   return [
     {
       srNo: 1,
       parameter: "Baseline consumption",
-      value: safeText(ecm.baselineConsumption) || "[Calculation pending]",
+      value: safeText(bt.baselineAnnualConsumption)
+        ? `${bt.baselineAnnualConsumption} kWh/year`
+        : (safeText(ecm.baselineConsumption) || "[Calculation pending]"),
     },
     {
       srNo: 2,
       parameter: "Energy saving",
-      value: safeText(ecm.expectedEnergySaving)
-        ? `${formatNumber(ecm.expectedEnergySaving)} kWh/year`
-        : "[Calculation pending]",
+      value: safeText(bt.expectedEnergySaving)
+        ? `${bt.expectedEnergySaving} kWh/year`
+        : (safeText(ecm.expectedEnergySaving)
+          ? `${formatNumber(ecm.expectedEnergySaving)} kWh/year`
+          : "[Calculation pending]"),
     },
     {
       srNo: 3,
       parameter: "Percentage saving",
-      value: safeText(ecm.percentSaving)
-        ? `${formatNumber(ecm.percentSaving, 2)}%`
-        : "[Calculation pending]",
+      value: safeText(bt.percentageSaving)
+        ? bt.percentageSaving
+        : (safeText(ecm.percentSaving)
+          ? `${formatNumber(ecm.percentSaving, 2)}%`
+          : "[Calculation pending]"),
     },
     {
       srNo: 4,
       parameter: "Cost saving",
-      value: safeText(ecm.expectedAnnualCostSaving)
-        ? formatINR(ecm.expectedAnnualCostSaving)
-        : "[Calculation pending]",
+      value: safeText(bt.expectedAnnualCostSaving)
+        ? bt.expectedAnnualCostSaving
+        : (safeText(ecm.expectedAnnualCostSaving)
+          ? formatINR(ecm.expectedAnnualCostSaving)
+          : "[Calculation pending]"),
     },
     {
       srNo: 5,
       parameter: "Estimated investment",
-      value: safeText(ecm.estimatedInvestment)
-        ? formatINR(ecm.estimatedInvestment)
-        : "[Calculation pending]",
+      value: safeText(bt.estimatedInvestment)
+        ? bt.estimatedInvestment
+        : (safeText(ecm.estimatedInvestment)
+          ? formatINR(ecm.estimatedInvestment)
+          : "[Calculation pending]"),
     },
     {
       srNo: 6,
-      parameter: "Payback period",
-      value: safeText(ecm.simplePaybackPeriod)
-        ? `${formatNumber(ecm.simplePaybackPeriod, 2)} years`
-        : "[Calculation pending]",
+      parameter: bt.simplePaybackPeriodMonths ? "Payback period (months)" : "Payback period (years)",
+      value: safeText(bt.simplePaybackPeriodMonths)
+        ? bt.simplePaybackPeriodMonths
+        : (safeText(ecm.simplePaybackPeriod)
+          ? `${formatNumber(ecm.simplePaybackPeriod, 2)}`
+          : "[Calculation pending]"),
     },
     {
       srNo: 7,
@@ -1453,6 +1452,7 @@ function generateBuildingProfile(report) {
   const esd = report.electricalSupplyDetails || {};
   const benchmark = report.specificEnergyBenchmark || {};
   const placeholder = "[To be updated after site data verification]";
+  const isVrChennai = report.extractionFormat === "vr_chennai_ecm_workbook_v1" || report.reportInfo?.extractionFormat === "vr_chennai_ecm_workbook_v1";
   return [
     heading1("Chapter 2: Plant / Building Details and Energy Profile"),
 
@@ -1483,7 +1483,18 @@ function generateBuildingProfile(report) {
       ],
       asArray(report.buildingOperationDetails).length
         ? report.buildingOperationDetails
-        : [
+        : (isVrChennai ? [
+            { area: "Mall common areas" },
+            { area: "Retail tenant areas" },
+            { area: "Chiller plant" },
+            { area: "Cooling tower area" },
+            { area: "Pump room" },
+            { area: "AHU / air washer / ventilation area" },
+            { area: "Electrical room / HT supply" },
+            { area: "Escalator and lift areas" },
+            { area: "STP / scrubber / blower area" },
+            { area: "Maintenance/utilities" },
+          ] : [
             { area: "Production areas" },
             { area: "Utility block" },
             { area: "Chiller plant" },
@@ -1493,7 +1504,7 @@ function generateBuildingProfile(report) {
             { area: "AHU/clean room area" },
             { area: "Electrical room/APFC" },
             { area: "Maintenance/utilities" },
-          ]
+          ])
     ),
 
     heading2("2.3 Utility and Energy Sources"),
@@ -1573,14 +1584,21 @@ function generateBuildingProfile(report) {
         { key: "buildingType", label: "Building Type" },
         { key: "benchmark", label: "Recommended Benchmark" },
       ],
-      [
+      (isVrChennai ? [
+        { buildingType: "Whole building", benchmark: "kWh/sq.ft/year" },
+        { buildingType: "HVAC system", benchmark: "kW/TR and kWh/TRh" },
+        { buildingType: "Chiller plant", benchmark: "kW/TR" },
+        { buildingType: "Lighting/common area", benchmark: "W/sq.m or kWh/sq.ft/year" },
+        { buildingType: "Vertical transport", benchmark: "kWh/year or kWh/day" },
+        { buildingType: "Ventilation/blower systems", benchmark: "kW/CFM or kWh/year" },
+      ] : [
         { buildingType: "Production areas", benchmark: "kWh/kg product or kWh/machine-hour" },
         { buildingType: "Utility block", benchmark: "kWh/ton utility output or kWh/day" },
         { buildingType: "Compressed air system", benchmark: "kW/CFM or kWh/Nm3" },
         { buildingType: "Chiller plant", benchmark: "kW/TR and kWh/TRh" },
         { buildingType: "Dryer section", benchmark: "kWh/kg moisture removed" },
         { buildingType: "Clean room / AHU area", benchmark: "kWh/sq.ft/year or kWh/air-change" },
-      ]
+      ])
     ),
     mandatoryKeyValueTable({
       "Annual electricity consumption": benchmark.annualElectricityConsumption,
@@ -1605,7 +1623,15 @@ function generateBuildingProfile(report) {
       ],
       asArray(report.majorEnergyConsumingSystems).length
         ? report.majorEnergyConsumingSystems
-        : [
+        : (isVrChennai ? [
+            { system: "HVAC - Chillers", majorEquipment: "Water cooled centrifugal chillers" },
+            { system: "HVAC - Cooling Towers", majorEquipment: "Cooling tower cells" },
+            { system: "HVAC - Pumps", majorEquipment: "Primary / Secondary / Condenser pumps" },
+            { system: "HVAC - Air Handling", majorEquipment: "AHUs, Air Washers, Ventilation fans" },
+            { system: "Lighting", majorEquipment: "Common area, tenant, facade lighting" },
+            { system: "Vertical Transport", majorEquipment: "Escalators and Lifts" },
+            { system: "Plumbing/STP", majorEquipment: "Water pumps, STP blowers, scrubber" },
+          ] : [
             { system: "Production areas", majorEquipment: "ASB / EBM / molding machines / process drives" },
             { system: "Utility block", majorEquipment: "Chillers / cooling towers / pumps / AHUs" },
             { system: "Compressed air system", majorEquipment: "Air compressors / dryers / receivers / piping network" },
@@ -1614,7 +1640,7 @@ function generateBuildingProfile(report) {
             { system: "Pumps and motors", majorEquipment: "Process pumps / utility pumps / motor-driven auxiliaries" },
             { system: "Cooling tower", majorEquipment: "Cooling tower cells / fans / condenser water pumping" },
             { system: "Clean room / AHU", majorEquipment: "AHUs / FCUs / ventilation / clean room controls" },
-          ]
+          ])
     ),
 
     heading2("2.8 HVAC System Details"),

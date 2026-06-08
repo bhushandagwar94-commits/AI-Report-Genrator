@@ -116,7 +116,7 @@ function looksLikeFallbackEquipmentRow(project = {}) {
     return true;
   }
 
-  if ((payback ?? 0) > 25) {
+  if ((payback ?? 0) > 150) {
     return true;
   }
 
@@ -154,6 +154,7 @@ function dedupeProjects(projects = [], state = {}) {
 
     if (titleKey) {
       const duplicateTitleKey = `${normalizeText(project.projectNo || project.ecmNo || "")}|${titleKey}`;
+      console.log(`[DEDUPE_FILTER] ecmNo=${project.ecmNo}, projectNo=${project.projectNo}, duplicateTitleKey=${duplicateTitleKey}`);
       if (titleSeen.has(duplicateTitleKey)) {
         continue;
       }
@@ -176,6 +177,7 @@ function filterAndStabilizeProjects(projects = []) {
 
   for (const project of safeArray(projects)) {
     if (looksLikeFallbackEquipmentRow(project)) {
+      console.log("[DEBUG] Filter dropped project:", project.ecmNo, project.title);
       rejected.push(project);
       continue;
     }
@@ -208,7 +210,11 @@ function filterReportProjects(reportData = {}) {
 
   groups.forEach((group, groupIndex) => {
     const groupProjects = safeArray(group?.projects).filter(
-      (project) => !looksLikeFallbackEquipmentRow(project)
+      (project) => {
+        const isBad = looksLikeFallbackEquipmentRow(project);
+        if (isBad) console.log("[DEBUG] filterReportProjects dropped:", project.ecmNo, project.title);
+        return !isBad;
+      }
     );
     const dedupedProjects = dedupeProjects(groupProjects, dedupeState);
     const result = {

@@ -54,6 +54,15 @@ const KNOWN_MTL_BADDI_COLUMN_MAP = {
   payback: 16,
 };
 
+const KNOWN_VR_CHENNAI_COLUMN_MAP = {
+  ecmNo: 0,
+  title: 3,
+  investment: 13,
+  annualSaving: 12,
+  energySaving: 11,
+  payback: 14,
+};
+
 function normalizeHeader(value) {
   return String(value || "")
     .toLowerCase()
@@ -72,28 +81,52 @@ function isKnownMtlBaddiEcmFile(fileName = "") {
   return name.includes("mtl") && name.includes("baddi") && name.includes("ecm");
 }
 
+function isKnownVrChennaiEcmFile(fileName = "") {
+  const name = String(fileName).toLowerCase();
+  return name.includes("vr") && name.includes("chennai") && name.includes("ecm");
+}
+
 function shouldForceKnownColumnMap(fileName, headerRow = []) {
   const headerText = headerRow.map(normalizeHeader).join(" ");
-  return (
+  if (
     isKnownMtlBaddiEcmFile(fileName) &&
     /(sr|ecm|project)/.test(headerText) &&
     /investment|capex/.test(headerText) &&
     /annual\s*saving|annual\s*savings|cost\s*saving|savings\s*in\s*rs/.test(headerText) &&
     /energy\s*saving|saving\s*kwh|kwh/.test(headerText) &&
     /payback/.test(headerText)
-  );
+  ) {
+    return "mtl_baddi";
+  }
+  
+  if (
+    isKnownVrChennaiEcmFile(fileName) &&
+    /(sr|ecm)/.test(headerText) &&
+    /investment/.test(headerText) &&
+    /savings\s*in\s*rs/.test(headerText) &&
+    /saving,\s*kwh/.test(headerText) &&
+    /payback/.test(headerText)
+  ) {
+    return "vr_chennai";
+  }
+
+  return null;
 }
 
-function buildForcedKnownColumnMap(headerRow = []) {
+function buildForcedKnownColumnMap(mapType, headerRow = []) {
+  const targetMap = mapType === "vr_chennai" 
+    ? KNOWN_VR_CHENNAI_COLUMN_MAP 
+    : KNOWN_MTL_BADDI_COLUMN_MAP;
+
   return Object.fromEntries(
-    Object.entries(KNOWN_MTL_BADDI_COLUMN_MAP).map(([field, columnIndex]) => [
+    Object.entries(targetMap).map(([field, columnIndex]) => [
       field,
       {
         columnIndex,
         column: columnLetter(columnIndex),
         header: headerRow[columnIndex] || "",
         score: 100,
-        source: "forced_known_mtl_baddi_map",
+        source: `forced_known_${mapType}_map`,
       },
     ])
   );
@@ -593,9 +626,10 @@ function extractMultiFileExcelData(files = [], baseStorageDir) {
   const headerRow = bestSheet.rows[headerRowIndex] || [];
   let columnMap = {};
 
-  if (shouldForceKnownColumnMap(primaryFileName, headerRow)) {
-    columnMap = buildForcedKnownColumnMap(headerRow);
-    console.log("[FORCED_MTL_BADDI_ECM_COLUMN_MAP]", columnMap);
+  const forcedMapType = shouldForceKnownColumnMap(primaryFileName, headerRow);
+  if (forcedMapType) {
+    columnMap = buildForcedKnownColumnMap(forcedMapType, headerRow);
+    console.log(`[FORCED_${forcedMapType.toUpperCase()}_ECM_COLUMN_MAP]`, columnMap);
   } else {
     const candidates = buildColumnCandidates(headerRow);
     const usedColumns = new Set();

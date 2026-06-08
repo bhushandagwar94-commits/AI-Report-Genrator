@@ -1,26 +1,24 @@
 const xlsx = require("xlsx");
 const fs = require("fs");
 const path = require("path");
-const { extractBillFromPdf } = require("./electricityBillPdfExtractorService");
+const { extractPdfBills } = require("./pdfBillExtractor");
+const {
+  MONTHS,
+  cleanNumber,
+  cleanPercent,
+  cleanText,
+  normalizeAssetType,
+  normalizeMonthlyBill,
+  normalizeServiceNo,
+  isValidMonthlyBill,
+} = require("./extractedDataContextService");
 
 function parseNumberOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const parsed = Number(String(value).replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(parsed) ? parsed : null;
+  return cleanNumber(value);
 }
 
 function parsePercent(value) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number") {
-    // Check if it's already a decimal representation of percentage
-    return value;
-  }
-  const str = String(value);
-  const num = parseNumberOrNull(str);
-  if (num === null) return null;
-  if (str.includes("%")) return num; 
-  return num > 1 ? num / 100 : num; // If > 1, assume it's like "15" for 15%. If <= 1, it's "0.15" for 15%.
+  return cleanPercent(value);
 }
 
 function formatInr(val) {
@@ -87,22 +85,22 @@ function extractECM(sheet, fileName) {
       projects.push({
         ecmNo: `ECM ${ecmNoNum}`,
         serialNo: ecmNoNum,
-        equipmentName: String(row[1] || "").trim(),
+        equipmentName: cleanText(row[1]),
         energyConsumptionShare: parsePercent(row[2]),
         title,
         projectTitle: title,
-        rationaleForEnergySaving: String(row[4] || "").trim(),
-        savingPotentialRange: String(row[5] || "").trim(),
-        briefInformationAdvantages: String(row[6] || "").trim(),
-        projectActivities: String(row[7] || "").trim(),
-        baselineNotes: String(row[8] || "").trim(),
+        rationaleForEnergySaving: cleanText(row[4]),
+        savingPotentialRange: cleanText(row[5]),
+        briefInformationAdvantages: cleanText(row[6]),
+        projectActivities: cleanText(row[7]),
+        baselineNotes: cleanText(row[8]),
         baselineKwhPerYearRaw: parseNumberOrNull(row[9]),
         savingPercentRaw: parsePercent(row[10]),
-        energySavingRaw,
-        annualSavingRaw,
-        investmentRaw,
-        paybackMonthsRaw,
-        paybackYearsRaw: paybackMonthsRaw !== null ? paybackMonthsRaw / 12 : null,
+        energySavingRaw: energySavingRaw !== null ? Number(energySavingRaw.toFixed(0)) : null,
+        annualSavingRaw: annualSavingRaw !== null ? Number(annualSavingRaw.toFixed(0)) : null,
+        investmentRaw: investmentRaw !== null ? Number(investmentRaw.toFixed(0)) : null,
+        paybackMonthsRaw: paybackMonthsRaw !== null ? Number(paybackMonthsRaw.toFixed(2)) : null,
+        paybackYearsRaw: paybackMonthsRaw !== null ? Number((paybackMonthsRaw / 12).toFixed(2)) : null,
         
         energySaving: formatKwh(energySavingRaw),
         annualSaving: formatInr(annualSavingRaw),
@@ -128,56 +126,65 @@ function extractECM(sheet, fileName) {
 function extractBillEntry(sheet) {
   const data = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
   
-  const consumerName = String(data[0]?.[1] || ""); // B1
-  const serviceNo = String(data[1]?.[1] || ""); // B2
+  const consumerName = cleanText(data[0]?.[1]); // B1
+  const serviceNo = normalizeServiceNo(data[1]?.[1]); // B2
   const contractDemandKva = parseNumberOrNull(data[2]?.[1]); // B3
-  const tariffCategory = String(data[1]?.[4] || ""); // E2
-  const supplyVoltage = String(data[2]?.[4] || ""); // E3
-  const billingDemandRule = String(data[0]?.[8] || ""); // I1
+  const tariffCategory = cleanText(data[1]?.[4]); // E2
+  const supplyVoltage = cleanText(data[2]?.[4]); // E3
+  const billingDemandRule = cleanText(data[0]?.[8]); // I1
   
   const monthlyBills = [];
-  let annualKwh = 0;
-  let annualEnergyCharges = 0;
-  let annualNetPayable = 0;
-  let totalRecordedDemand = 0;
-  let maxRecordedDemandKva = 0;
-  let validMonths = 0;
 
   // Monthly table starts row 4 (index 3)
   for (let i = 3; i < data.length; i++) {
     const row = data[i];
-    const month = String(row[1] || "").trim(); // B
-    if (!month || month.toLowerCase().includes("total") || month.toLowerCase() === "month") continue;
+    let monthRaw = row[1]; // B
+    if (!monthRaw) continue;
     
-    const kwh = parseNumberOrNull(row[4]); // E
-    const net = parseNumberOrNull(row[6]); // G
-    if (kwh === null && net === null) continue;
-    
-    const demand = parseNumberOrNull(row[2]); // C
-    const demandCharges = parseNumberOrNull(row[3]); // D
-    const energyCharges = parseNumberOrNull(row[5]); // F
-    const unitRate = parseNumberOrNull(row[7]); // H
-    
-    monthlyBills.push({
-      month,
-      recordedDemandKva: demand,
-      demandCharges,
-      kwhConsumption: kwh,
-      energyCharges,
-      netAmountPayable: net,
-      unitRate
-    });
-    
-    annualKwh += kwh || 0;
-    annualEnergyCharges += energyCharges || 0;
-    annualNetPayable += net || 0;
-    
-    if (demand !== null) {
-        totalRecordedDemand += demand;
-        validMonths++;
-        if (demand > maxRecordedDemandKva) maxRecordedDemandKva = demand;
+    // Handle JS Date object created by xlsx parser
+    let monthStr = "";
+    if (monthRaw instanceof Date) {
+        monthStr = monthRaw.toLocaleString("en-US", { month: "short", year: "2-digit" });
+    } else {
+        monthStr = String(monthRaw).trim();
     }
+    
+    const lowerMonth = monthStr.toLowerCase();
+    const isValidMonth = MONTHS.some(m => lowerMonth.includes(m));
+    
+    if (lowerMonth.includes("total") || lowerMonth === "month" || !isValidMonth) {
+        // If we hit "Particular" or "Contract Demand" or "Total", we break if we already found bills
+        if (monthlyBills.length >= 12 || lowerMonth.includes("particular") || lowerMonth.includes("contract demand")) {
+            break;
+        }
+        continue;
+    }
+    
+    const normalized = normalizeMonthlyBill({
+      month: monthStr,
+      recordedDemandKva: row[2],
+      demandCharges: row[3],
+      totalKwh: row[4],
+      energyCharges: row[5],
+      netAmountPayable: row[6],
+      unitRate: row[7],
+      sourceFile: "Bill Entry",
+      serviceNo,
+      tariffCategory,
+      permittedMdKva: contractDemandKva,
+      supplyVoltageKv: supplyVoltage,
+      extractionConfidence: 1,
+    });
+
+    if (!isValidMonthlyBill(normalized)) continue;
+    monthlyBills.push(normalized);
   }
+
+  const annualKwh = monthlyBills.reduce((sum, bill) => sum + (bill.totalKwh || 0), 0);
+  const annualEnergyCharges = monthlyBills.reduce((sum, bill) => sum + (bill.energyCharges || 0), 0);
+  const annualNetPayable = monthlyBills.reduce((sum, bill) => sum + (bill.netAmountPayable || 0), 0);
+  const demandValues = monthlyBills.map((bill) => bill.recordedDemandKva).filter((value) => value !== null && value !== undefined);
+  const maxRecordedDemandKva = demandValues.reduce((max, value) => Math.max(max, value || 0), 0);
 
   return {
     consumerName,
@@ -190,7 +197,7 @@ function extractBillEntry(sheet) {
     annualKwh,
     annualEnergyCharges,
     annualNetPayable,
-    averageRecordedDemandKva: validMonths > 0 ? totalRecordedDemand / validMonths : null,
+    averageRecordedDemandKva: demandValues.length > 0 ? demandValues.reduce((sum, value) => sum + value, 0) / demandValues.length : null,
     maxRecordedDemandKva,
     averageTariff: annualKwh > 0 ? annualNetPayable / annualKwh : null
   };
@@ -204,47 +211,130 @@ function extractConnectedLoad(sheet) {
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const assetType = String(row[1] || "").trim();
-    if (!assetType || assetType.toLowerCase() === "asset type") continue;
+    const rawAssetType = cleanText(row[1]);
+    if (!rawAssetType || rawAssetType.toLowerCase() === "asset type") continue;
+    const assetType = normalizeAssetType(rawAssetType);
     
     const annualCons = parseNumberOrNull(row[9]) || 0;
     
     equipmentRows.push({
       assetType,
-      assetName: String(row[2] || "").trim(),
-      floorCode: String(row[3] || "").trim(),
-      roomArea: String(row[4] || "").trim(),
+      assetName: cleanText(row[2]),
+      floorCode: cleanText(row[3]),
+      roomArea: cleanText(row[4]),
       actualKw: parseNumberOrNull(row[5]),
       operatingTime: parseNumberOrNull(row[6]),
       consumptionPerDay: parseNumberOrNull(row[7]),
       consumptionPerMonth: parseNumberOrNull(row[8]),
       consumptionPerYear: annualCons,
-      share: parsePercent(row[10])
+      sharePercent: parsePercent(row[10]),
+      quantity: 1,
     });
     
     if (!summaryByAssetType[assetType]) {
-      summaryByAssetType[assetType] = 0;
+      summaryByAssetType[assetType] = {
+        assetType,
+        quantity: 0,
+        totalKw: 0,
+        totalAnnualConsumption: 0,
+      };
     }
-    summaryByAssetType[assetType] += annualCons;
+    summaryByAssetType[assetType].quantity += 1;
+    summaryByAssetType[assetType].totalKw += parseNumberOrNull(row[5]) || 0;
+    summaryByAssetType[assetType].totalAnnualConsumption += annualCons;
     totalAnnualConsumption += annualCons;
   }
   
-  const majorEnergyConsumingSystems = Object.entries(summaryByAssetType)
-    .map(([type, cons]) => ({ system: type, annualConsumption: cons }))
-    .sort((a,b) => b.annualConsumption - a.annualConsumption);
+  const summaryArray = Object.values(summaryByAssetType)
+    .map((item) => ({
+      ...item,
+      percentageShare: totalAnnualConsumption > 0 ? (item.totalAnnualConsumption / totalAnnualConsumption) * 100 : 0,
+      remarks: `Qty ${item.quantity}`,
+    }))
+    .sort((a, b) => b.totalAnnualConsumption - a.totalAnnualConsumption);
 
   return {
     equipmentRows,
-    summaryByAssetType,
+    summaryByAssetType: summaryArray,
     totalAnnualConsumption,
-    majorEnergyConsumingSystems
+    majorSystems: summaryArray
   };
 }
 
 function extractCosting(workbook) {
-   // Optional costing extractors as per requirements
-   // Kept minimal for now to prevent bloating, maps easily in pipeline.
-   return {};
+   const costingRows = [];
+   const blowerCostingRows = [];
+   const matchedCostingByEcm = {};
+
+   const costingSheet = workbook.Sheets["Costing"];
+   if (costingSheet) {
+      const rows = xlsx.utils.sheet_to_json(costingSheet, { header: 1, defval: "", blankrows: false });
+      rows.slice(2).forEach((row) => {
+         const item = cleanText(row[0]);
+         if (!item) return;
+         costingRows.push({
+            sheet: "Costing",
+            item,
+            motorCost: parseNumberOrNull(row[1]),
+            vfdCost: parseNumberOrNull(row[2]),
+            automationCost: parseNumberOrNull(row[3]),
+            installationCost: parseNumberOrNull(row[4]),
+            purchasePrice: parseNumberOrNull(row[5]),
+            totalCost: parseNumberOrNull(row[6]),
+            implementationScope: item,
+         });
+      });
+   }
+
+   const blowerSheet = workbook.Sheets["Blower Costing"];
+   if (blowerSheet) {
+      const rows = xlsx.utils.sheet_to_json(blowerSheet, { header: 1, defval: "", blankrows: false });
+      let currentSection = "";
+      rows.forEach((row) => {
+         const first = cleanText(row[0]);
+         if (["AHU", "Air Washer", "HRW"].includes(first)) {
+            currentSection = first;
+            return;
+         }
+         if (!currentSection || !parseNumberOrNull(row[0])) return;
+
+         blowerCostingRows.push({
+            sheet: "Blower Costing",
+            section: currentSection,
+            cfm: parseNumberOrNull(row[1]),
+            staticPressure: parseNumberOrNull(row[2]),
+            fanModel: cleanText(row[3]),
+            motorKw: parseNumberOrNull(row[4]),
+            blowerCost: parseNumberOrNull(row[5]),
+            motorCost: parseNumberOrNull(row[6]),
+            vfdCost: parseNumberOrNull(row[7]),
+            fabricationCost: parseNumberOrNull(row[8]),
+            installationCost: parseNumberOrNull(row[9]),
+            automationCost: parseNumberOrNull(row[10]),
+            totalPurchaseCost: parseNumberOrNull(row[11]),
+            totalSellingCost: parseNumberOrNull(row[12]),
+            quantity: parseNumberOrNull(row[13]),
+            totalCost: parseNumberOrNull(row[14]),
+         });
+      });
+   }
+
+   const findCostingRows = (predicate) => costingRows.filter(predicate);
+   const findBlowerRows = (section) => blowerCostingRows.filter((row) => row.section === section);
+
+   matchedCostingByEcm["ECM 6"] = findCostingRows((row) => row.item.toLowerCase().includes("condenser"));
+   matchedCostingByEcm["ECM 7"] = findCostingRows((row) => row.item.toLowerCase().includes("pri"));
+   matchedCostingByEcm["ECM 8"] = findCostingRows((row) => row.item.toLowerCase().includes("sec"));
+   matchedCostingByEcm["ECM 9"] = findCostingRows((row) => row.item.toLowerCase().includes("air blower"));
+   matchedCostingByEcm["ECM 10"] = findBlowerRows("AHU");
+   matchedCostingByEcm["ECM 11"] = findBlowerRows("Air Washer");
+   matchedCostingByEcm["ECM 12"] = findBlowerRows("HRW");
+
+   Object.keys(matchedCostingByEcm).forEach((key) => {
+      if (!matchedCostingByEcm[key]?.length) delete matchedCostingByEcm[key];
+   });
+
+   return { costingRows, blowerCostingRows, matchedCostingByEcm };
 }
 
 async function extractVrChennaiWorkbook(workbook, fileName, pdfFiles = [], baseStorageDir = '') {
@@ -275,36 +365,38 @@ async function extractVrChennaiWorkbook(workbook, fileName, pdfFiles = [], baseS
   if (energyProfile && energyProfile.monthlyBills.length < 12) validationErrors.push("Bill Entry has less than 12 months");
   if (totalEnergySaving === 0) validationErrors.push("Total energy saving is 0");
   
-  const pdfExtractionResults = [];
-  if (pdfFiles.length > 0 && energyProfile) {
-     for (const pdf of pdfFiles) {
-        const filePath = path.join(baseStorageDir, pdf.filename || pdf.originalName || pdf.name);
-        if (fs.existsSync(filePath)) {
-           const res = await extractBillFromPdf(filePath, pdf.originalName);
-           pdfExtractionResults.push(res);
+  let pdfBillExtraction = { filesDetected: 0, filesParsed: 0, filesFailed: [], warnings: [], bills: [] };
+  if (pdfFiles.length > 0) {
+     const preparedFiles = pdfFiles
+       .map((pdf) => {
+         const candidate = pdf.location || pdf.path || path.join(baseStorageDir, pdf.filename || pdf.originalName || pdf.name);
+         if (!candidate || !fs.existsSync(candidate)) return null;
+         return {
+           location: candidate,
+           path: candidate,
+           originalname: pdf.originalname || pdf.originalName || pdf.name,
+           filename: pdf.filename || path.basename(candidate),
+           name: pdf.name || path.basename(candidate),
+         };
+       })
+       .filter(Boolean);
+     pdfBillExtraction = await extractPdfBills(preparedFiles);
+
+     const mismatchWarnings = [];
+     for (const bill of pdfBillExtraction.bills) {
+        const matchingMonth = (energyProfile?.monthlyBills || []).find((entry) => entry.billMonth === bill.billMonth && entry.billYear === bill.billYear);
+        if (!matchingMonth) continue;
+
+        if (matchingMonth.totalKwh && bill.totalKwh) {
+           const diff = Math.abs(matchingMonth.totalKwh - bill.totalKwh) / matchingMonth.totalKwh;
+           if (diff > 0.02) mismatchWarnings.push(`PDF mismatch for ${bill.monthLabel}: Excel kWh ${matchingMonth.totalKwh}, PDF ${bill.totalKwh}`);
+        }
+        if (matchingMonth.netAmountPayable && bill.netAmountPayable) {
+           const diff = Math.abs(matchingMonth.netAmountPayable - bill.netAmountPayable) / matchingMonth.netAmountPayable;
+           if (diff > 0.02) mismatchWarnings.push(`PDF mismatch for ${bill.monthLabel}: Excel Net ${matchingMonth.netAmountPayable}, PDF ${bill.netAmountPayable}`);
         }
      }
-     
-     // Validate against Bill Entry
-     let mismatchWarnings = [];
-     for (const res of pdfExtractionResults) {
-        if (!res.success) continue;
-        const matchingMonth = energyProfile.monthlyBills.find(m => m.month.toLowerCase().includes(res.billMonth?.split(' ')[0]?.toLowerCase() || 'none'));
-        
-        if (matchingMonth && res.kwh) {
-            const diff = Math.abs(matchingMonth.kwhConsumption - res.kwh) / (matchingMonth.kwhConsumption || 1);
-            if (diff > 0.02) {
-               mismatchWarnings.push(`PDF mismatch for ${res.billMonth}: Excel kWh ${matchingMonth.kwhConsumption}, PDF ${res.kwh}`);
-            }
-        }
-        if (matchingMonth && res.netAmountPayable) {
-            const diff = Math.abs(matchingMonth.netAmountPayable - res.netAmountPayable) / (matchingMonth.netAmountPayable || 1);
-            if (diff > 0.02) {
-               mismatchWarnings.push(`PDF mismatch for ${res.billMonth}: Excel Net ${matchingMonth.netAmountPayable}, PDF ${res.netAmountPayable}`);
-            }
-        }
-     }
-     validationWarnings.push(...mismatchWarnings);
+     validationWarnings.push(...mismatchWarnings, ...pdfBillExtraction.warnings);
   }
   
   return {
@@ -313,6 +405,9 @@ async function extractVrChennaiWorkbook(workbook, fileName, pdfFiles = [], baseS
     energyProfile,
     connectedLoad,
     costingData,
+    costing: costingData,
+    pdfBillExtraction,
+    pdfBills: pdfBillExtraction.bills,
     validationErrors,
     validationWarnings,
     extractionDebug: {

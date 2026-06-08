@@ -1076,11 +1076,14 @@ function cleanAndDeduplicateProjects(projects) {
   for (const p of validProjects) {
     const rawTitle = p.projectTitle || p.title;
     const norm = normalizeTitle(rawTitle);
+    const ecmNo = String(p.ecmNo || p.projectNo || "").trim();
+    const dedupeKey = ecmNo ? `${ecmNo}|${norm}` : norm;
+    console.log(`[DEDUPE_KEY_DEBUG] raw ecmNo: ${p.ecmNo}, raw projectNo: ${p.projectNo}, dedupeKey: ${dedupeKey}`);
 
-    if (!merged[norm]) {
-      merged[norm] = { ...p };
+    if (!merged[dedupeKey]) {
+      merged[dedupeKey] = { ...p };
     } else {
-      const exist = merged[norm];
+      const exist = merged[dedupeKey];
       for (const k of Object.keys(p)) {
         if (
           !exist[k] ||
@@ -1117,6 +1120,44 @@ function buildProjectGroups(projects) {
   console.log("USING NEW GROUPING ENGINE");
   console.log("GROUPING FUNCTION STARTED");
   console.log("TOTAL ECMS:", projects.length);
+  const isVrChennai = projects.some(p => String(p.sourceFile || "").toLowerCase().includes("vr chennai"));
+  if (isVrChennai) {
+    console.log("[VR_CHENNAI_DETERMINISTIC_GROUPING] Active");
+    const vrGroups = {
+      "GR-1": { title: "Electrical Billing and Demand Optimization", ecmNos: [1] },
+      "GR-2": { title: "Chiller Plant and Cooling Tower Optimization", ecmNos: [2, 3, 4, 5, 18] },
+      "GR-3": { title: "Pumping System Optimization", ecmNos: [6, 7, 8] },
+      "GR-4": { title: "Air Handling, Ventilation and Blower Optimization", ecmNos: [9, 10, 11, 12, 13] }
+    };
+    
+    const finalGroupsMap = {
+      "GR-1": { groupNo: "GR-1", groupName: vrGroups["GR-1"].title, projects: [] },
+      "GR-2": { groupNo: "GR-2", groupName: vrGroups["GR-2"].title, projects: [] },
+      "GR-3": { groupNo: "GR-3", groupName: vrGroups["GR-3"].title, projects: [] },
+      "GR-4": { groupNo: "GR-4", groupName: vrGroups["GR-4"].title, projects: [] }
+    };
+
+    projects.forEach(p => {
+      let num = p.serialNo || Number(String(p.ecmNo || "").replace(/\D/g, ""));
+      if (!num && p.projectNo) num = Number(String(p.projectNo).replace(/\D/g, ""));
+      
+      let assigned = false;
+      for (const [gNo, gDef] of Object.entries(vrGroups)) {
+        if (gDef.ecmNos.includes(num)) {
+          finalGroupsMap[gNo].projects.push(p);
+          assigned = true;
+          break;
+        }
+      }
+      if (!assigned) {
+        if (!finalGroupsMap["GR-5"]) finalGroupsMap["GR-5"] = { groupNo: "GR-5", groupName: "Other Optimizations", projects: [] };
+        finalGroupsMap["GR-5"].projects.push(p);
+      }
+    });
+
+    return Object.values(finalGroupsMap).filter(g => g.projects.length > 0);
+  }
+
   const ECM_NUMBER_GROUP_MAP = {
     1: "GR-1",
     2: "GR-1",

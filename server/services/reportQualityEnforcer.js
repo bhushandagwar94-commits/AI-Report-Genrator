@@ -250,16 +250,18 @@ function isBadProject(project = {}) {
   if (title.match(/\b0 0 0 0\b/)) return true;
   if (saving !== null && saving < 0) return true;
   if (energy !== null && energy < 0) return true;
-  if (payback !== null && payback > 25) return true;
+  if (payback !== null && payback > 150) return true;
 
   return false;
 }
 
 function projectKey(project = {}) {
-  return `${project.ecmNo || ""}|${project.title || project.ecmName || ""}`
+  const key = `${project.projectNo || project.ecmNo || ""}|${project.title || project.ecmName || ""}`
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+  console.log(`[ENFORCER_KEY] projectNo=${project.projectNo}, ecmNo=${project.ecmNo}, key=${key}`);
+  return key;
 }
 
 function dedupeProjects(projects = []) {
@@ -322,6 +324,10 @@ function classifyProjectSystem(project = {}) {
 function forceProjectQuality(project = {}) {
   const copy = { ...project };
 
+  if (copy.extractionFormat === "vr_chennai_ecm_workbook_v1" || copy.sourceFile?.toLowerCase().includes("vr chennai")) {
+    return copy;
+  }
+
   copy.system = classifyProjectSystem(copy);
 
   for (const field of THEORY_FIELDS) {
@@ -332,7 +338,7 @@ function forceProjectQuality(project = {}) {
 }
 
 function enforceReportQuality(reportData = {}) {
-  const cloned = JSON.parse(JSON.stringify(reportData || {}));
+  let cloned = JSON.parse(JSON.stringify(reportData || {}));
   const rejectedRows = [];
 
   cloned = normalizeReportGroups(cloned); cloned.groups = cloned.groups.map((group) => {
@@ -340,6 +346,7 @@ function enforceReportQuality(reportData = {}) {
 
     for (const project of safeArray(group.projects)) {
       if (isBadProject(project)) {
+        console.log("[DEBUG] enforceReportQuality dropped:", project.ecmNo, project.title);
         rejectedRows.push({
           ecmNo: project.ecmNo,
           title: project.title || project.ecmName,

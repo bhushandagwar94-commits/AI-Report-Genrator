@@ -11,12 +11,15 @@ const {
 } = require("../services/docxExportService");
 const prisma = require("../utils/prisma");
 const { getLLMProvider } = require("../utils/helpers");
+const { extractVrChennaiWorkbook } = require("../services/vrChennaiWorkbookExtractor");
+const { normalizeReportGroups } = require("../utils/groupHelper");
 const { getModelTag } = require("./utils");
 const fs = require("fs");
 const path = require("path");
 const { hotdirPath } = require("../utils/files");
 const extractJson = require("extract-json-from-string");
 const ExcelJS = require("exceljs");
+const XLSX = require("xlsx");
 const multer = require("multer");
 const {
   createPipelineDebugCollector,
@@ -48,12 +51,21 @@ const {
   extractSupportingContext,
 } = require("../services/supportingFileExtractor");
 const { enforceReportQuality } = require("../services/reportQualityEnforcer");
+const { sanitizeReportData } = require("../services/reportSanitizerService");
+const { validateFinalReportQuality } = require("../services/finalReportQualityService");
+const { buildExtractedDataContext } = require("../services/extractedDataContextService");
+const {
+  buildVrChennaiClientReadyModel,
+  isVrChennaiReport,
+  renderVrChennaiClientReadyDocx,
+} = require("../services/vrChennaiClientReadyRenderer");
 const {
   expandReportEngineeringNarratives,
   classifyEcm,
   countWords,
 } = require("../services/engineeringNarrativeExpander");
 const { filterReportProjects } = require("../services/projectQualityFilter");
+const { formatInr, formatKwh, formatPercent, formatMonths, formatYears, formatIndianNumber } = require("../services/reportFormattingService");
 
 let enhanceReportNarrativesWithAi = null;
 
@@ -2376,6 +2388,7 @@ function reportEndpoints(app) {
 
   function buildLightweightReportData(projects, reportDetails) {
     const mappedProjects = projects.map((p, i) => ({
+      ...p,
       projectNo: p.ecmNo || p.projectNo || `ECM ${i + 1}`,
       projectTitle: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
       title: p.description || p.title || p.projectTitle || `Project ${i + 1}`,
@@ -2395,6 +2408,9 @@ function reportEndpoints(app) {
       payback: p.payback,
       equipmentCovered: p.equipmentCovered || p.equipment || "Various",
       groupTitle: p.groupTitle || "",
+      sourceFile: p.sourceFile || "",
+      fallbackGenerated: p.fallbackGenerated,
+      isFallback: p.isFallback,
       sourceSheet: p.sourceSheet || p.sheetName || "",
       sourceRow: p.sourceRow || null,
       department: p.department || "",
@@ -2405,18 +2421,18 @@ function reportEndpoints(app) {
 
     const cleaned = cleanAndDeduplicateProjects(mappedProjects);
     const grouped = buildProjectGroups(cleaned);
-    const totalEstimatedInvestment = sumNumbers(
+    const totalEstimatedInvestment = Number(sumNumbers(
       cleaned.map((project) => project.investmentRaw ?? project.estimatedInvestment)
-    );
-    const totalAnnualCostSavingPotential = sumNumbers(
+    ).toFixed(0));
+    const totalAnnualCostSavingPotential = Number(sumNumbers(
       cleaned.map((project) => project.annualSavingRaw ?? project.expectedAnnualCostSaving)
-    );
-    const totalEnergySavingPotential = sumNumbers(
+    ).toFixed(0));
+    const totalEnergySavingPotential = Number(sumNumbers(
       cleaned.map((project) => project.energySavingRaw ?? project.expectedEnergySaving)
-    );
+    ).toFixed(0));
     const simplePaybackPeriod =
       totalAnnualCostSavingPotential > 0
-        ? totalEstimatedInvestment / totalAnnualCostSavingPotential
+        ? Number((totalEstimatedInvestment / totalAnnualCostSavingPotential).toFixed(2))
         : null;
 
     let finalGroups = grouped;
@@ -2525,12 +2541,13 @@ function reportEndpoints(app) {
         if (excelFiles.length > 0) {
           const baseStorageDir = path.resolve(__dirname, "../../storage");
           try {
-            // Give 15 seconds for multi-file extraction
             const extraction = await withTimeout(
               Promise.resolve(extractLightweightExcelData(excelFiles, baseStorageDir)),
               15000,
               `Extraction timed out`
             );
+            
+            console.log("[DEBUG] Extracted projects count:", extraction.projects?.length);
 
             extractionAttempts.push({
               filename: extraction.fileName || "multi-file",
@@ -2561,11 +2578,91 @@ function reportEndpoints(app) {
           });
         }
 
+        let vrChennaiAuxData = null;
+        let isVrChennai = false;
+        const vrChennaiFile = excelFiles.find(f => 
+          String(f.filename || f.originalname || f.name || "").toLowerCase().includes("vr chennai")
+        );
+
+        if (vrChennaiFile) {
+          isVrChennai = true;
+          console.log("[VR_CHENNAI_PROJECTS_LOCKED]", {
+            projectCount: extractedProjects.length,
+            ecmNos: extractedProjects.map(p => p.ecmNo),
+            totalEnergySaving: extractedProjects.reduce((s,p)=>s+(Number(p.energySavingRaw)||0),0),
+            totalAnnualSaving: extractedProjects.reduce((s,p)=>s+(Number(p.annualSavingRaw)||0),0),
+            totalInvestment: extractedProjects.reduce((s,p)=>s+(Number(p.investmentRaw)||0),0)
+          });
+          
+          const systemMap = {
+            1: "Electrical Billing / Demand Management",
+            2: "Cooling Tower / Chiller Condenser System",
+            3: "Cooling Tower Fan System",
+            4: "Chiller Plant Controls / CHW Set Point",
+            5: "Chiller Plant Automation and Sequencing",
+            6: "Condenser Water Pumping System",
+            7: "Primary CHW Pumping System",
+            8: "Secondary CHW Pumping System",
+            9: "STP Blower / Motor Drive System",
+            10: "AHU Plug Fan System",
+            11: "Air Washer Plug Fan System",
+            12: "Heat Recovery Wheel / Ventilation Fan System",
+            13: "Scrubber Ventilation Motor System",
+            18: "Chiller Operational Practice Improvement"
+          };
+          
+          extractedProjects.forEach(p => {
+             let num = p.serialNo || Number(String(p.ecmNo || "").replace(/\D/g, ""));
+             if (!num && p.projectNo) num = Number(String(p.projectNo).replace(/\D/g, ""));
+             if (num && systemMap[num]) {
+               p.system = systemMap[num];
+             }
+             
+             p.existingSystemDescription = (p.equipmentName || "") + " " + (p.baselineNotes || "");
+             p.problemIdentified = p.rationaleForEnergySaving || "";
+             p.proposedProjectDescription = (p.projectTitle || p.title || "") + " " + (p.briefInformationAdvantages || "");
+             p.projectActivitiesText = p.projectActivities ? String(p.projectActivities).split("\n").filter(Boolean).map(a => a.replace(/^- /, "")).join("\n") : "";
+             p.rationaleForSaving = (p.rationaleForEnergySaving || "") + " " + (p.savingPotentialRange || "");
+             
+             p.savingCalculation = `Baseline energy consumption is estimated. Based on the project implementation, the energy saving is expected to be ${p.savingPercentRaw ? (p.savingPercentRaw * 100).toFixed(0) + "%" : "significant"}. ` + 
+                 `Annual energy saving is calculated as ${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0)} kWh/year resulting in cost savings of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0)}/year with an estimated investment of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0)} and simple payback of ${p.paybackMonthsRaw ? (p.paybackMonthsRaw/12).toFixed(2) : "N/A"} years.`;
+             p.mvPlan = `M&V Plan: Measure ${p.system || "the system"} parameters before and after implementation to verify energy savings over time.`;
+             p.fallbackGenerated = false;
+             p.isFallback = false;
+             
+             // Formatting explicitly for DOCX
+             p.energySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
+             p.annualSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
+             p.investment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
+             p.payback = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
+             p.baselineKwhPerYear = p.baselineKwhPerYearRaw ? new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.baselineKwhPerYearRaw) : "";
+             p.savingPercent = p.savingPercentRaw ? `${(p.savingPercentRaw * 100).toFixed(1)}%` : "";
+             
+             p.expectedEnergySaving = p.energySaving;
+             p.expectedAnnualCostSaving = p.annualSaving;
+             p.estimatedInvestment = p.investment;
+             p.simplePaybackPeriod = p.payback;
+          });
+          
+          const baseStorageDir = path.resolve(__dirname, "../../storage");
+          const fName = vrChennaiFile.filename || vrChennaiFile.originalname || vrChennaiFile.name;
+          const primaryFilePath = vrChennaiFile.location || vrChennaiFile.path || path.join(baseStorageDir, fName);
+          const pdfFiles = uploadedFiles.filter(f => path.extname(f.filename || f.originalname || f.name || "").toLowerCase() === ".pdf");
+          
+          console.log("[VR_CHENNAI_AUX_EXTRACTION]", { primaryFilePath, exists: fs.existsSync(primaryFilePath), pdfCount: pdfFiles.length });
+          
+          if (fs.existsSync(primaryFilePath)) {
+            const workbook = XLSX.readFile(primaryFilePath, { cellDates: true, sheetStubs: true });
+            vrChennaiAuxData = await extractVrChennaiWorkbook(workbook, primaryFilePath, pdfFiles, path.dirname(primaryFilePath));
+            console.log("[VR_CHENNAI_AUX_DATA_EXTRACTED]", { hasEnergyProfile: !!vrChennaiAuxData.energyProfile, hasConnectedLoad: !!vrChennaiAuxData.connectedLoad });
+          }
+        }
+
         let reportData = buildLightweightReportData(
           extractedProjects,
           reportDetails
         );
-        
+
         if (!reportData) {
           console.error("[GENERATE_REPORTDATA_NULL]", {
             uploadedFiles: request.files?.map(f => f.originalname || f.filename),
@@ -2580,6 +2677,70 @@ function reportEndpoints(app) {
         }
         reportData = filterReportProjects(reportData);
         reportData = enforceReportQuality(reportData);
+
+        const { autoFillMissingReportFields } = require("../services/reportAutoFillService");
+        
+        const extractedDataContext = buildExtractedDataContext(uploadedFiles, {
+          reportDetails,
+          projectInfo: {
+            clientName: reportDetails?.clientName || reportDetails?.facilityName,
+            facilityName: reportDetails?.facilityName || reportDetails?.clientName,
+            location: reportDetails?.location,
+            buildingType: reportDetails?.buildingType,
+            auditPeriod: reportDetails?.auditPeriod,
+            reportDate: reportDetails?.reportDate,
+          },
+          energyProfile: isVrChennai ? (vrChennaiAuxData?.energyProfile || reportData.energyProfile) : reportData.energyProfile,
+          connectedLoad: isVrChennai ? (vrChennaiAuxData?.connectedLoad || reportData.connectedLoad) : reportData.connectedLoad,
+          projects: extractedProjects,
+          costing: isVrChennai ? (vrChennaiAuxData?.costing || vrChennaiAuxData?.costingData || {}) : {},
+          costingData: isVrChennai ? (vrChennaiAuxData?.costingData || {}) : {},
+          pdfBillExtraction: isVrChennai ? (vrChennaiAuxData?.pdfBillExtraction || {}) : {},
+          pdfBills: isVrChennai ? (vrChennaiAuxData?.pdfBills || []) : [],
+          validationWarnings: vrChennaiAuxData?.validationWarnings || [],
+        });
+
+        const autoFillResult = autoFillMissingReportFields(reportData, extractedDataContext);
+        reportData = autoFillResult.reportData;
+        const finalExtractedDataContext = autoFillResult.extractedDataContext || extractedDataContext;
+        console.log("[REPORT_AUTO_FILL_SUMMARY]", autoFillResult.autoFillSummary);
+        
+        // 6. Final Data Formatting (override Raw numbers with formatted for DOCX)
+        if (isVrChennai) {
+           reportData.groups.forEach(g => {
+              g.projects.forEach(p => {
+                 p.expectedEnergySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
+                 p.expectedAnnualCostSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
+                 p.estimatedInvestment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
+                 p.simplePaybackPeriod = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
+                 
+                 // Also ensure the basic fields are formatted to avoid decimals
+                 p.energySaving = p.expectedEnergySaving;
+                 p.annualSaving = p.expectedAnnualCostSaving;
+                 p.investment = p.estimatedInvestment;
+                 p.payback = p.simplePaybackPeriod;
+              });
+           });
+           
+           // Recursively round any remaining raw floats in reportData to max 2 decimals
+           const roundDeep = (obj) => {
+              if (Array.isArray(obj)) return obj.forEach(roundDeep);
+              if (obj && typeof obj === 'object') {
+                 for (let k in obj) {
+                    if (typeof obj[k] === 'number' && !Number.isInteger(obj[k])) {
+                       obj[k] = Math.round(obj[k] * 100) / 100;
+                    } else if (typeof obj[k] === 'string' && /^\d+\.\d{3,}$/.test(obj[k])) {
+                       obj[k] = (Math.round(parseFloat(obj[k]) * 100) / 100).toString();
+                    } else if (typeof obj[k] === 'object') {
+                       roundDeep(obj[k]);
+                    }
+                 }
+              }
+           };
+           roundDeep(reportData);
+        }
+        
+        console.log("[DEBUG] Final projects count:", reportData.groups?.flatMap(g => g.projects)?.length);
         reportData = normalizeReportGroups(reportData);
         
         console.log("[GENERATE_REPORTDATA_NORMALIZED]", {
@@ -2618,6 +2779,153 @@ function reportEndpoints(app) {
             error: "No valid ECM projects remained after quality filtering. Fallback/invalid rows were rejected.",
             extractionSummary: reportData.extractionSummary
           });
+        }
+        
+        const sanitizedResult = sanitizeReportData(reportData);
+        reportData = sanitizedResult.sanitizedReportData;
+        reportData.extractedDataContext = finalExtractedDataContext;
+        
+        // --- FINAL RENDERING FIXES ---
+        function getEcmNumberValueLocal(value) {
+          const match = String(value || "").match(/(\d+)/);
+          return match ? Number(match[1]) : null;
+        }
+
+        function sortProjectsByEcmNumber(projects = []) {
+          return [...projects].sort((a, b) => {
+            const an = getEcmNumberValueLocal(a.ecmNo || a.serialNo || a.projectNo);
+            const bn = getEcmNumberValueLocal(b.ecmNo || b.serialNo || b.projectNo);
+            return (an || 9999) - (bn || 9999);
+          });
+        }
+        
+        function applyFinalDisplayFormatting(data) {
+          const cloned = JSON.parse(JSON.stringify(data || {}));
+          const projects = (cloned.groups || []).flatMap((g) => g.projects || []);
+          for (const project of projects) {
+            const investment = Number(project.investmentRaw || project.investment || 0);
+            const annualSaving = Number(project.annualSavingRaw || project.annualSaving || 0);
+
+            if (!project.paybackMonthsRaw && investment > 0 && annualSaving > 0) {
+              project.paybackMonthsRaw = (investment / annualSaving) * 12;
+            }
+            if (!project.paybackYearsRaw && project.paybackMonthsRaw) {
+              project.paybackYearsRaw = project.paybackMonthsRaw / 12;
+            }
+
+            project.energySavingFormatted = formatKwh(project.energySavingRaw || project.energySaving);
+            project.annualSavingFormatted = formatInr(project.annualSavingRaw || project.annualSaving);
+            project.investmentFormatted = formatInr(project.investmentRaw || project.investment);
+            
+            project.paybackMonthsFormatted = investment === 0 && annualSaving > 0
+                ? "Immediate / No investment"
+                : project.paybackMonthsRaw ? `${formatIndianNumber(project.paybackMonthsRaw, 2)} months` : "";
+                
+            project.paybackYearsFormatted = investment === 0 && annualSaving > 0
+                ? "Immediate / No investment"
+                : project.paybackYearsRaw ? `${formatIndianNumber(project.paybackYearsRaw, 2)} years` : "";
+                
+            project.baselineKwhFormatted = formatKwh(project.baselineKwhPerYearRaw);
+            project.savingPercentFormatted = formatPercent(project.savingPercentRaw);
+
+            project.energySaving = project.energySavingFormatted;
+            project.annualSaving = project.annualSavingFormatted;
+            project.investment = project.investmentFormatted;
+            project.payback = project.paybackYearsFormatted || project.paybackMonthsFormatted || project.payback;
+          }
+          return cloned;
+        }
+
+        function replacePlaceholders(obj) {
+          if (Array.isArray(obj)) return obj.map(replacePlaceholders);
+          if (!obj || typeof obj !== "object") {
+            const text = String(obj || "");
+            if (
+              text.includes("[To be updated") ||
+              text.includes("after site data verification") ||
+              text.includes("[Calculation pending]") ||
+              text.trim() === "Client Name"
+            ) {
+              return "Not available in uploaded data";
+            }
+            return obj;
+          }
+          const out = {};
+          for (const [key, value] of Object.entries(obj)) {
+             out[key] = replacePlaceholders(value);
+          }
+          return out;
+        }
+
+        function groupMissingInputs(missingInputs = []) {
+          const map = new Map();
+          for (const item of missingInputs) {
+            const ecmMatch = String(item.missingInput || "").match(/ECM\s+(\d+)/i);
+            const baseInput = ecmMatch ? String(item.missingInput).replace(/for ECM\s+\d+/i, "").trim() : item.missingInput;
+            const key = `${item.section}|${baseInput}|${item.whyRequired}|${item.suggestedSource}|${item.criticality}`;
+            
+            if (!map.has(key)) {
+              map.set(key, { ...item, ecmList: [] });
+            }
+            if (ecmMatch) {
+              map.get(key).ecmList.push(ecmMatch[1]);
+            }
+          }
+          
+          return Array.from(map.values()).map(item => {
+            if (item.ecmList.length > 0) {
+              const ecmNumbers = [...new Set(item.ecmList)].sort((a, b) => Number(a) - Number(b));
+              const baseInput = String(item.missingInput).replace(/for ECM\s+\d+/i, "").trim();
+              item.missingInput = `${baseInput} for ECMs: ${ecmNumbers.join(", ")}`;
+            }
+            delete item.ecmList;
+            return item;
+          });
+        }
+
+        if (reportData.groups) {
+          reportData.groups.forEach(g => {
+             g.projects = sortProjectsByEcmNumber(g.projects);
+          });
+        }
+        reportData = applyFinalDisplayFormatting(reportData);
+        reportData = replacePlaceholders(reportData);
+        
+        const originalMissingInputsCount = (reportData.missingInputs || []).length;
+        if (reportData.missingInputs) {
+          reportData.missingInputs = groupMissingInputs(reportData.missingInputs);
+        }
+        reportData._originalMissingInputsCount = originalMissingInputsCount;
+        reportData._groupedMissingInputsCount = (reportData.missingInputs || []).length;
+        // --- END FINAL RENDERING FIXES ---
+        
+        if (isVrChennaiReport(reportData, finalExtractedDataContext)) {
+          reportData.vrChennaiClientReadyReport = buildVrChennaiClientReadyModel(reportData, finalExtractedDataContext);
+        }
+
+        const finalQuality = validateFinalReportQuality(reportData, finalExtractedDataContext);
+        console.log("[FINAL_REPORT_QUALITY_GATE]", finalQuality.gateLog);
+
+        if (!finalQuality.passed) {
+          return response.status(422).json({
+            success: false,
+            error: `Quality gate failed:\n${finalQuality.failures.join("\n")}`,
+            failures: finalQuality.failures,
+            warnings: finalQuality.warnings,
+            gateDetails: finalQuality.gateLog,
+            accuracySummary: finalQuality.accuracySummary,
+          });
+        }
+
+        reportData.qcSummary = {
+          ...(reportData.qcSummary || {}),
+          ...finalQuality.gateLog,
+          badPhraseCount: sanitizedResult.badPhraseCount,
+          passed: finalQuality.passed,
+        };
+        reportData.accuracySummary = finalQuality.accuracySummary;
+        if (finalQuality.model) {
+          reportData.vrChennaiClientReadyReport = finalQuality.model;
         }
 
         // 6. Save fast record to DB safely
@@ -2682,9 +2990,16 @@ function reportEndpoints(app) {
             providerUsed: "deterministic",
           },
         });
-      } catch (err) {
-        console.error("Generate Flow Error:", err);
-        return response.status(500).json({ error: err.message });
+      } catch (error) {
+        console.error("[REPORT_GENERATION_FAILED]", {
+          message: error.message,
+          stack: error.stack
+        });
+
+        return response.status(500).json({
+          success: false,
+          error: error.message || "Report generation failed"
+        });
       }
     }
   );
@@ -2742,10 +3057,51 @@ function reportEndpoints(app) {
           );
         }
 
+        const normalizedExport = cleanupFinalReportData(normalizeActiveReportData(exportReportData));
+        const exportExtractedDataContext =
+          normalizedExport.extractedDataContext ||
+          buildExtractedDataContext({
+            reportData: normalizedExport,
+            workbookExtractions: exportReportData?.extractedDataContext || {},
+          });
+
+        if (isVrChennaiReport(normalizedExport, exportExtractedDataContext)) {
+          const sanitizedVrExport = sanitizeReportData(normalizedExport).sanitizedReportData;
+          const finalQuality = validateFinalReportQuality(sanitizedVrExport, exportExtractedDataContext);
+          console.log("[FINAL_REPORT_QUALITY_GATE]", finalQuality.gateLog);
+
+          if (!finalQuality.passed) {
+            return response.status(400).json({
+              qcFailed: true,
+              error: "Final report quality gate failed.",
+              ...finalQuality,
+            });
+          }
+
+          const buffer = await renderVrChennaiClientReadyDocx(sanitizedVrExport, exportExtractedDataContext);
+          const clientName =
+            exportExtractedDataContext.projectInfo?.facilityName
+              ?.replace(/[^a-z0-9]/gi, "_")
+              .toLowerCase() || "client";
+          const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
+
+          response.setHeader(
+            "Content-Disposition",
+            `attachment; filename=\"${filename}\"`
+          );
+          response.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          );
+          return response.send(buffer);
+        }
+
         exportReportData = normalizeActiveReportData(exportReportData);
         exportReportData = filterReportProjects(exportReportData);
         exportReportData = expandReportEngineeringNarratives(exportReportData);
         exportReportData = cleanupFinalReportData(exportReportData);
+        const sanitizedExport = sanitizeReportData(exportReportData);
+        exportReportData = sanitizedExport.sanitizedReportData;
         logSafeCleanupCheck(exportReportData, "DOCX");
 
         if (getAllProjects(exportReportData).length <= 0) {
@@ -2764,6 +3120,10 @@ function reportEndpoints(app) {
         // Quality Check (QC) Gate
         const qcResult = runReportQC(exportReportData);
         const accuracyResult = calculateReportAccuracyScore(exportReportData);
+        const finalQuality = validateFinalReportQuality(
+          exportReportData,
+          exportReportData.extractedDataContext || {}
+        );
         const allowDraft = request.query.allowDraft === "true";
         const isDev =
           process.env.NODE_ENV === "development" ||
@@ -2781,19 +3141,22 @@ function reportEndpoints(app) {
           shouldBlockExport: !qcResult.qcPassed,
         });
 
-        if (!qcResult.qcPassed || !accuracyResult.passed) {
+        if (!qcResult.qcPassed || !accuracyResult.passed || !finalQuality.passed) {
           console.error(
             `[QC FAILED] Report ID: ${id}`,
-            JSON.stringify({ qcResult, accuracyResult }, null, 2)
+            JSON.stringify({ qcResult, accuracyResult, finalQuality }, null, 2)
           );
           if (!(allowDraft && isDev)) {
             return response.status(400).json({
               qcFailed: true,
-              error: !qcResult.qcPassed
+              error: !finalQuality.passed
+                ? "Final report quality gate failed."
+                : !qcResult.qcPassed
                 ? "Report requires review before final export."
                 : "Report accuracy score is below the required threshold for final export.",
               ...qcResult,
               accuracyResult,
+              finalQuality,
             });
           }
         }
