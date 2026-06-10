@@ -51,20 +51,56 @@ function classifySystem(ecmNo) {
   return map[ecmNo] || "Energy Conservation Measure";
 }
 
-function classifyGroup(ecmNo) {
-  if (ecmNo === 1) return { groupNo: "GR-1", groupTitle: "Electrical Billing and Demand Optimization" };
-  if ([2, 3, 4, 5, 18].includes(ecmNo)) return { groupNo: "GR-2", groupTitle: "Chiller Plant and Cooling Tower Optimization" };
-  if ([6, 7, 8].includes(ecmNo)) return { groupNo: "GR-3", groupTitle: "Pumping System Optimization" };
-  if ([9, 10, 11, 12, 13].includes(ecmNo)) return { groupNo: "GR-4", groupTitle: "Air Handling, Ventilation and Blower Optimization" };
-  return { groupNo: "GR-5", groupTitle: "Other Optimizations" };
+function detectEcmGroupingColumn(headers = []) {
+  const groupAliases = [
+    "group",
+    "group no",
+    "group name",
+    "ecm group",
+    "measure group",
+    "category",
+    "gr",
+    "gr no",
+    "group code"
+  ];
+
+  const normalizedHeaders = headers.map(h =>
+    String(h || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+
+  return normalizedHeaders.findIndex(header =>
+    groupAliases.some(alias => header === alias || header.includes(alias))
+  );
 }
 
 function extractECM(sheet, fileName) {
   const data = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
   const projects = [];
   
-  // Data starts at row 5 (index 4)
-  for (let i = 4; i < data.length; i++) {
+  // Try to find a header row
+  let headerRowIndex = 0;
+  for (let i = 0; i < Math.min(10, data.length); i++) {
+    const row = data[i];
+    if (row && row.some(cell => String(cell).toLowerCase().includes('project'))) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+  
+  const headers = data[headerRowIndex] || [];
+  const groupColIndex = detectEcmGroupingColumn(headers);
+  
+  let groupColumnDetected = groupColIndex !== -1;
+  let groupColumnName = groupColumnDetected ? headers[groupColIndex] : null;
+
+  // Data usually starts at row 5 (index 4) but let's be flexible if headers were lower
+  const dataStartIndex = Math.max(4, headerRowIndex + 1);
+
+  for (let i = dataStartIndex; i < data.length; i++) {
     const row = data[i];
     const sr = parseNumberOrNull(row[0]); // A = Sr.
     const title = String(row[3] || "").trim(); // D = Energy Saving Project
@@ -80,7 +116,18 @@ function extractECM(sheet, fileName) {
           paybackMonthsRaw = (investmentRaw / annualSavingRaw) * 12;
       }
       
-      const groupInfo = classifyGroup(ecmNoNum);
+      let groupNo = null;
+      let groupTitle = null;
+      let hasExplicitEcmGrouping = false;
+
+      if (groupColIndex !== -1) {
+        const groupVal = cleanText(row[groupColIndex]);
+        if (groupVal) {
+          groupNo = groupVal;
+          groupTitle = groupVal;
+          hasExplicitEcmGrouping = true;
+        }
+      }
       
       projects.push({
         ecmNo: `ECM ${ecmNoNum}`,
@@ -108,8 +155,9 @@ function extractECM(sheet, fileName) {
         payback: paybackMonthsRaw !== null ? `${(paybackMonthsRaw/12).toFixed(2)} years` : null,
         
         system: classifySystem(ecmNoNum),
-        groupNo: groupInfo.groupNo,
-        groupTitle: groupInfo.groupTitle,
+        groupNo: groupNo,
+        groupTitle: groupTitle,
+        hasExplicitEcmGrouping: hasExplicitEcmGrouping,
         
         sourceFile: fileName,
         sourceSheet: "ECM",
@@ -120,7 +168,18 @@ function extractECM(sheet, fileName) {
       });
     }
   }
-  return projects;
+
+  const hasExplicitEcmGrouping = projects.some(p => p.hasExplicitEcmGrouping);
+  
+  console.log("[ECM_GROUPING_DETECTION]", {
+    sourceFile: fileName,
+    headers,
+    groupColumnDetected,
+    groupColumnName,
+    hasExplicitEcmGrouping
+  });
+
+  return { projects, hasExplicitEcmGrouping };
 }
 
 function extractBillEntry(sheet) {
@@ -342,7 +401,9 @@ async function extractVrChennaiWorkbook(workbook, fileName, pdfFiles = [], baseS
   const billEntrySheet = workbook.Sheets["Bill Entry"];
   const connectedLoadSheet = workbook.Sheets["Connected Load List & Energy Ba"];
   
-  const projects = ecmSheet ? extractECM(ecmSheet, fileName) : [];
+  const ecmResult = ecmSheet ? extractECM(ecmSheet, fileName) : { projects: [], hasExplicitEcmGrouping: false };
+  const projects = ecmResult.projects;
+  const hasExplicitEcmGrouping = ecmResult.hasExplicitEcmGrouping;
   const energyProfile = billEntrySheet ? extractBillEntry(billEntrySheet) : null;
   const connectedLoad = connectedLoadSheet ? extractConnectedLoad(connectedLoadSheet) : null;
   const costingData = extractCosting(workbook);
@@ -410,6 +471,7 @@ async function extractVrChennaiWorkbook(workbook, fileName, pdfFiles = [], baseS
     pdfBills: pdfBillExtraction.bills,
     validationErrors,
     validationWarnings,
+    hasExplicitEcmGrouping,
     extractionDebug: {
        ecmCount: projects.length,
        totalEnergySaving,

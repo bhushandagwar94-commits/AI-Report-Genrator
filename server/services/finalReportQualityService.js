@@ -116,7 +116,9 @@ function validateFinalReportQuality(reportData = {}, extractedDataInput = {}) {
     ? extractedDataInput
     : buildExtractedDataContext([], extractedDataInput);
 
-  const projects = (reportData.groups || []).flatMap((group) => group.projects || []);
+  const projects = (reportData.groups && reportData.groups.length > 0)
+    ? reportData.groups.flatMap((group) => group.projects || [])
+    : (reportData.projects || []);
   
   const actualEcms = normalizeEcmNumberList(projects);
   const expectedVrChennaiEcms = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18];

@@ -349,21 +349,48 @@ function applyProjectMappings(context, reportData, summary) {
   });
 
   const regrouped = [];
-  const exactGroups = [
-    ["GR-1", "Electrical Billing and Demand Optimization"],
-    ["GR-2", "Chiller Plant and Cooling Tower Optimization"],
-    ["GR-3", "Pumping System Optimization"],
-    ["GR-4", "Air Handling, Ventilation and Blower Optimization"],
-  ];
+  const hasGrouping = Boolean(context.hasExplicitEcmGrouping);
+  
+  if (hasGrouping) {
+    const groupMap = new Map();
+    // Build groups based on explicit groupNo from the source projects
+    Array.from(projectsByEcm.values()).forEach(project => {
+       if (!project.groupNo) return;
+       if (!groupMap.has(project.groupNo)) {
+          groupMap.set(project.groupNo, {
+             groupNo: project.groupNo,
+             groupName: project.groupName || `Group ${project.groupNo}`,
+             groupTitle: project.groupName || `Group ${project.groupNo}`,
+             projects: []
+          });
+       }
+    });
 
-  exactGroups.forEach(([groupNo, groupName]) => {
-    const projects = groups.flatMap((group) => group.projects || []).filter((project) => project.groupNo === groupNo);
-    if (projects.length) regrouped.push({ groupNo, groupName, groupTitle: groupName, projects });
-  });
+    groups.flatMap((group) => group.projects || []).forEach(project => {
+       if (project.groupNo && groupMap.has(project.groupNo)) {
+          groupMap.get(project.groupNo).projects.push(project);
+       }
+    });
 
-  if (regrouped.length) {
+    for (const group of groupMap.values()) {
+       if (group.projects.length > 0) regrouped.push(group);
+    }
+  }
+
+  if (regrouped.length > 0) {
     reportData.groups = regrouped;
     reportData.groupedProjects = regrouped;
+  } else {
+    // If no explicit grouping, keep groups empty but preserve the projects on the reportData level
+    // so frontend can access them linearly.
+    reportData.groups = [];
+    reportData.groupedProjects = [];
+    const allProjects = groups.flatMap((group) => group.projects || []);
+    if (allProjects.length) {
+      reportData.projects = allProjects;
+    } else {
+      reportData.projects = context.ecmProjects;
+    }
   }
 }
 

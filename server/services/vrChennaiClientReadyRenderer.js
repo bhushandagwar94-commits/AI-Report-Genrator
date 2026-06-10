@@ -29,12 +29,7 @@ const {
   formatYears,
 } = require("./reportFormattingService");
 
-const VR_GROUPS = [
-  { groupNo: "GR-1", groupName: "Electrical Billing and Demand Optimization", ecmNos: [1] },
-  { groupNo: "GR-2", groupName: "Chiller Plant and Cooling Tower Optimization", ecmNos: [2, 3, 4, 5, 18] },
-  { groupNo: "GR-3", groupName: "Pumping System Optimization", ecmNos: [6, 7, 8] },
-  { groupNo: "GR-4", groupName: "Air Handling, Ventilation and Blower Optimization", ecmNos: [9, 10, 11, 12, 13] },
-];
+
 
 function isVrChennaiReport(reportData = {}, extractedDataContext = null) {
   const extractionFormat = cleanText(reportData.extractionFormat || reportData.reportInfo?.extractionFormat).toLowerCase();
@@ -79,23 +74,7 @@ function shortFallback(text, fallback, context, section, missingInput, whyRequir
   return fallback;
 }
 
-function buildGroups(context) {
-  const projectsByNo = new Map(context.ecmProjects.map((project) => [getProjectNumber(project), project]));
-  return VR_GROUPS.map((group) => {
-    const projects = group.ecmNos.map((no) => projectsByNo.get(no)).filter(Boolean);
-    const totalEnergySaving = Number(projects.reduce((sum, project) => sum + (project.energySavingRaw || 0), 0).toFixed(0));
-    const totalAnnualSaving = Number(projects.reduce((sum, project) => sum + (project.annualSavingRaw || 0), 0).toFixed(0));
-    const totalInvestment = Number(projects.reduce((sum, project) => sum + (project.investmentRaw || 0), 0).toFixed(0));
-    return {
-      ...group,
-      projects,
-      totalEnergySaving,
-      totalAnnualSaving,
-      totalInvestment,
-      weightedPaybackYears: totalAnnualSaving > 0 ? Number((totalInvestment / totalAnnualSaving).toFixed(2)) : null,
-    };
-  }).filter((group) => group.projects.length);
-}
+
 
 function mvBullets(project) {
   const no = getProjectNumber(project);
@@ -317,12 +296,28 @@ function buildVrChennaiClientReadyModel(reportData = {}, extractedDataInput = {}
   context._originalMissingInputsCount = context.missingInputs.length;
   context.missingInputs = groupMissingInputs(context.missingInputs);
 
-  const groups = buildGroups(context);
-  const ecmDetails = groups.flatMap((group) => group.projects.map((project) => ({
-    ...buildEcmDetail(project, context),
-    groupNo: group.groupNo,
-    groupName: group.groupName,
-  })));
+  const hasExplicitEcmGrouping = reportData?.hasExplicitEcmGrouping === true;
+  const groups = hasExplicitEcmGrouping && Array.isArray(reportData?.groups) ? reportData.groups : [];
+  
+  let ecmDetails = [];
+  if (hasExplicitEcmGrouping && groups.length > 0) {
+    ecmDetails = groups.flatMap((group) => group.projects.map((project) => ({
+      ...buildEcmDetail(project, context),
+      groupNo: group.groupNo,
+      groupName: group.groupName,
+    })));
+  } else {
+    // If no explicit grouping, use projects list and preserve source order
+    const projects = Array.isArray(reportData?.projects) && reportData.projects.length > 0 
+      ? reportData.projects 
+      : context.ecmProjects;
+    
+    ecmDetails = projects.map((project) => ({
+      ...buildEcmDetail(project, context),
+      groupNo: null,
+      groupName: null,
+    }));
+  }
 
   const totalEnergySaving = Number(context.ecmProjects.reduce((sum, project) => sum + (project.energySavingRaw || 0), 0).toFixed(0));
   const totalAnnualSaving = Number(context.ecmProjects.reduce((sum, project) => sum + (project.annualSavingRaw || 0), 0).toFixed(0));
@@ -393,8 +388,6 @@ function buildVrChennaiClientReadyModel(reportData = {}, extractedDataInput = {}
   }));
 
   const ecmSummaryRows = context.ecmProjects
-    .slice()
-    .sort((a, b) => getProjectNumber(a) - getProjectNumber(b))
     .map((project) => ({
       ecmNo: project.ecmNo,
       projectTitle: project.projectTitle,
@@ -438,6 +431,7 @@ function buildVrChennaiClientReadyModel(reportData = {}, extractedDataInput = {}
   return {
     title: "Detailed Energy Audit Report",
     context,
+    hasExplicitEcmGrouping,
     groups,
     executiveSummaryRows,
     facilityProfileRows,
@@ -546,19 +540,26 @@ async function renderVrChennaiClientReadyDocx(reportData = {}, extractedDataInpu
       model.ecmSummaryRows.map((row) => [row.ecmNo, row.projectTitle, row.system, row.energySaving, row.annualSaving, row.investment, row.paybackMonths])
     ),
     new PageBreak(),
-
-    paragraph("5. Group-wise ECM Summary", { heading: HeadingLevel.HEADING_1 }),
-    makeTable(
-      ["Group", "ECM Count", "Energy Saving kWh/year", "Annual Saving Rs/year", "Investment Rs", "Payback, years"],
-      model.groupSummaryRows.map((row) => [row.groupNo + " " + row.groupName, row.ecmCount, row.totalEnergySaving, row.totalAnnualSaving, row.totalInvestment, row.payback])
-    ),
-    new PageBreak(),
-
-    paragraph("6. Detailed ECM Sheets", { heading: HeadingLevel.HEADING_1 }),
   ];
 
+  let currentSectionNumber = 5;
+
+  if (model.hasExplicitEcmGrouping && model.groups && model.groups.length > 0) {
+    children.push(paragraph(`${currentSectionNumber}. Group-wise ECM Summary`, { heading: HeadingLevel.HEADING_1 }));
+    children.push(
+      makeTable(
+        ["Group", "ECM Count", "Energy Saving kWh/year", "Annual Saving Rs/year", "Investment Rs", "Payback, years"],
+        model.groupSummaryRows.map((row) => [row.groupNo + " " + row.groupName, row.ecmCount, row.totalEnergySaving, row.totalAnnualSaving, row.totalInvestment, row.payback])
+      )
+    );
+    children.push(new PageBreak());
+    currentSectionNumber++;
+  }
+
+  children.push(paragraph(`${currentSectionNumber}. Detailed ECM Sheets`, { heading: HeadingLevel.HEADING_1 }));
+
   model.ecmDetails.forEach((detail, index) => {
-    children.push(paragraph(`${detail.ecmNo}: ${detail.projectTitle}`, { heading: HeadingLevel.HEADING_2 }));
+    children.push(paragraph(`${currentSectionNumber}.${index + 1} ${detail.ecmNo}: ${detail.projectTitle}`, { heading: HeadingLevel.HEADING_2 }));
     children.push(
       keyValueTable([
         ["ECM No.", detail.ecmNo],
@@ -584,7 +585,7 @@ async function renderVrChennaiClientReadyDocx(reportData = {}, extractedDataInpu
     detail.projectActivities.forEach((item) => children.push(bulletParagraph(item)));
     children.push(paragraph("Energy Saving Calculation", { heading: HeadingLevel.HEADING_3 }));
     children.push(keyValueTable(detail.energySavingCalculationRows));
-    if (detail.costingBackup.length) {
+    if (detail.costingBackup && detail.costingBackup.length) {
       children.push(paragraph("Costing Backup", { heading: HeadingLevel.HEADING_3 }));
       children.push(
         makeTable(
@@ -602,8 +603,9 @@ async function renderVrChennaiClientReadyDocx(reportData = {}, extractedDataInpu
     if (index < model.ecmDetails.length - 1) children.push(new PageBreak());
   });
 
+  currentSectionNumber++;
   children.push(new PageBreak());
-  children.push(paragraph("7. Measurement & Verification Plan", { heading: HeadingLevel.HEADING_1 }));
+  children.push(paragraph(`${currentSectionNumber}. Measurement & Verification Plan`, { heading: HeadingLevel.HEADING_1 }));
   children.push(
     makeTable(
       ["ECM No.", "Project Title", "M&V Plan"],
@@ -611,14 +613,16 @@ async function renderVrChennaiClientReadyDocx(reportData = {}, extractedDataInpu
     )
   );
 
+  currentSectionNumber++;
   children.push(new PageBreak());
-  children.push(paragraph("8. Annexure A: Extracted Data Summary", { heading: HeadingLevel.HEADING_1 }));
+  children.push(paragraph(`${currentSectionNumber}. Annexure A: Extracted Data Summary`, { heading: HeadingLevel.HEADING_1 }));
   children.push(keyValueTable(model.extractedDataSummaryRows));
   children.push(paragraph("PDF Parse Status", { heading: HeadingLevel.HEADING_2 }));
   children.push(keyValueTable(model.pdfStatusRows));
 
+  currentSectionNumber++;
   children.push(new PageBreak());
-  children.push(paragraph("9. Annexure B: Missing Inputs Required", { heading: HeadingLevel.HEADING_1 }));
+  children.push(paragraph(`${currentSectionNumber}. Annexure B: Missing Inputs Required`, { heading: HeadingLevel.HEADING_1 }));
   children.push(
     makeTable(
       ["Section", "Missing Input", "Why Required", "Suggested Source", "Criticality"],

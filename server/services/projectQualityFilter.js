@@ -127,6 +127,36 @@ function looksLikeFallbackEquipmentRow(project = {}) {
   return false;
 }
 
+function isValidEcmProject(ecm) {
+  const title = String(ecm?.projectTitle || ecm?.title || ecm?.measure || ecm?.ecmName || "").trim();
+
+  const hasEcmNo =
+    ecm?.ecmNo !== null &&
+    ecm?.ecmNo !== undefined &&
+    String(ecm.ecmNo).trim() !== "";
+
+  const hasTitle = title.length > 3;
+
+  const hasSavingKwh = Number(ecm?.energySavingKwh || ecm?.savingKwh || ecm?.energySavingRaw || ecm?.expectedEnergySaving || ecm?.energySaving || 0) > 0;
+  const hasAnnualSaving = Number(ecm?.annualSavingRs || ecm?.annualSaving || ecm?.annualSavingRaw || ecm?.expectedAnnualCostSaving || 0) > 0;
+
+  const investmentVal = ecm?.investmentRs ?? ecm?.investmentRaw ?? ecm?.estimatedInvestment ?? ecm?.investment;
+  const hasInvestment = investmentVal !== null && investmentVal !== undefined && !Number.isNaN(Number(investmentVal));
+
+  const hasPayback = Number(ecm?.paybackMonths || ecm?.paybackMonthsRaw || ecm?.simplePaybackPeriod || ecm?.paybackRaw || ecm?.payback || 0) > 0;
+
+  return hasEcmNo || hasTitle || hasSavingKwh || hasAnnualSaving || hasInvestment || hasPayback;
+}
+
+function calculatePaybackMonths(investmentRs, annualSavingRs) {
+  const investment = Number(investmentRs || 0);
+  const annualSaving = Number(annualSavingRs || 0);
+
+  if (investment === 0 && annualSaving > 0) return 0;
+  if (investment > 0 && annualSaving > 0) return Number(((investment / annualSaving) * 12).toFixed(2));
+  return null;
+}
+
 function projectStableKey(project = {}) {
   const projectNo = normalizeText(project.projectNo || project.ecmNo || "");
   const title = normalizeText(
@@ -199,58 +229,105 @@ function normalizeGroups(reportData = {}) {
     }
 
 function filterReportProjects(reportData = {}) {
-  const groups = normalizeGroups(reportData);
-  const nextGroups = [];
-  let sourceCount = 0;
-  let rejectedCount = 0;
-  const dedupeState = {
-    seen: new Set(),
-    titleSeen: new Set(),
-  };
+  const isGrouped = reportData.hasExplicitEcmGrouping === true;
+  const projectsToFilter = isGrouped && Array.isArray(reportData.groups) && reportData.groups.length > 0
+    ? reportData.groups.flatMap(g => g.projects || [])
+    : (reportData.projects || []);
 
-  groups.forEach((group, groupIndex) => {
-    const groupProjects = safeArray(group?.projects).filter(
-      (project) => {
-        const isBad = looksLikeFallbackEquipmentRow(project);
-        if (isBad) console.log("[DEBUG] filterReportProjects dropped:", project.ecmNo, project.title);
-        return !isBad;
-      }
-    );
-    const dedupedProjects = dedupeProjects(groupProjects, dedupeState);
-    const result = {
-      projects: dedupedProjects,
-      rejectedCount: safeArray(group?.projects).length - dedupedProjects.length,
-      sourceCount: safeArray(group?.projects).length,
-    };
-    sourceCount += result.sourceCount;
-    rejectedCount += result.rejectedCount;
+  const accepted = [];
+  const rejected = [];
 
-    if (!result.projects.length) return;
-
-    nextGroups.push({
-      ...group,
-      groupNo: group?.groupNo || `GR-${groupIndex + 1}`,
-      groupTitle: group?.groupTitle || group?.title || `Group ${groupIndex + 1}`,
-      projects: result.projects,
-    });
+  console.log("[ECM_BEFORE_QUALITY_FILTER]", {
+    count: projectsToFilter.length,
+    rows: projectsToFilter.map(e => ({
+      ecmNo: e.ecmNo,
+      projectTitle: e.projectTitle || e.title,
+      energySavingKwh: e.energySavingRaw || e.energySaving,
+      annualSavingRs: e.annualSavingRaw || e.annualSaving,
+      investmentRs: e.investmentRaw || e.investment,
+      groupName: e.groupName,
+      groupNo: e.groupNo,
+      source: e.sourceTrace?.extractionMethod
+    }))
   });
 
-  const flatProjects = nextGroups.flatMap((group) => safeArray(group.projects));
+  for (const project of projectsToFilter) {
+    if (isValidEcmProject(project)) {
+      // Calculate missing payback
+      const investment = project.investmentRaw ?? project.investment;
+      const annualSaving = project.annualSavingRaw ?? project.annualSaving;
+      const paybackCalculated = calculatePaybackMonths(investment, annualSaving);
+      if (paybackCalculated !== null && !project.paybackMonthsRaw && !project.simplePaybackPeriod) {
+        project.paybackMonthsRaw = paybackCalculated;
+        project.simplePaybackPeriod = paybackCalculated > 0 ? (paybackCalculated / 12).toFixed(2) : 0;
+      }
+      accepted.push(project);
+    } else {
+      console.log("[ECM_REJECTED_BY_QUALITY_FILTER]", {
+        ecmNo: project.ecmNo,
+        projectTitle: project.projectTitle || project.title,
+        reason: "Failed relaxed validation",
+        row: project
+      });
+      rejected.push(project);
+    }
+  }
+
+  let filteredEcms = accepted; // No aggressive dedupe for now
+
+  if (!filteredEcms.length && projectsToFilter.length > 0) {
+    console.warn("[ECM_FILTER_REMOVED_ALL_ROWS_RESTORING_ORIGINALS]", { originalCount: projectsToFilter.length });
+    filteredEcms = projectsToFilter;
+  }
+
+  console.log("[ECM_AFTER_QUALITY_FILTER]", {
+    count: filteredEcms.length,
+    rows: filteredEcms.map(e => ({
+      ecmNo: e.ecmNo,
+      projectTitle: e.projectTitle || e.title,
+      energySavingKwh: e.energySavingRaw || e.energySaving,
+      annualSavingRs: e.annualSavingRaw || e.annualSaving,
+      investmentRs: e.investmentRaw || e.investment,
+      groupName: e.groupName,
+      groupNo: e.groupNo
+    }))
+  });
+
+  let nextGroups = [];
+  if (isGrouped && Array.isArray(reportData.groups)) {
+    reportData.groups.forEach((group, groupIndex) => {
+      const groupProjs = filteredEcms.filter(p => p.groupNo === group.groupNo || (group.projects || []).includes(p));
+      if (groupProjs.length > 0) {
+        nextGroups.push({
+          ...group,
+          projects: groupProjs
+        });
+      }
+    });
+  }
+
+  const finalProjects = isGrouped ? nextGroups.flatMap(g => g.projects) : filteredEcms;
+
+  console.log("[FINAL_ECM_COUNT_BEFORE_RESPONSE]", {
+    ecmCount: finalProjects.length,
+    hasExplicitEcmGrouping: reportData.hasExplicitEcmGrouping,
+    groupCount: nextGroups.length
+  });
 
   return {
     ...reportData,
     groups: nextGroups,
     groupedProjects: nextGroups,
-    projects: flatProjects,
+    projects: finalProjects,
     executiveSummary: {
       ...(reportData.executiveSummary || {}),
-      summaryOfIdentifiedProjects: flatProjects,
+      summaryOfIdentifiedProjects: finalProjects,
     },
     filteringMeta: {
       ...(reportData.filteringMeta || {}),
-      sourceCount,
-      rejectedCount,
-      retainedCount: flatProjects.length,
+      sourceCount: projectsToFilter.length,
+      rejectedCount: rejected.length,
+      retainedCount: finalProjects.length,
     },
   };
 }

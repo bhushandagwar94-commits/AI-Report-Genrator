@@ -679,7 +679,7 @@ function CoverPage({ data }: { data: ReportInfo }) {
   );
 }
 
-function TableOfContentsPage({ projectGroups }: { projectGroups: any[] }) {
+function TableOfContentsPage({ projectGroups, projects, hasExplicitEcmGrouping }: { projectGroups: any[], projects: any[], hasExplicitEcmGrouping: boolean }) {
   let globalEcmIndex = 0;
   return (
     <section className="report-page" style={pageStyle}>
@@ -687,16 +687,18 @@ function TableOfContentsPage({ projectGroups }: { projectGroups: any[] }) {
       <div className="toc-list" style={{ lineHeight: '1.5', fontSize: '11pt' }}>
         <div className="font-bold mt-2">Chapter 1. Executive Summary</div>
         <div className="ml-4">1.1 Purpose of the Energy Audit</div>
-        <div className="ml-4">1.2 Overall Energy Saving Potential</div>
-        <div className="ml-4">1.3 Summary of Identified Energy Saving Projects</div>
-        <div className="ml-4">1.4 Project Grouping</div>
-        <div className="ml-4">1.5 Key Observations</div>
-        <div className="ml-4">1.6 Recommended Implementation Priority</div>
-        <div className="ml-4">1.7 Conclusion and Way Forward</div>
+        <div className="ml-4">1.2 Key Objectives / Key Observations</div>
+        <div className="ml-4">1.3 Conclusion and Way Forward</div>
+        <div className="ml-4">1.4 Expected Outcomes</div>
+        <div className="ml-4">1.5 Strategic Importance</div>
+        <div className="ml-4">1.6 Key Findings</div>
+        <div className="ml-4">1.7 Financial Highlights</div>
+        <div className="ml-4">1.8 Energy Saving Potential</div>
+        <div className="ml-4">1.9 Recommended Implementation Approach</div>
         
         <div className="font-bold mt-2">Chapter 2. Plant / Building Details and Energy Profile</div>
         <div className="ml-4">2.1 General Information</div>
-        <div className="ml-4">2.2 Building Operation Details</div>
+        <div className="ml-4">2.2 Production Facility Operation Details</div>
         <div className="ml-4">2.3 Utility and Energy Sources</div>
         <div className="ml-4">2.4 Electrical Supply Details</div>
         <div className="ml-4">2.5 Electricity Consumption and Billing Summary</div>
@@ -709,20 +711,32 @@ function TableOfContentsPage({ projectGroups }: { projectGroups: any[] }) {
         <div className="ml-4">2.12 Summary of Audit Observations</div>
 
         <div className="font-bold mt-2">Chapter 3. Energy Saving Projects</div>
-        {projectGroups.map((group: any, idx: number) => (
-          <div key={idx}>
-            <div className="font-semibold ml-4 mt-1">{formatGroupHeading(group, idx)}</div>
-            {asArray(group.projects).map((project: any, pIdx: number) => {
-              globalEcmIndex++;
-              const title = firstNonEmpty(project.projectTitle, project.title, project.ecmName, "");
-              const ecmNoVal = getEcmNumberVal(project);
-              const ecmString = formatEcmHeading(`3.${globalEcmIndex}`, ecmNoVal, title);
-              return (
-                <div key={pIdx} className="ml-8">{ecmString}</div>
-              );
-            })}
-          </div>
-        ))}
+        {hasExplicitEcmGrouping && projectGroups && projectGroups.length > 0 ? (
+          projectGroups.map((group: any, idx: number) => (
+            <div key={idx}>
+              <div className="font-semibold ml-4 mt-1">{formatGroupHeading(group, idx)}</div>
+              {asArray(group.projects).map((project: any, pIdx: number) => {
+                globalEcmIndex++;
+                const title = firstNonEmpty(project.projectTitle, project.title, project.ecmName, "");
+                const ecmNoVal = getEcmNumberVal(project);
+                const ecmString = formatEcmHeading(`3.${globalEcmIndex}`, ecmNoVal, title);
+                return (
+                  <div key={pIdx} className="ml-8">{ecmString}</div>
+                );
+              })}
+            </div>
+          ))
+        ) : (
+          projects.map((project: any, pIdx: number) => {
+            globalEcmIndex++;
+            const title = firstNonEmpty(project.projectTitle, project.title, project.ecmName, "");
+            const ecmNoVal = getEcmNumberVal(project);
+            const ecmString = formatEcmHeading(`3.${globalEcmIndex}`, ecmNoVal, title);
+            return (
+              <div key={pIdx} className="ml-4">{ecmString}</div>
+            );
+          })
+        )}
 
         <div className="font-bold mt-2">Chapter 4. Annexures</div>
       </div>
@@ -853,19 +867,23 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
         "Carry out installation, control tuning, testing, and commissioning with documented baseline reference and post-implementation performance checks."
       ])}
       
-      <div className="mt-4 mb-4 font-bold text-sm">1.9.1 Project Grouping</div>
-      <div className="mb-4">
-        {renderOptionalTable([
-          { key: "groupNo", label: "Group No." },
-          { key: "groupName", label: "Group Name" },
-          { key: "ecmsIncluded", label: "ECMs Included" },
-          { key: "count", label: "No. of ECMs" },
-          { key: "investment", label: "Total Investment" },
-          { key: "saving", label: "Annual Saving" },
-          { key: "energy", label: "Energy Saving" },
-          { key: "payback", label: "Group Payback" },
-        ], data.projectGrouping || categorySummaryRows, "[To be updated after site data verification]")}
-      </div>
+      {data.hasExplicitEcmGrouping && (
+        <>
+          <div className="mt-4 mb-4 font-bold text-sm">1.9.1 Project Grouping</div>
+          <div className="mb-4">
+            {renderOptionalTable([
+              { key: "groupNo", label: "Group No." },
+              { key: "groupName", label: "Group Name" },
+              { key: "ecmsIncluded", label: "ECMs Included" },
+              { key: "count", label: "No. of ECMs" },
+              { key: "investment", label: "Total Investment" },
+              { key: "saving", label: "Annual Saving" },
+              { key: "energy", label: "Energy Saving" },
+              { key: "payback", label: "Group Payback" },
+            ], data.projectGrouping || categorySummaryRows, "[To be updated after site data verification]")}
+          </div>
+        </>
+      )}
 
       <div className="mt-4 mb-4 font-bold text-sm">1.9.2 Recommended Implementation Priority</div>
       <div className="mb-4">
@@ -1308,15 +1326,8 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
 
   console.log("REPORT PROJECTS");
   console.log(data.projects);
-  const projectGroups = groupedProjects.length ? groupedProjects : [{
-    groupNo: "GR-1",
-    groupTitle: "Energy Saving Projects",
-    projects: projects,
-    totalInvestment: totalInvestment(projects),
-    totalAnnualSaving: totalSavings(projects),
-    totalEnergySaving: totalEnergy(projects),
-    weightedPayback: weightedPayback(projects),
-  }];
+  const projectGroups = groupedProjects.length ? groupedProjects : [];
+  const hasExplicitEcmGrouping = data.hasExplicitEcmGrouping === true;
 
   return (
     <div className="commercial-building-energy-audit-report report-print-area text-sm text-gray-900">
@@ -1326,7 +1337,7 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
       <CoverPage data={data.reportInfo || {}} />
       <div className="page-break" />
 
-      <TableOfContentsPage projectGroups={projectGroups} />
+      <TableOfContentsPage projectGroups={projectGroups} projects={projects} hasExplicitEcmGrouping={hasExplicitEcmGrouping} />
       <div className="page-break" />
 
       <ExecutiveSummaryPage data={data} projects={projects} groupedProjects={projectGroups} />
@@ -1335,39 +1346,51 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
       <BuildingEnergyProfilePage data={data} />
       <div className="page-break" />
 
-      {projectGroups.map((group, index) => {
-        const globalStartIndex = projectGroups.slice(0, index).reduce((acc, g) => acc + asArray(g.projects).length, 0);
-        return (
-          <section key={index} className="report-page" style={{...pageStyle, minHeight: 'auto'}}>
-            <SectionHeader level={2} title={formatGroupHeading(group, index)} />
-            <SectionHeader level={3} title="Group Summary Table" />
-            <ReportTable compact columns={[
-              { key: "projectNo", label: "ECM No." },
-              { key: "projectTitle", label: "ECM Name" },
-              { key: "investment", label: "Investment" },
-              { key: "saving", label: "Annual Saving" },
-              { key: "energy", label: "Energy Saving" },
-              { key: "payback", label: "Payback" },
-            ]} rows={asArray(group.projects).map((p: any) => ({
-              projectNo: formatEcmNumber(p),
-              projectTitle: firstNonEmpty(p.projectTitle, p.title, p.ecmName),
-              investment: formatCurrencyDisplay(p.estimatedInvestment || p.investment),
-              saving: formatCurrencyDisplay(p.expectedAnnualCostSaving || p.annualSaving),
-              energy: formatNumberDisplay(p.expectedEnergySaving || p.energySaving),
-              payback: formatPaybackDisplay(p.simplePaybackPeriod || p.payback),
-            }))} />
+      <section className="report-page" style={{...pageStyle, minHeight: 'auto'}}>
+        <SectionHeader level={1} title="Chapter 3: Energy Saving Projects" />
+        
+        {hasExplicitEcmGrouping && projectGroups.length > 0 ? (
+          projectGroups.map((group, index) => {
+            const globalStartIndex = projectGroups.slice(0, index).reduce((acc, g) => acc + asArray(g.projects).length, 0);
+            return (
+              <div key={index} className="mb-6">
+                <SectionHeader level={2} title={formatGroupHeading(group, index)} />
+                <SectionHeader level={3} title="Group Summary Table" />
+                <ReportTable compact columns={[
+                  { key: "projectNo", label: "ECM No." },
+                  { key: "projectTitle", label: "ECM Name" },
+                  { key: "investment", label: "Investment" },
+                  { key: "saving", label: "Annual Saving" },
+                  { key: "energy", label: "Energy Saving" },
+                  { key: "payback", label: "Payback" },
+                ]} rows={asArray(group.projects).map((p: any) => ({
+                  projectNo: formatEcmNumber(p),
+                  projectTitle: firstNonEmpty(p.projectTitle, p.title, p.ecmName),
+                  investment: formatCurrencyDisplay(p.estimatedInvestment || p.investment),
+                  saving: formatCurrencyDisplay(p.expectedAnnualCostSaving || p.annualSaving),
+                  energy: formatNumberDisplay(p.expectedEnergySaving || p.energySaving),
+                  payback: formatPaybackDisplay(p.simplePaybackPeriod || p.payback),
+                }))} />
 
-            <div className="mt-4">
-              {asArray(group.projects).map((project, pIndex) => {
-                const globalEcmIndex = globalStartIndex + pIndex + 1;
-                return (
-                  <ProjectChapterPage key={pIndex} project={project} groupNumber="3" ecmIndexWithinGroup={globalEcmIndex} />
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+                <div className="mt-4">
+                  {asArray(group.projects).map((project, pIndex) => {
+                    const globalEcmIndex = globalStartIndex + pIndex + 1;
+                    return (
+                      <ProjectChapterPage key={pIndex} project={project} groupNumber="3" ecmIndexWithinGroup={globalEcmIndex} />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="mt-4">
+            {projects.map((project, pIndex) => (
+              <ProjectChapterPage key={pIndex} project={project} groupNumber="3" ecmIndexWithinGroup={pIndex + 1} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

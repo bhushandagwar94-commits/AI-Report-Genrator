@@ -214,14 +214,25 @@ async function enhanceReportNarrativesWithAi({ reportData, force = false }) {
     String(process.env.ENABLE_AI_ENHANCEMENT || "true").toLowerCase() !== "false" &&
     String(process.env.ENABLE_MANUAL_AI_ENHANCEMENT || "true").toLowerCase() !== "false";
 
+  const projectCount = getProjectCount(reportData);
+
   if (!manualEnabled && !force) {
     return enhanceReportLocally(reportData, []);
   }
 
-  const projectCount = getProjectCount(reportData);
-
   if (!reportData || projectCount <= 0) {
     return enhanceReportLocally(reportData, []);
+  }
+
+  if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+    const fallbackResult = enhanceReportLocally(reportData, []);
+    return {
+      ...fallbackResult,
+      aiEnhancementStatus: {
+        ...fallbackResult.aiEnhancementStatus,
+        userMessage: "AI enhancement is disabled because OPENROUTER_API_KEY is not configured.",
+      }
+    };
   }
 
   try {

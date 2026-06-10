@@ -154,6 +154,9 @@ const Reports = {
     publicForm = {},
     uploadedFiles = [],
   }) => {
+    console.log("[FRONTEND_ENV_CHECK]", {
+      viteApiBaseUrl: import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE
+    });
     const payload = {
       template_id: templateId,
       public_form: {

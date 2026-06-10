@@ -1318,6 +1318,8 @@ function Step3({
 // ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
 function Step4({
   report,
+  generatedReport,
+  setGeneratedReport,
   selectedTemplate,
   onStartOver,
   activeReportData,
@@ -1357,6 +1359,16 @@ function Step4({
     import.meta.env.DEV && import.meta.env.VITE_SHOW_FIELD_FLAGS === "true";
   const fieldFlags = reportData?.fieldFlags || {};
   const missingFieldSummary = reportData?.missingFieldSummary || [];
+
+  const activeReport = generatedReport || report || activeReportData || null;
+
+  if (!activeReport) {
+    return (
+      <div className="rounded-lg border border-yellow-500/40 bg-yellow-950/30 p-4 text-yellow-100 mt-6">
+        No generated report available yet. Please generate the report first.
+      </div>
+    );
+  }
 
   useEffect(() => {
     console.log("[PREVIEW_ACTIVE_REPORT_DATA_DEBUG]", {
@@ -1606,6 +1618,10 @@ function Step4({
 
   const missing = report?.missingData ? JSON.parse(report.missingData) : [];
 
+  const hasReportData = Boolean(generatedReport || activeReportData || report?.outputContent);
+  const criticalFailures = qcResult?.criticalFailures || qcResult?.failures?.filter((f) => f?.severity === "critical") || [];
+  const exportBlocked = !hasReportData || criticalFailures.length > 0;
+
   return (
     <div className="animate-fade-in flex flex-col gap-y-5">
       {/* Header row */}
@@ -1698,8 +1714,8 @@ function Step4({
                 type="button"
                 onClick={() => handleDownloadWord(true)}
                 title="Download Word"
-                disabled={isWordExporting}
-                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all"
+                disabled={isWordExporting || exportBlocked}
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <FileDoc size={18} weight="fill" />
                 {isWordExporting && wordExportMode === "draft"
@@ -1907,27 +1923,45 @@ function Step4({
       )}
 
       {/* QC Failure Panel */}
-      {qcResult && qcResult.qcFailed && (
-        <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-5 mb-2 shadow-lg">
-          <h3 className="text-red-400 font-bold text-lg mb-2 flex items-center gap-2">
+      {qcResult && (exportBlocked || (qcResult.warnings && qcResult.warnings.length > 0) || (qcResult.qcWarnings && qcResult.qcWarnings.length > 0) || qcResult.qcFailed) && (
+        <div className={`bg-${exportBlocked ? 'red' : 'yellow'}-900/20 border border-${exportBlocked ? 'red' : 'yellow'}-500/30 rounded-xl p-5 mb-2 shadow-lg`}>
+          <h3 className={`text-${exportBlocked ? 'red' : 'yellow'}-400 font-bold text-lg mb-2 flex items-center gap-2`}>
             <WarningCircle size={20} weight="bold" />
-            Report Quality Check Required
+            {exportBlocked ? "Report Quality Check Required" : "Report generated with quality warnings. Export is allowed."}
           </h3>
           <p className="text-white/80 text-sm mb-4">
-            The report was generated, but export is blocked because some quality
-            checks failed.
+            {exportBlocked 
+               ? "The report was generated, but export is blocked because some quality checks failed."
+               : "Quality warnings found. You can export the report and update pending fields manually."}
           </p>
 
-          {qcResult.qcErrors && qcResult.qcErrors.length > 0 && (
+          {criticalFailures.length > 0 && (
             <div className="mb-4">
               <h4 className="text-red-300 font-semibold text-sm mb-1">
                 Critical Issues:
               </h4>
               <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
+                {criticalFailures.map((err, i) => (
+                  <li key={i}>
+                    <span className="font-medium text-white/90">
+                      {err.message || err}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {qcResult.qcErrors && qcResult.qcErrors.length > 0 && criticalFailures.length === 0 && (
+            <div className="mb-4">
+              <h4 className="text-red-300 font-semibold text-sm mb-1">
+                Errors:
+              </h4>
+              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
                 {qcResult.qcErrors.map((err, i) => (
                   <li key={i}>
                     <span className="font-medium text-white/90">
-                      {err.message}
+                      {err.message || err}
                     </span>
                     {err.path && (
                       <span className="opacity-50 ml-1">({err.path})</span>
@@ -1961,22 +1995,22 @@ function Step4({
                   Warnings:{" "}
                   {qcResult.summary.warningCount ??
                     qcResult.qcWarnings?.length ??
-                    0}
+                    (qcResult.warnings?.length || 0)}
                 </div>
               </div>
             </div>
           )}
 
-          {qcResult.qcWarnings && qcResult.qcWarnings.length > 0 && (
+          {(qcResult.warnings || qcResult.qcWarnings) && ((qcResult.warnings?.length > 0) || (qcResult.qcWarnings?.length > 0)) && (
             <div className="mb-4">
               <h4 className="text-yellow-300 font-semibold text-sm mb-1">
                 Warnings:
               </h4>
-              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1">
-                {qcResult.qcWarnings.map((warn, i) => (
+              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 ml-1 max-h-48 overflow-y-auto">
+                {(qcResult.warnings || qcResult.qcWarnings || []).map((warn, i) => (
                   <li key={i}>
                     <span className="font-medium text-white/90">
-                      {warn.message}
+                      {warn.message || warn}
                     </span>
                     {warn.path && (
                       <span className="opacity-50 ml-1">({warn.path})</span>
@@ -1987,13 +2021,28 @@ function Step4({
             </div>
           )}
 
-          <button
-            onClick={handleRecheck}
-            disabled={rechecking}
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all"
-          >
-            {rechecking ? "Rechecking..." : "Re-run Cleanup & QC"}
-          </button>
+          <div className="flex gap-4">
+            <button
+              onClick={handleRecheck}
+              disabled={rechecking}
+              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all"
+            >
+              {rechecking ? "Rechecking..." : "Re-run Cleanup & QC"}
+            </button>
+            
+            {!exportBlocked && (
+              <button
+                type="button"
+                onClick={() => handleDownloadWord(true)}
+                title="Download Word"
+                disabled={isWordExporting}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all rounded-lg"
+              >
+                 <FileDoc size={18} weight="fill" />
+                 {isWordExporting ? "Generating Word..." : "Export Word Anyway"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2913,6 +2962,8 @@ export default function PublicReports() {
             {step === 4 && (
               <Step4
                 report={generatedReport}
+                generatedReport={generatedReport}
+                setGeneratedReport={setGeneratedReport}
                 selectedTemplate={selectedTemplate}
                 onStartOver={handleStartOver}
                 activeReportData={activeReportData}

@@ -2,6 +2,14 @@ process.env.NODE_ENV === "development"
   ? require("dotenv").config({ path: `.env.${process.env.NODE_ENV}` })
   : require("dotenv").config();
 
+console.log("[ENV_CHECK]", {
+  nodeEnv: process.env.NODE_ENV,
+  port: process.env.PORT,
+  useUniversalPipeline: process.env.USE_UNIVERSAL_PIPELINE,
+  hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY),
+  openRouterModels: process.env.OPENROUTER_MODELS
+});
+
 require("./utils/logger")();
 const express = require("express");
 const bodyParser = require("body-parser");

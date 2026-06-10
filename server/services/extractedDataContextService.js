@@ -323,25 +323,17 @@ function summarizeConnectedLoad(rows = []) {
   };
 }
 
-function exactVrGroup(ecmNo) {
-  const number = cleanNumber(String(ecmNo).replace(/[^\d]/g, ""));
-  if (number === 1) return { groupNo: "GR-1", groupName: "Electrical Billing and Demand Optimization" };
-  if ([2, 3, 4, 5, 18].includes(number)) return { groupNo: "GR-2", groupName: "Chiller Plant and Cooling Tower Optimization" };
-  if ([6, 7, 8].includes(number)) return { groupNo: "GR-3", groupName: "Pumping System Optimization" };
-  if ([9, 10, 11, 12, 13].includes(number)) return { groupNo: "GR-4", groupName: "Air Handling, Ventilation and Blower Optimization" };
-  return { groupNo: "", groupName: "" };
-}
+
 
 function normalizeProject(project = {}) {
-  const exactGroup = exactVrGroup(project.ecmNo || project.serialNo);
   return {
     ecmNo: cleanText(project.ecmNo || (project.serialNo ? `ECM ${project.serialNo}` : "")),
     serialNo: cleanNumber(project.serialNo),
     equipmentName: cleanText(project.equipmentName),
     projectTitle: cleanText(project.projectTitle || project.title),
     system: cleanText(project.system),
-    groupNo: cleanText(project.groupNo || exactGroup.groupNo),
-    groupName: cleanText(project.groupName || project.groupTitle || exactGroup.groupName),
+    groupNo: cleanText(project.groupNo),
+    groupName: cleanText(project.groupName || project.groupTitle),
     rationaleForEnergySaving: cleanText(project.rationaleForEnergySaving),
     savingPotentialRange: cleanText(project.savingPotentialRange),
     briefInformationAdvantages: cleanText(project.briefInformationAdvantages),
@@ -530,6 +522,7 @@ function buildExtractedDataContext(arg1 = [], arg2 = {}) {
       confidenceBySection: {},
       warnings: asArray(extractionResults.validationWarnings || extractionResults.warnings),
     },
+    hasExplicitEcmGrouping: Boolean(extractionResults.hasExplicitEcmGrouping),
   };
 
   context.extractionAudit = calculateAudit(context);

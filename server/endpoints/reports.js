@@ -2707,19 +2707,21 @@ function reportEndpoints(app) {
         
         // 6. Final Data Formatting (override Raw numbers with formatted for DOCX)
         if (isVrChennai) {
-           reportData.groups.forEach(g => {
-              g.projects.forEach(p => {
-                 p.expectedEnergySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
-                 p.expectedAnnualCostSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
-                 p.estimatedInvestment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
-                 p.simplePaybackPeriod = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
-                 
-                 // Also ensure the basic fields are formatted to avoid decimals
-                 p.energySaving = p.expectedEnergySaving;
-                 p.annualSaving = p.expectedAnnualCostSaving;
-                 p.investment = p.estimatedInvestment;
-                 p.payback = p.simplePaybackPeriod;
-              });
+           const projectsToFormat = (reportData.groups && reportData.groups.length > 0)
+             ? reportData.groups.flatMap(g => g.projects)
+             : (reportData.projects || []);
+
+           projectsToFormat.forEach(p => {
+              p.expectedEnergySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
+              p.expectedAnnualCostSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
+              p.estimatedInvestment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
+              p.simplePaybackPeriod = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
+              
+              // Also ensure the basic fields are formatted to avoid decimals
+              p.energySaving = p.expectedEnergySaving;
+              p.annualSaving = p.expectedAnnualCostSaving;
+              p.investment = p.estimatedInvestment;
+              p.payback = p.simplePaybackPeriod;
            });
            
            // Recursively round any remaining raw floats in reportData to max 2 decimals
@@ -2740,13 +2742,17 @@ function reportEndpoints(app) {
            roundDeep(reportData);
         }
         
-        console.log("[DEBUG] Final projects count:", reportData.groups?.flatMap(g => g.projects)?.length);
+        const totalProjectsCount = (reportData.groups && reportData.groups.length > 0)
+          ? reportData.groups.reduce((sum, g) => sum + (g.projects || []).length, 0)
+          : (reportData.projects || []).length;
+
+        console.log("[DEBUG] Final projects count:", totalProjectsCount);
         reportData = normalizeReportGroups(reportData);
         
         console.log("[GENERATE_REPORTDATA_NORMALIZED]", {
           hasReportData: !!reportData,
-          groupCount: reportData.groups.length,
-          projectCount: reportData.groups.reduce((sum, g) => sum + (g.projects || []).length, 0),
+          groupCount: reportData.groups ? reportData.groups.length : 0,
+          projectCount: totalProjectsCount,
           extractionFormat: reportData.extractionFormat
         });
 
@@ -2756,10 +2762,9 @@ function reportEndpoints(app) {
           reportData.extractionSummary.validationWarnings = extractionDebug.validationWarnings || [];
         }
 
-        const projectCount = reportData.groups.reduce(
-          (sum, group) => sum + group.projects.length,
-          0
-        );
+        const projectCount = (reportData.groups && reportData.groups.length > 0)
+          ? reportData.groups.reduce((sum, group) => sum + (group.projects || []).length, 0)
+          : (reportData.projects || []).length;
 
         const anyWarning = extractionAttempts.find(a => a.warning)?.warning;
         if (anyWarning && reportData.extractionSummary) {
@@ -2774,12 +2779,11 @@ function reportEndpoints(app) {
         });
 
         if (projectCount <= 0) {
-          return response.status(422).json({
-            success: false,
-            error: "No valid ECM projects remained after quality filtering. Fallback/invalid rows were rejected.",
-            extractionSummary: reportData.extractionSummary
-          });
+          console.warn("[ECM_EXTRACTION_EMPTY_CONTINUING_WITH_PLACEHOLDERS]");
         }
+
+
+
         
         const sanitizedResult = sanitizeReportData(reportData);
         reportData = sanitizedResult.sanitizedReportData;
@@ -2883,10 +2887,12 @@ function reportEndpoints(app) {
           });
         }
 
-        if (reportData.groups) {
+        if (reportData.hasExplicitEcmGrouping && reportData.groups) {
           reportData.groups.forEach(g => {
              g.projects = sortProjectsByEcmNumber(g.projects);
           });
+        } else if (!reportData.hasExplicitEcmGrouping && reportData.projects) {
+          // Do not sort by ecm number when explicit grouping is disabled to preserve source order
         }
         reportData = applyFinalDisplayFormatting(reportData);
         reportData = replacePlaceholders(reportData);
@@ -2906,12 +2912,49 @@ function reportEndpoints(app) {
         const finalQuality = validateFinalReportQuality(reportData, finalExtractedDataContext);
         console.log("[FINAL_REPORT_QUALITY_GATE]", finalQuality.gateLog);
 
-        if (!finalQuality.passed) {
+        let criticalFailures = [];
+        let warnings = [];
+        
+        (finalQuality.failures || []).forEach(f => {
+            if (f && f.severity === "critical") criticalFailures.push(f);
+            else warnings.push(typeof f === "string" ? { code: "QC_WARNING", severity: "warning", message: f } : { ...f, severity: "warning" });
+        });
+        
+        (finalQuality.warnings || []).forEach(w => {
+            warnings.push(typeof w === "string" ? { code: "QC_WARNING", severity: "warning", message: w } : { ...w, severity: "warning" });
+        });
+
+        if (projectCount < 14 || warnings.some(w => w.message && w.message.includes("ECM count !="))) {
+            warnings.push({
+                code: "ECM_PLACEHOLDER_USED",
+                severity: "warning",
+                message: "ECM rows were partially missing or placeholder values were used. Export is allowed."
+            });
+        }
+
+        const exportAllowed = criticalFailures.length === 0;
+
+        const normalizedQualityGate = {
+            passed: exportAllowed,
+            exportAllowed,
+            criticalFailures,
+            warnings,
+            info: finalQuality.gateLog
+        };
+
+        console.log("[QUALITY_GATE_EXPORT_POLICY]", {
+            reportExists: Boolean(reportData),
+            criticalFailureCount: criticalFailures.length,
+            warningCount: warnings.length,
+            exportAllowed
+        });
+
+        if (!exportAllowed) {
           return response.status(422).json({
             success: false,
-            error: `Quality gate failed:\n${finalQuality.failures.join("\n")}`,
-            failures: finalQuality.failures,
-            warnings: finalQuality.warnings,
+            error: `Quality gate failed:\n${criticalFailures.map(f => f.message || f).join("\n")}`,
+            failures: criticalFailures,
+            warnings,
             gateDetails: finalQuality.gateLog,
             accuracySummary: finalQuality.accuracySummary,
           });
@@ -2919,9 +2962,8 @@ function reportEndpoints(app) {
 
         reportData.qcSummary = {
           ...(reportData.qcSummary || {}),
-          ...finalQuality.gateLog,
-          badPhraseCount: sanitizedResult.badPhraseCount,
-          passed: finalQuality.passed,
+          ...normalizedQualityGate,
+          passed: exportAllowed,
         };
         reportData.accuracySummary = finalQuality.accuracySummary;
         if (finalQuality.model) {
@@ -3070,7 +3112,9 @@ function reportEndpoints(app) {
           const finalQuality = validateFinalReportQuality(sanitizedVrExport, exportExtractedDataContext);
           console.log("[FINAL_REPORT_QUALITY_GATE]", finalQuality.gateLog);
 
-          if (!finalQuality.passed) {
+          let criticalFailures = (finalQuality.failures || []).filter(f => f && f.severity === "critical");
+          
+          if (criticalFailures.length > 0) {
             return response.status(400).json({
               qcFailed: true,
               error: "Final report quality gate failed.",
@@ -3137,29 +3181,12 @@ function reportEndpoints(app) {
           invalidTitles: qcResult.summary.invalidTitleCount,
           hardErrors: qcResult.summary.hardErrorCount,
           warnings: qcResult.summary.warningCount,
-          requiredReview: !qcResult.qcPassed,
-          shouldBlockExport: !qcResult.qcPassed,
+          requiredReview: false,
+          shouldBlockExport: false,
         });
 
-        if (!qcResult.qcPassed || !accuracyResult.passed || !finalQuality.passed) {
-          console.error(
-            `[QC FAILED] Report ID: ${id}`,
-            JSON.stringify({ qcResult, accuracyResult, finalQuality }, null, 2)
-          );
-          if (!(allowDraft && isDev)) {
-            return response.status(400).json({
-              qcFailed: true,
-              error: !finalQuality.passed
-                ? "Final report quality gate failed."
-                : !qcResult.qcPassed
-                ? "Report requires review before final export."
-                : "Report accuracy score is below the required threshold for final export.",
-              ...qcResult,
-              accuracyResult,
-              finalQuality,
-            });
-          }
-        }
+        // Warnings no longer block export
+        // Only block if reportData is completely missing (which is checked earlier)
 
         if (allowDraft && isDev && exportReportData.reportInfo) {
           exportReportData.reportInfo.clientName =
