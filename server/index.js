@@ -10,6 +10,24 @@ console.log("[ENV_CHECK]", {
   openRouterModels: process.env.OPENROUTER_MODELS
 });
 
+console.log("[AI_ENV_PROVIDER_CHECK]", {
+  hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+  geminiKeyLength: process.env.GEMINI_API_KEY?.length || 0,
+  geminiModel: process.env.GEMINI_MODEL,
+  hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+  openAiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
+  openAiModel: process.env.OPENAI_MODEL,
+  hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY),
+  openRouterKeyLength: process.env.OPENROUTER_API_KEY?.length || 0,
+  openRouterKeysCount: String(process.env.OPENROUTER_API_KEYS || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean).length,
+  openRouterModels: process.env.OPENROUTER_MODELS,
+  aiProviderPriority: process.env.AI_PROVIDER_PRIORITY,
+  aiTimeoutMs: process.env.AI_TIMEOUT_MS,
+});
+
 require("./utils/logger")();
 const express = require("express");
 const bodyParser = require("body-parser");

@@ -21,7 +21,9 @@ function useIsAuthenticated() {
   useEffect(() => {
     const validateSession = async () => {
       try {
-        const healthCheck = await fetch("/api/health")
+        const url = import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api/health` : "/api/health";
+        console.log("[BACKEND_READY_CHECK_URL]", url);
+        const healthCheck = await fetch(url)
           .then((res) => res.json())
           .catch(() => null);
 

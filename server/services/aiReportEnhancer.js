@@ -1,12 +1,16 @@
-const { normalizeReportGroups } = require("../utils/groupHelper");
-const llmProviderService = require("./llmProviderService");
+const fs = require("fs");
+const path = require("path");
 const { qcMergeAiEnhancement } = require("./aiQcMergeService");
 const { enhanceReportLocally } = require("./localNarrativeEnhancer");
+const {
+  generateEngineeringEnhancementWithProviders,
+} = require("./aiProviderOrchestrator");
 
 const LOCKED_FIELDS = [
   "ecmNo",
   "title",
   "ecmName",
+  "projectTitle",
   "system",
   "energySaving",
   "annualSaving",
@@ -19,341 +23,325 @@ const LOCKED_FIELDS = [
   "sourceSheet",
   "sourceRow",
   "fallbackGenerated",
-  "numericFieldsLocked"
+  "numericFieldsLocked",
 ];
 
-function getProjectCount(reportData) {
-  return (reportData?.groups || []).reduce(
-    (sum, group) => sum + (Array.isArray(group?.projects) ? group.projects.length : 0),
-    0
+function getAllProjects(reportData = {}) {
+  return (reportData?.groups || []).flatMap((group) =>
+    Array.isArray(group?.projects) ? group.projects : []
   );
 }
 
+function getProjectCount(reportData) {
+  return getAllProjects(reportData).length;
+}
+
 function validateEnhancementDidNotReduce(beforeReportData, afterReportData) {
-  const beforeProjects = (beforeReportData.groups || []).flatMap((g) => g.projects || []);
-  const afterProjects = (afterReportData.groups || []).flatMap((g) => g.projects || []);
+  const beforeProjects = getAllProjects(beforeReportData);
+  const afterProjects = getAllProjects(afterReportData);
 
   if (afterProjects.length < beforeProjects.length) {
     throw new Error("AI enhancement reduced project count.");
   }
 
-  const ENGINEERING_ANALYSIS_FIELDS = [
-    "existingSystemDescription",
-    "problemGapIdentified",
-    "proposedProject",
-    "rationaleForEnergySaving",
-    "measurementVerificationPlan",
-    "benefitsOtherThanEnergySaving",
-    "conclusion"
-  ];
-
-  const wordCount = (text) => String(text || "").trim().split(/\s+/).filter(Boolean).length;
-
-  for (let i = 0; i < beforeProjects.length; i += 1) {
-    const before = beforeProjects[i];
-    const after = afterProjects[i];
-
+  for (let index = 0; index < beforeProjects.length; index += 1) {
+    const before = beforeProjects[index];
+    const after = afterProjects[index];
     if (!before || !after) continue;
 
     for (const field of LOCKED_FIELDS) {
-      if (before[field] !== undefined && String(before[field]) !== String(after[field])) {
+      if (
+        before[field] !== undefined &&
+        String(before[field]) !== String(after[field])
+      ) {
         throw new Error(`AI enhancement changed locked field: ${field}`);
       }
     }
-
-    for (const field of ENGINEERING_ANALYSIS_FIELDS) {
-      const beforeWords = wordCount(before[field]);
-      const afterWords = wordCount(after[field]);
-
-      if (beforeWords > 20 && afterWords < beforeWords) {
-        throw new Error(`AI enhancement reduced content field: ${field}`);
-      }
-    }
   }
-
-  console.log("[ENHANCEMENT_CONTENT_LENGTH_CHECK]", {
-    projects: afterReportData.groups?.flatMap((g) => g.projects || []).length || 0,
-    sample: afterReportData.groups?.[0]?.projects?.[0]
-      ? {
-          title: afterReportData.groups[0].projects[0].title,
-          existingWords: wordCount(afterReportData.groups[0].projects[0].existingSystemDescription),
-          problemWords: wordCount(afterReportData.groups[0].projects[0].problemGapIdentified),
-          proposedWords: wordCount(afterReportData.groups[0].projects[0].proposedProject),
-          rationaleWords: wordCount(afterReportData.groups[0].projects[0].rationaleForEnergySaving),
-          mvWords: wordCount(afterReportData.groups[0].projects[0].measurementVerificationPlan),
-          conclusionWords: wordCount(afterReportData.groups[0].projects[0].conclusion)
-        }
-      : null
-  });
 }
 
 function buildAiSystemPrompt() {
-  return `You are a senior energy auditor, electrical engineer, HVAC utility expert, and industrial energy efficiency consultant.
-
-You are enhancing an energy audit report created from uploaded Excel/project data.
-
-Your job is NOT to summarize.
-Your job is to expand the report into detailed engineering analysis while preserving every extracted input fact.
-
-Mandatory rules:
-1. Never reduce, shorten, delete, or summarize the extracted input information.
-2. Preserve every ECM title exactly.
-3. Preserve every numeric value exactly, including energy saving, annual saving, investment, payback, equipment ratings, quantities, operating hours, and source references.
-4. Do not invent numbers.
-5. If numeric data is missing, write what measurement is required instead of assuming values.
-6. If a field already contains useful input text, retain it and add additional engineering explanation below it.
-7. Only replace empty placeholder text.
-8. All explanation/theory sections must be written as bullet points.
-9. Each major engineering analysis section must be 800 to 1400 words.
-10. Do not use generic repeated filler.
-11. Make content specific to the project system: HVAC, chiller, pump, compressor, motor, VFD, heat recovery, dryer, APFC, lighting, controls, or building utilities.
-12. Every project must receive unique analysis based on its title, system and available values.
-13. Do not merge projects.
-14. Do not reduce project count.
-15. Do not remove rejected/accepted source information.
-16. Return strict JSON only.`;
+  return `You are an expert energy auditor and engineering report writer.
+You enhance energy audit ECM sections with professional engineering narratives.
+Return ONLY valid JSON. Do not use markdown. Do not wrap in code fences.
+Do not invent numeric savings, investment, tariff, or payback values.
+Use only provided numeric values.
+If technical values are missing, write practical engineering narrative and use "To be updated" only for unknown numeric fields.`;
 }
 
-function buildAiUserPrompt(reportData) {
-  return `Enhance the following energy audit report.
+function buildAiUserPrompt(originalProjects = []) {
+  return `Enhance the following ECMs for an energy audit report.
 
-Important:
-Preserve all extracted information and expand it with project-specific engineering detail.
+For every ECM, return exactly one enhanced project using the same ecmNo and same projectTitle.
 
-For each ECM/project:
-- Keep ecmNo exactly same.
-- Keep title exactly same.
-- Keep system exactly same.
-- Keep energySaving exactly same.
-- Keep annualSaving exactly same.
-- Keep investment exactly same.
-- Keep payback exactly same.
-- Do not alter sourceSheet or sourceRow.
-- Do not remove any input field.
-- Do not reduce any existing field.
-- If existing narrative text is weak, expand it using detailed engineering analysis.
-- If existing narrative text is placeholder, replace with detailed bullet-point analysis.
-- If numeric data is missing, explain measurement requirements and validation method.
-
-Required output JSON shape:
-
+Required JSON schema:
 {
-  "executiveSummaryEnhancement": {
-    "purposeText": "bullet point text, additive, not shorter than existing",
-    "keyObservations": ["bullet observation 1", "bullet observation 2"],
-    "conclusionAndWayForward": "bullet point text, additive, not shorter than existing"
-  },
-  "projectEnhancements": [
-    {
-      "ecmNo": "same ecmNo as input",
-      "title": "same title as input",
-      "existingSystemDescription": "800-1400 words in bullet points",
-      "problemGapIdentified": "800-1400 words in bullet points",
-      "proposedProject": "800-1400 words in bullet points",
-      "rationaleForEnergySaving": "800-1400 words in bullet points",
-      "measurementVerificationPlan": "800-1400 words in bullet points",
-      "benefitsOtherThanEnergySaving": "800-1400 words in bullet points",
-      "conclusion": "800-1400 words in bullet points"
-    }
-  ]
-}
-
-Do not return markdown.
-Do not wrap JSON in code fences.
-Return JSON only.
-
-Report data:
-${JSON.stringify(reportData || {}, null, 2)}`;
-}
-
-function extractJsonObject(text) {
-  if (!text) throw new Error("Empty AI response.");
-  if (typeof text === "object") return text;
-
-  const raw = String(text).trim();
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(raw.slice(start, end + 1));
-    }
-    throw new Error("AI response was not valid JSON.");
+  "engineeringExpansion": {
+    "projects": [
+      {
+        "ecmNo": 1,
+        "projectTitle": "same original project title",
+        "existingCondition": "2-4 professional sentences",
+        "problemGap": "2-4 professional sentences",
+        "proposedProject": "2-4 professional sentences",
+        "projectActivities": ["activity 1", "activity 2", "activity 3", "activity 4"],
+        "benefits": ["benefit 1", "benefit 2", "benefit 3"],
+        "conclusion": "2-3 professional sentences"
+      }
+    ]
   }
 }
 
-function normalizeAiOutputShape(aiOutput) {
-  if (!aiOutput || typeof aiOutput !== "object") return {};
+ECM input list:
+${JSON.stringify(originalProjects, null, 2)}`;
+}
 
-  const candidate =
-    aiOutput.executiveSummaryEnhancement || aiOutput.projectEnhancements
-      ? aiOutput
-      : aiOutput.enhancement ||
-        aiOutput.data ||
-        aiOutput.result ||
-        aiOutput.output ||
-        {};
+function writeEnhancementDebugFiles({
+  providerAttempts = [],
+  rawResponse = "",
+  parsedResponse = null,
+}) {
+  const debugDir = path.resolve(__dirname, "../debug-ai");
+  fs.mkdirSync(debugDir, { recursive: true });
 
-  return {
-    executiveSummaryEnhancement:
-      candidate.executiveSummaryEnhancement ||
-      candidate.executiveSummary ||
-      {},
-    projectEnhancements:
-      candidate.projectEnhancements ||
-      candidate.projects ||
-      candidate.ecmEnhancements ||
-      []
-  };
+  const attemptsPath = path.join(debugDir, "latest-provider-attempts.json");
+  const rawResponsePath = path.join(
+    debugDir,
+    "latest-ai-enhancement-response.txt"
+  );
+  const parsedPath = path.join(
+    debugDir,
+    "latest-ai-enhancement-parsed.json"
+  );
+
+  fs.writeFileSync(
+    attemptsPath,
+    JSON.stringify(providerAttempts || [], null, 2),
+    "utf8"
+  );
+  fs.writeFileSync(rawResponsePath, String(rawResponse || ""), "utf8");
+  fs.writeFileSync(
+    parsedPath,
+    JSON.stringify(parsedResponse || {}, null, 2),
+    "utf8"
+  );
+
+  console.log("[AI_DEBUG_FILES_WRITTEN]", {
+    attemptsPath,
+    rawResponsePath,
+    parsedPath,
+  });
+}
+
+function buildProviderUserMessage(providerUsed, appliedCount) {
+  if (providerUsed === "gemini") {
+    return `Gemini engineering enhancement applied to ${appliedCount} ECMs.`;
+  }
+  if (providerUsed === "openai") {
+    return `GPT engineering enhancement applied to ${appliedCount} ECMs.`;
+  }
+  if (providerUsed === "openrouter") {
+    return `OpenRouter engineering enhancement applied to ${appliedCount} ECMs.`;
+  }
+  return `AI providers failed. Engineering enhancement applied using deterministic fallback to ${appliedCount} ECMs.`;
 }
 
 async function enhanceReportNarrativesWithAi({ reportData, force = false }) {
   const manualEnabled =
-    String(process.env.ENABLE_AI_ENHANCEMENT || "true").toLowerCase() !== "false" &&
-    String(process.env.ENABLE_MANUAL_AI_ENHANCEMENT || "true").toLowerCase() !== "false";
+    String(process.env.ENABLE_AI_ENHANCEMENT || "true").toLowerCase() !==
+      "false" &&
+    String(process.env.ENABLE_MANUAL_AI_ENHANCEMENT || "true").toLowerCase() !==
+      "false";
+  const allowDeterministicFallback =
+    String(process.env.USE_DETERMINISTIC_AI_FALLBACK || "true").toLowerCase() !==
+    "false";
 
-  const projectCount = getProjectCount(reportData);
+  const originalProjects = getAllProjects(reportData).map((project, index) => ({
+    ecmNo: project.ecmNo || project.projectNo || index + 1,
+    projectTitle:
+      project.projectTitle || project.title || project.ecmName || `ECM ${index + 1}`,
+    system: project.system || null,
+    energySavingKwh: project.energySavingRaw ?? project.energySaving ?? null,
+    annualSavingRs: project.annualSavingRaw ?? project.annualSaving ?? null,
+    investmentRs: project.investmentRaw ?? project.investment ?? null,
+    paybackMonths: project.paybackRaw ?? project.payback ?? null,
+    existingCondition:
+      project.existingCondition || project.existingSystemDescription || null,
+    problemGap:
+      project.problemGap || project.problemGapIdentified || null,
+    proposedProject:
+      project.proposedProject || project.proposedProjectDescription || null,
+    projectActivities: project.projectActivities || project.keyActivities || [],
+    benefits:
+      project.benefits || project.benefitsOtherThanEnergySaving || [],
+    conclusion: project.conclusion || null,
+    sourceSheet: project.sourceSheet || null,
+    sourceRow: project.sourceRow || null,
+  }));
 
   if (!manualEnabled && !force) {
-    return enhanceReportLocally(reportData, []);
-  }
-
-  if (!reportData || projectCount <= 0) {
-    return enhanceReportLocally(reportData, []);
-  }
-
-  if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
-    const fallbackResult = enhanceReportLocally(reportData, []);
     return {
-      ...fallbackResult,
+      ...enhanceReportLocally(reportData, []),
+      providerUsed: "deterministic-fallback",
+      modelUsed: null,
+      enhancementMode: "deterministic-engineering-fallback",
+      aiEnhancementCapture: { input: null, rawOutput: "", parsedOutput: null },
+    };
+  }
+
+  if (!reportData || originalProjects.length <= 0) {
+    return {
+      ...enhanceReportLocally(reportData, []),
+      providerUsed: "deterministic-fallback",
+      modelUsed: null,
+      enhancementMode: "deterministic-engineering-fallback",
+      aiEnhancementCapture: { input: null, rawOutput: "", parsedOutput: null },
+    };
+  }
+
+  const systemPrompt = buildAiSystemPrompt();
+  const userPrompt = buildAiUserPrompt(originalProjects);
+  console.log("[BACKEND_CALLING_AI_PROVIDER_ORCHESTRATOR]", {
+    projectCount: originalProjects.length,
+    providerPriority: process.env.AI_PROVIDER_PRIORITY,
+    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+    hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY),
+  });
+
+  const orchestrated = await generateEngineeringEnhancementWithProviders({
+    systemPrompt,
+    userPrompt,
+    originalProjects,
+    reportData,
+  });
+
+  writeEnhancementDebugFiles({
+    providerAttempts: orchestrated.providerAttempts,
+    rawResponse: orchestrated.rawResponse,
+    parsedResponse: orchestrated.parsedResponse,
+  });
+
+  const aiEnhancementCapture = {
+    input: {
+      systemPrompt,
+      userPrompt,
+      originalProjects,
+      reportData,
+    },
+    rawOutput: orchestrated.rawResponse || "",
+    parsedOutput: orchestrated.parsedResponse,
+  };
+
+  if (orchestrated.success && orchestrated.parsedProjects.length > 0) {
+    const mergeResult = qcMergeAiEnhancement({
+      baseReportData: reportData,
+      aiOutput: { projectEnhancements: orchestrated.parsedProjects },
+      providerAttempts: orchestrated.providerAttempts,
+      providerUsed: orchestrated.providerUsed,
+      modelUsed: orchestrated.modelUsed,
+    });
+
+    if (mergeResult.aiEnhancementStatus.aiAppliedCount > 0) {
+      validateEnhancementDidNotReduce(reportData, mergeResult.reportData);
+      const appliedCount = mergeResult.aiEnhancementStatus.aiAppliedCount;
+
+      return {
+        success: true,
+        aiEnhanced: true,
+        fallbackEnhanced: false,
+        reportData: mergeResult.reportData,
+        providerUsed: orchestrated.providerUsed,
+        modelUsed: orchestrated.modelUsed,
+        enhancementMode: "ai-engineering",
+        providerAttempts: orchestrated.providerAttempts,
+        aiEnhancementCapture,
+        aiEnhancementStatus: {
+          ...mergeResult.aiEnhancementStatus,
+          providerUsed: orchestrated.providerUsed,
+          modelUsed: orchestrated.modelUsed,
+          enhancementMode: "ai-engineering",
+          finalEnhancerUsed: orchestrated.providerUsed,
+          userMessage: buildProviderUserMessage(
+            orchestrated.providerUsed,
+            appliedCount
+          ),
+        },
+      };
+    }
+  }
+
+  const realAttempts = (orchestrated.providerAttempts || []).filter((attempt) =>
+    ["gemini", "openai", "openrouter"].includes(attempt.provider)
+  );
+
+  if (realAttempts.length === 0) {
+    console.log("[FALLBACK_WITHOUT_PROVIDER_ATTEMPTS_SOURCE]", {
+      file: "server/services/aiReportEnhancer.js",
+      functionName: "enhanceReportNarrativesWithAi",
+      reason: "AI provider chain was not executed",
+      providerAttemptsLength: 0,
+    });
+    throw new Error(
+      "AI provider chain was not executed. Refusing silent deterministic fallback."
+    );
+  }
+
+  if (!allowDeterministicFallback) {
+    return {
+      success: false,
+      aiEnhanced: false,
+      fallbackEnhanced: false,
+      reportData,
+      providerUsed: orchestrated.providerUsed || "none",
+      modelUsed: orchestrated.modelUsed || null,
+      enhancementMode: "ai-engineering",
+      providerAttempts: orchestrated.providerAttempts,
+      aiEnhancementCapture,
       aiEnhancementStatus: {
-        ...fallbackResult.aiEnhancementStatus,
-        userMessage: "AI enhancement is disabled because OPENROUTER_API_KEY is not configured.",
-      }
+        status: "failed_non_blocking",
+        finalEnhancerUsed: orchestrated.providerUsed || "none",
+        providerAttempts: orchestrated.providerAttempts,
+        providerUsed: orchestrated.providerUsed || "none",
+        modelUsed: orchestrated.modelUsed || null,
+        enhancementMode: "ai-engineering",
+        userMessage: "AI enhancement failed and deterministic fallback is disabled.",
+      },
     };
   }
 
-  try {
-    const systemPrompt = buildAiSystemPrompt();
-    const userPrompt = buildAiUserPrompt(reportData);
-    const providerAttempts = [];
-    let mergeResult = null;
+  const fallbackResult = enhanceReportLocally(
+    reportData,
+    orchestrated.providerAttempts
+  );
+  console.warn("[DETERMINISTIC_FALLBACK_AFTER_REAL_AI_ATTEMPTS]", {
+    attempts: orchestrated.providerAttempts,
+    reason:
+      orchestrated.parsedProjects.length > 0
+        ? "No usable merged AI content returned"
+        : "No usable content returned by providers",
+  });
+  validateEnhancementDidNotReduce(reportData, fallbackResult.reportData);
+  const fallbackCount = getProjectCount(fallbackResult.reportData);
 
-    if (typeof llmProviderService.generateWithProvider === "function") {
-      try {
-        const result = await llmProviderService.generateWithProvider({
-          systemPrompt,
-          userPrompt,
-          temperature: 0.2,
-          responseFormat: "json"
-        });
-
-        const text = result.text || result.content || result.output || result.raw || "";
-        
-        console.log("[AI_PROVIDER_RAW_OUTPUT_SUMMARY]", {
-          type: typeof text,
-          length: typeof text === "string" ? text.length : null,
-          preview: typeof text === "string" ? text.slice(0, 500) : text
-        });
-
-        const attemptRecord = {
-          provider: "gemini",
-          status: "success",
-          model: result.modelUsed || "gemini"
-        };
-        providerAttempts.push(attemptRecord);
-
-        const aiOutput = normalizeAiOutputShape(extractJsonObject(text));
-        
-        mergeResult = qcMergeAiEnhancement({
-          baseReportData: reportData,
-          aiOutput,
-          providerAttempts
-        });
-
-        if (mergeResult.aiEnhancementStatus.fieldsAccepted <= 0) {
-          attemptRecord.status = "unusable_output";
-          attemptRecord.reason = "fieldsAccepted_zero";
-          mergeResult = null; // discard and try next
-        }
-      } catch (error) {
-        providerAttempts.push({
-          provider: "gemini",
-          status: "failed",
-          errorMessage: error?.message || String(error)
-        });
-      }
-    }
-
-    if (!mergeResult && typeof llmProviderService.generateWithOpenRouterFallback === "function") {
-      try {
-        const result = await llmProviderService.generateWithOpenRouterFallback({
-          systemPrompt,
-          userPrompt,
-          temperature: 0.2,
-          responseFormat: "json"
-        });
-
-        const text = result.text || result.content || result.output || result.raw || "";
-
-        console.log("[AI_PROVIDER_RAW_OUTPUT_SUMMARY]", {
-          type: typeof text,
-          length: typeof text === "string" ? text.length : null,
-          preview: typeof text === "string" ? text.slice(0, 500) : text
-        });
-
-        const attemptRecord = {
-          provider: "openrouter",
-          status: "success",
-          model: result.modelUsed || "openrouter"
-        };
-        providerAttempts.push(attemptRecord);
-
-        const aiOutput = normalizeAiOutputShape(extractJsonObject(text));
-
-        mergeResult = qcMergeAiEnhancement({
-          baseReportData: reportData,
-          aiOutput,
-          providerAttempts
-        });
-
-        if (mergeResult.aiEnhancementStatus.fieldsAccepted <= 0) {
-          attemptRecord.status = "unusable_output";
-          attemptRecord.reason = "fieldsAccepted_zero";
-          mergeResult = null; // discard and try next
-        }
-      } catch (error) {
-        providerAttempts.push({
-          provider: "openrouter",
-          status: "failed",
-          errorMessage: error?.message || String(error)
-        });
-      }
-    }
-
-    if (!mergeResult) {
-      const fallbackResult = enhanceReportLocally(reportData, providerAttempts);
-      validateEnhancementDidNotReduce(reportData, fallbackResult.reportData);
-      return fallbackResult;
-    }
-
-    validateEnhancementDidNotReduce(reportData, mergeResult.reportData);
-
-    return {
-      success: true,
-      aiEnhanced: true,
-      reportData: mergeResult.reportData,
-      aiEnhancementStatus: mergeResult.aiEnhancementStatus,
-      providerAttempts
-    };
-  } catch (error) {
-    console.error("[AI_ENHANCER_VALIDATION_FAILED]", error);
-    return enhanceReportLocally(reportData, providerAttempts || []);
-  }
+  return {
+    ...fallbackResult,
+    providerUsed: "deterministic-fallback",
+    modelUsed: null,
+    enhancementMode: "deterministic-engineering-fallback",
+    providerAttempts: orchestrated.providerAttempts,
+    aiEnhancementCapture,
+    aiEnhancementStatus: {
+      ...(fallbackResult.aiEnhancementStatus || {}),
+      providerAttempts: orchestrated.providerAttempts,
+      providerUsed: "deterministic-fallback",
+      modelUsed: null,
+      enhancementMode: "deterministic-engineering-fallback",
+      userMessage: buildProviderUserMessage("deterministic-fallback", fallbackCount),
+    },
+  };
 }
 
 module.exports = {
-  enhanceReportNarrativesWithAi
+  enhanceReportNarrativesWithAi,
 };

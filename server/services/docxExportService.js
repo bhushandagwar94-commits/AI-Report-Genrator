@@ -121,7 +121,7 @@ function getEcmNumberVal(valueOrProject) {
 
 function formatEcmNumber(valueOrProject) {
   const raw = String(getEcmNumberVal(valueOrProject) ?? "").trim();
-  if (!raw || raw === "[To be updated after site data verification]") return "";
+  if (!raw || raw === "To be updated") return "";
   const match = raw.match(/\d+/);
   if (!match) return "ECM";
   return `ECM ${match[0]}`;
@@ -204,7 +204,7 @@ function sanitizePromptLeakageText(text, ecmType) {
   safe = safe.replace(/ecm\s+ecm/gi, "ECM");
   safe = safe.trim();
 
-  if (!safe || safe === "[To be updated after site data verification]") {
+  if (!safe || safe === "To be updated") {
     if (ecmType === "cooling_system_optimization")
       safe =
         "The existing cooling system includes equipment operating under conditions where flow, temperature differential, and load variation require verification for optimized energy performance.";
@@ -248,20 +248,20 @@ function buildProjectSummaryRows(ecm, cleanTitle, ecmNo) {
       value:
         safeText(ecm.system) ||
         safeText(ecm.category) ||
-        "[To be updated after site data verification]",
+        "To be updated",
     },
     {
       particular: "Location",
       value:
         safeText(ecm.location) ||
-        "[To be updated after site data verification]",
+        "To be updated",
     },
     {
       particular: "Equipment covered",
       value:
         safeText(ecm.equipmentCovered) ||
         safeText(ecm.equipment) ||
-        "[To be updated after site data verification]",
+        "To be updated",
     },
     {
       particular: "Existing operating condition",
@@ -307,14 +307,14 @@ function buildProjectSummaryRows(ecm, cleanTitle, ecmNo) {
       particular: "Implementation duration",
       value:
         safeText(ecm.implementationDuration) ||
-        "[To be updated after site data verification]",
+        "To be updated",
     },
     {
       particular: "Implementation priority",
       value:
         safeText(ecm.priority) ||
         safeText(ecm.implementationPriority) ||
-        "[To be updated after site data verification]",
+        "To be updated",
     },
   ];
 }
@@ -326,49 +326,49 @@ function buildBaselineDataRows(ecm) {
       {
         parameter: "Equipment rating",
         unit: "kW / TR / HP",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Quantity",
         unit: "Nos.",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Operating hours",
         unit: "hours/day",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Operating days",
         unit: "days/year",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Existing power consumption",
         unit: "kW",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Annual operating hours",
         unit: "hours/year",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Baseline annual consumption",
         unit: "kWh/year",
         value:
           safeText(ecm.baselineConsumption) ||
-          "[To be updated after site data verification]",
+          "To be updated",
       },
       {
         parameter: "Average tariff",
         unit: "₹/kWh",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         parameter: "Baseline annual energy cost",
         unit: "₹/year",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
     ];
   }
@@ -382,47 +382,47 @@ function buildMeasurementRows(ecm) {
       {
         measurement: "Voltage",
         unit: "V",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Current",
         unit: "A",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Power factor",
         unit: "-",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Measured power",
         unit: "kW",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Flow / airflow",
         unit: "m3/hr / CFM",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Pressure / head / static pressure",
         unit: "m / mmWC / bar",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Temperature inlet",
         unit: "°C",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Temperature outlet",
         unit: "°C",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
       {
         measurement: "Operating frequency",
         unit: "Hz",
-        value: "[To be updated after site data verification]",
+        value: "To be updated",
       },
     ];
   }
@@ -457,7 +457,7 @@ function buildScopeOfWorkRows(ecmType, ecm) {
 
 function buildKeyActivityRows(ecmType, ecm) {
   let rows =
-    ecm.keyActivities || ecm.keyActivitiesNarrative || ecm.activities || [];
+    ecm.projectActivities || ecm.enhancedProjectActivities || ecm.keyActivities || ecm.keyActivitiesNarrative || ecm.activities || [];
   if (rows.length < 3) {
     rows = [
       {
@@ -519,22 +519,22 @@ function buildEnergySavingCalculationRows(ecm) {
       {
         parameter: "Equipment quantity",
         unit: "Nos",
-        value: safeText(bt.quantity) || "[To be updated after site data verification]",
+        value: safeText(bt.quantity) || "To be updated",
       },
       {
         parameter: "Existing connected load / measured load",
         unit: "kW",
-        value: safeText(bt.existingConnectedLoad) || "[To be updated after site data verification]",
+        value: safeText(bt.existingConnectedLoad) || "To be updated",
       },
       {
         parameter: "Operating hours",
         unit: "hours/year",
-        value: safeText(bt.annualOperatingHours) || "[To be updated after site data verification]",
+        value: safeText(bt.annualOperatingHours) || "To be updated",
       },
       {
         parameter: "Baseline annual consumption",
         unit: "kWh/year",
-        value: safeText(bt.baselineAnnualConsumption) || "[To be updated after site data verification]",
+        value: safeText(bt.baselineAnnualConsumption) || "To be updated",
       },
       {
         parameter: "Annual energy saving",
@@ -632,47 +632,47 @@ function buildTechnicalSpecificationRows(ecmType, ecm) {
     rows = [
       {
         item: "Equipment / technology",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Capacity",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Quantity",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Motor efficiency class, if applicable",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "VFD rating, if applicable",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Sensor type",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Controller / PLC / IoT system",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Communication",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Panel requirement",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Civil / mechanical modification",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
       {
         item: "Safety requirement",
-        specification: "[To be updated after site data verification]",
+        specification: "To be updated",
       },
     ];
   }
@@ -737,8 +737,9 @@ function buildMvPlanRows(ecmType, ecm) {
 
 function buildBenefitRows(ecmType, ecm) {
   let rows =
-    ecm.benefitsOtherThanEnergySaving ||
     ecm.benefits ||
+    ecm.enhancedBenefits ||
+    ecm.benefitsOtherThanEnergySaving ||
     ecm.otherBenefits ||
     ecm.intangibleBenefits ||
     [];
@@ -842,7 +843,7 @@ function narrativeParagraphs(text) {
       new Paragraph({
         children: [
           new TextRun({
-            text: "[To be updated after site data verification]"
+            text: "To be updated"
           })
         ],
         spacing: { after: 100 }
@@ -984,7 +985,7 @@ function keyValueTable(rowsData) {
 function mandatoryTable(
   columns,
   rowsData,
-  placeholder = "[To be updated after site data verification]"
+  placeholder = "To be updated"
 ) {
   const safeColumns = asArray(columns).length
     ? asArray(columns)
@@ -1018,7 +1019,7 @@ function mandatoryTable(
 
 function mandatoryKeyValueTable(
   dataObj,
-  placeholder = "[To be updated after site data verification]"
+  placeholder = "To be updated"
 ) {
   const safeObj = { ...dataObj };
   const keys = Object.keys(safeObj);
@@ -1156,7 +1157,7 @@ function generateTableOfContents(groupedProjects) {
 function optionalTable(
   columns,
   rowsData,
-  placeholder = "[To be updated after site data verification]"
+  placeholder = "To be updated"
 ) {
   const safeRows = asArray(rowsData).filter((row) => {
     if (!row) return false;
@@ -1247,13 +1248,13 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
     heading1("Chapter 1: Executive Summary"),
 
     heading2("1.1 Purpose of the Energy Audit"),
-    ...renderBulletList(es.purposeText, [
+    ...renderBulletList(es.purposeOfEnergyAudit || report.purposeOfEnergyAudit || es.purposeText, [
       "The purpose of this detailed energy audit is to identify practical energy conservation measures that can be implemented through a disciplined combination of engineering review, operating assessment, and project-level prioritization.",
       "The audit translates observed system inefficiencies into implementation-ready opportunities so management can plan energy cost reduction actions with clear technical scope, operational relevance, and execution focus.",
     ]),
 
     heading2("1.2 Key Objectives"),
-    ...renderBulletList(es.keyObjectives, [
+    ...renderBulletList(es.keyObjectives || report.keyObjectives, [
       "Identify and quantify energy-saving opportunities across all major utility and process systems.",
       "Provide a structured roadmap for implementing control improvements, equipment efficiency upgrades, and system optimization initiatives.",
       "Establish baseline performance metrics to enable effective post-implementation measurement and verification.",
@@ -1267,21 +1268,21 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
     ]),
 
     heading2("1.4 Expected Outcomes"),
-    ...renderBulletList(es.expectedOutcomes, [
+    ...renderBulletList(es.expectedOutcomes || report.expectedOutcomes, [
       "A prioritized portfolio of energy conservation measures (ECMs) categorized by technical feasibility and financial return.",
       "Clear recommendations for immediate operational improvements requiring minimal capital investment.",
       "Strategic guidance for long-term capital planning related to major equipment replacements and system retrofits.",
     ]),
 
     heading2("1.5 Strategic Importance"),
-    ...renderBulletList(es.strategicImportance, [
+    ...renderBulletList(es.strategicImportance || report.strategicImportance, [
       "Enhances operational resilience by reducing exposure to energy price volatility and supply constraints.",
       "Supports corporate sustainability goals through quantifiable reductions in carbon emissions and environmental impact.",
       "Improves overall facility competitiveness by lowering production costs and optimizing resource utilization.",
     ]),
 
     heading2("1.6 Key Findings"),
-    ...renderBulletList(es.keyFindings || es.keyObservations, [
+    ...renderBulletList(es.keyObservations || report.keyObservations || es.keyFindings, [
       "The identified ECM portfolio covers multiple functional systems, allowing management to sequence implementation across operational improvements, control upgrades, and equipment-efficiency measures instead of treating all projects as a single package.",
       "Measures linked to operating control, load matching, and reduction of avoidable system losses are generally suitable early implementation candidates because they strengthen performance discipline while preparing the site team for larger retrofit actions.",
       "Projects associated with major utility systems and continuously operating process support equipment warrant close management attention because sustained operating hours make these systems important contributors to the overall energy-improvement roadmap.",
@@ -1369,7 +1370,7 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
 
     heading2("1.9 Recommended Implementation Approach"),
     ...renderBulletList(
-      es.recommendedImplementationApproach || es.conclusionAndWayForward,
+      es.conclusionAndWayForward || report.conclusionAndWayForward || es.recommendedImplementationApproach,
       [
         "Review the identified ECM portfolio group-wise so implementation can be sequenced across quick operational actions, control improvements, and larger retrofit measures.",
         "Confirm project-wise priority, execution windows, and cross-functional ownership with plant, maintenance, production, and electrical teams before detailed engineering begins.",
@@ -1429,7 +1430,7 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
 
 function optionalKeyValueTable(
   dataObj,
-  placeholder = "[To be updated after site data verification]"
+  placeholder = "To be updated"
 ) {
   if (!dataObj) return paragraph(placeholder);
   const safeKeys = Object.keys(dataObj).filter(
@@ -1451,7 +1452,7 @@ function generateBuildingProfile(report) {
   const bp = report.buildingProfile || {};
   const esd = report.electricalSupplyDetails || {};
   const benchmark = report.specificEnergyBenchmark || {};
-  const placeholder = "[To be updated after site data verification]";
+  const placeholder = "To be updated";
   const isVrChennai = report.extractionFormat === "vr_chennai_ecm_workbook_v1" || report.reportInfo?.extractionFormat === "vr_chennai_ecm_workbook_v1";
   return [
     heading1("Chapter 2: Plant / Building Details and Energy Profile"),
@@ -1752,27 +1753,27 @@ function generateBuildingProfile(report) {
         : [
             {
               srNo: 1,
-              observation: "[To be updated after site data verification]",
+              observation: "To be updated",
               impact: "High energy consumption",
             },
             {
               srNo: 2,
-              observation: "[To be updated after site data verification]",
+              observation: "To be updated",
               impact: "Higher demand / kVAh billing",
             },
             {
               srNo: 3,
-              observation: "[To be updated after site data verification]",
+              observation: "To be updated",
               impact: "Excess operating hours",
             },
             {
               srNo: 4,
-              observation: "[To be updated after site data verification]",
+              observation: "To be updated",
               impact: "Inefficient equipment",
             },
             {
               srNo: 5,
-              observation: "[To be updated after site data verification]",
+              observation: "To be updated",
               impact: "Poor control / manual operation",
             },
           ]
@@ -1849,9 +1850,13 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     heading3(`${ecmSectionNumber}.2 Existing System Description`),
     ...narrativeParagraphs(
       sanitizePromptLeakageText(
-        project.existingSystemDescription ||
+        project.existingCondition ||
+          project.enhancedExistingCondition ||
+          project.aiExistingCondition ||
+          project.existingSystemDescription ||
           project.existingOperatingCondition ||
-          project.baselineDetails,
+          project.baselineDetails ||
+          "To be updated",
         ecmType
       )
     ),
@@ -1878,7 +1883,9 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.4 Problem / Gap Identified
     heading3(`${ecmSectionNumber}.4 Problem / Gap Identified`),
-    ...narrativeParagraphs(sanitizePromptLeakageText(project.problemGapIdentified, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(
+      project.problemGap || project.problemStatement || project.enhancedProblemGap || project.problemGapIdentified || "To be updated", ecmType
+    )),
     mandatoryTable(
       [
         { key: "system", label: "System" },
@@ -1911,7 +1918,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
                         ? "Low PF or kVAh billing loss"
                         : ecmType === "compressed_air_management"
                           ? "Air leakage, pressure drops, inefficient generation"
-                          : "[To be updated after site data verification]",
+                          : "To be updated",
             },
           ]
     ),
@@ -1920,7 +1927,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
     heading3(`${ecmSectionNumber}.5 Proposed Project`),
     ...narrativeParagraphs(
       sanitizePromptLeakageText(
-        project.proposedProjectDescription || project.proposedIntervention || project.proposedProject,
+        project.proposedProject || project.proposed_project || project.enhancedProposedProject || project.proposedProjectDescription || project.proposedIntervention,
         ecmType
       )
     ),
@@ -1969,7 +1976,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
                         : ecmType === "compressed_air_management"
                           ? "Compressed air"
                           : "Project",
-              savingRationale: "[To be updated after site data verification]",
+              savingRationale: "To be updated",
             },
           ]
     ),
@@ -2080,7 +2087,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
               activity: "Total expected duration",
               duration:
                 safeText(project.implementationDuration) ||
-                "[To be updated after site data verification]",
+                "To be updated",
             },
           ]
     ),
@@ -2160,7 +2167,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.15 Benefits Other Than Energy Saving
     heading3(`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`),
-    ...narrativeParagraphs(sanitizePromptLeakageText(project.benefitsOtherThanEnergySaving || project.benefits, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.benefits || project.enhancedBenefits || project.benefitsOtherThanEnergySaving || "To be updated", ecmType)),
     createTable(
       [
         { key: "benefit", label: "Benefit" },
@@ -2183,7 +2190,7 @@ function generateProjectChapter(project, groupNumber, ecmIndexWithinGroup) {
 
     // 3.x.18 Project Conclusion
     heading3(`${ecmSectionNumber}.18 Project Conclusion`),
-    ...narrativeParagraphs(sanitizePromptLeakageText(project.conclusion || project.finalConclusion, ecmType)),
+    ...narrativeParagraphs(sanitizePromptLeakageText(project.conclusion || project.enhancedConclusion || project.finalConclusion || "To be updated", ecmType)),
   ];
 
   return lines;

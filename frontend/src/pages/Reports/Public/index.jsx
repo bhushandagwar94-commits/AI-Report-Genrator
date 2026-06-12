@@ -154,7 +154,7 @@ function mergePipelineDebug(prevInput, nextInput) {
   };
 }
 
-// ─── Template definitions (shown in UI — no admin data exposed) ─────────────────
+// â”€â”€â”€ Template definitions (shown in UI â€” no admin data exposed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Keys match the server-side TEMPLATE_SLUG_MAP (seetech-xxx-001 format)
 const TEMPLATE_CATALOG = [
   {
@@ -352,7 +352,7 @@ function isCommercialBuildingEnergyAuditTemplate(template) {
   ].includes(COMMERCIAL_BUILDING_ENERGY_AUDIT_SLUG);
 }
 
-// ─── Step metadata ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Step metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const STEPS = [
   { id: 1, label: "Select Template" },
   { id: 2, label: "Upload Files" },
@@ -360,7 +360,7 @@ const STEPS = [
   { id: 4, label: "Preview & Download" },
 ];
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fileExt(name) {
   return name?.split(".").pop()?.toLowerCase() || "";
 }
@@ -478,7 +478,7 @@ function getActiveReportProjectCount(reportData) {
   );
 }
 
-// ─── Step Indicator ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Step Indicator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StepIndicator({ currentStep }) {
   return (
     <div className="flex items-start justify-center mb-8 w-full">
@@ -529,10 +529,10 @@ function StepIndicator({ currentStep }) {
   );
 }
 
-// ─── STEP 1 ── Select Template ─────────────────────────────────────────────────
+// â”€â”€â”€ STEP 1 â”€â”€ Select Template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Step1({ templates, selected, onSelect, loading }) {
   // Match DB templates to catalog:
-  // 1. By slug column (seetech-ea-001)  — primary
+  // 1. By slug column (seetech-ea-001)  â€” primary
   // 2. By name fallback
   const resolveDbTemplate = (catalogKey) => {
     const cat = TEMPLATE_CATALOG.find((c) => c.key === catalogKey);
@@ -663,7 +663,7 @@ function Step1({ templates, selected, onSelect, loading }) {
   );
 }
 
-// ─── STEP 2 ── Upload Files ───────────────────────────────────────────────────
+// â”€â”€â”€ STEP 2 â”€â”€ Upload Files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ACCEPTED_TYPES = {
   Excel: { exts: ".xls,.xlsx,.csv", label: "XLS / XLSX / CSV", color: "#22c55e" },
   PDF: { exts: ".pdf", label: "PDF", color: "#ef4444" },
@@ -863,7 +863,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
             }}
           >
             {name}
-            <span className="opacity-60 font-normal">· {meta.label}</span>
+            <span className="opacity-60 font-normal">Â· {meta.label}</span>
           </span>
         ))}
       </div>
@@ -915,7 +915,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
               : "Drag & drop files or click to browse"}
           </p>
           <p className="text-xs text-white/30 mt-0.5">
-            Excel · PDF · Word · PowerPoint · Images — multiple files supported
+            Excel Â· PDF Â· Word Â· PowerPoint Â· Images â€” multiple files supported
           </p>
         </div>
 
@@ -935,7 +935,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
                 size={30}
                 className="text-primary-button animate-spin"
               />
-              <p className="text-xs text-white/60">Processing file…</p>
+              <p className="text-xs text-white/60">Processing fileâ€¦</p>
             </div>
           </div>
         )}
@@ -1001,14 +1001,14 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
 
       {safeUploadedFiles.length === 0 && !uploading && (
         <p className="mt-4 text-center text-xs text-white/25 italic">
-          Files are optional — you can generate from form details alone.
+          Files are optional â€” you can generate from form details alone.
         </p>
       )}
     </div>
   );
 }
 
-// ─── STEP 4 ── Generate ────────────────────────────────────────────────────────
+// â”€â”€â”€ STEP 4 â”€â”€ Generate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Step3({
   selectedTemplate,
   details,
@@ -1315,7 +1315,7 @@ function Step3({
   );
 }
 
-// ─── STEP 5 ── Preview & Download ─────────────────────────────────────────────
+// â”€â”€â”€ STEP 5 â”€â”€ Preview & Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Step4({
   report,
   generatedReport,
@@ -1639,7 +1639,7 @@ function Step4({
             )}
           </div>
           <p className="report-ready-meta text-sm text-white/45">
-            {content.split("\n").length} lines generated •{" "}
+            {content.split("\n").length} lines generated â€¢{" "}
             {(content.length / 1024).toFixed(1)} KB
           </p>
           {isDev && report?.modelUsed && (
@@ -2050,7 +2050,7 @@ function Step4({
       {!shouldRenderEnergyAuditTemplate && missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-yellow-900/15 border border-yellow-500/20 rounded-xl">
           <span className="text-xs font-semibold text-yellow-400 shrink-0">
-            ⚠ Missing fields:
+            âš  Missing fields:
           </span>
           {missing.map((field) => (
             <span
@@ -2120,7 +2120,7 @@ function Step4({
                       {path}
                     </div>
                     <div className="text-white/45 mt-1">
-                      {meta.label} · {meta.source} · {meta.message}
+                      {meta.label} Â· {meta.source} Â· {meta.message}
                     </div>
                   </div>
                   <span
@@ -2148,7 +2148,7 @@ function Step4({
                       {item.path}
                     </div>
                     <div className="text-white/45 mt-1">
-                      {item.label} · {item.sourceExpected} · {item.message}
+                      {item.label} Â· {item.sourceExpected} Â· {item.message}
                     </div>
                   </div>
                 ))}
@@ -2267,7 +2267,7 @@ function Step4({
   );
 }
 
-// ─── Pipeline Helpers ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Pipeline Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function getProjectCount(data) {
   return (data?.groups || []).reduce(
@@ -2354,7 +2354,7 @@ function normalizeReportDataFromResponse(response) {
   return normalizeReportDataShape(candidate);
 }
 
-// ─── Main Page ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function PublicReports() {
   const [step, setStep] = useState(1);
   const [templates, setTemplates] = useState([]);
@@ -2699,14 +2699,9 @@ export default function PublicReports() {
     const normalizedReportData = normalizeReportDataShape(baseReportData);
     const projectCount = getProjectCount(normalizedReportData);
 
-    console.log("[AI_ENHANCE_CLICK]", {
+    console.log("[FRONTEND_ENHANCE_START]", {
       hasReportData: Boolean(normalizedReportData),
-      groups: normalizedReportData?.groups?.length || 0,
-      projects: projectCount
-    });
-    console.log("[AI_ENHANCE_CLICK_DEBUG]", {
-      projectCount,
-      groups: normalizedReportData?.groups?.length || 0,
+      projectCount
     });
 
     if (!normalizedReportData || projectCount <= 0) {
@@ -2715,7 +2710,6 @@ export default function PublicReports() {
     }
 
     setAiEnhancing(true);
-    startAiCountdown();
 
     try {
       const payload = {
@@ -2723,106 +2717,46 @@ export default function PublicReports() {
         reportData: normalizedReportData,
         previewData: normalizedReportData,
         uploadedFiles: safeUploadedFiles || [],
-        extractionAttempts: [],
         force: true
       };
-
-      console.log("[AI_ENHANCE_PAYLOAD]", {
-        groups: payload.reportData?.groups?.length || 0,
-        projects: getProjectCount(payload.reportData)
-      });
-      console.log("[AI_ENHANCE_PAYLOAD_DEBUG]", {
-        projectCount: getProjectCount(payload.reportData),
-        groups: payload.reportData?.groups?.length || 0,
-      });
 
       const res = await Reports.enhanceReportWithAi(payload.reportId, payload);
 
       const enhancedReportData =
         res.reportData ||
-        res.previewData ||
         res.enhancedReportData ||
-        normalizeReportDataFromResponse(res) ||
         null;
 
-      console.log("[AI_ENHANCE_RESPONSE_DEBUG]", {
-        responseKeys: Object.keys(res || {}),
-        enhancementSummary: res?.enhancementSummary,
-        hasEnhancedReportData: Boolean(enhancedReportData),
-        frontendSummary: getReportSummary(enhancedReportData)
-      });
-
-      if (!enhancedReportData) {
-        toast.error("Enhancement returned no reportData.");
-        return;
+      if (!enhancedReportData || !res.success) {
+        throw new Error(res.error || "Enhancement failed or returned no reportData.");
       }
 
-      const beforeSummary = getReportSummary(normalizedReportData);
-      const normalizedEnhancedReportData =
-        normalizeReportDataShape(enhancedReportData) || enhancedReportData;
-      const afterSummary = getReportSummary(normalizedEnhancedReportData);
-
-      console.log("[AI_ENHANCE_BEFORE_AFTER]", {
-        beforeSummary,
-        afterSummary
+      console.log("[FRONTEND_GENERATED_REPORT_REPLACED_WITH_ENHANCED]", {
+        aiEnhanced: enhancedReportData.aiEnhanced
       });
 
-      setActiveReportData(normalizedEnhancedReportData);
+      setActiveReportData(enhancedReportData);
       setGeneratedReport((previous) => ({
         ...(previous || {}),
         ...(res.report || {}),
-        reportData: normalizedEnhancedReportData,
-        previewData: normalizedEnhancedReportData,
-        data: normalizedEnhancedReportData,
-        outputContent: JSON.stringify(normalizedEnhancedReportData),
+        reportData: enhancedReportData,
+        previewData: enhancedReportData,
+        data: enhancedReportData,
+        outputContent: JSON.stringify(enhancedReportData),
         enhancementSummary: res?.enhancementSummary,
-        aiEnhancementStatus:
-          res?.aiEnhancementStatus || previous?.aiEnhancementStatus,
-        providerAttempts:
-          res?.providerAttempts ||
-          res?.aiEnhancementStatus?.providerAttempts ||
-          previous?.providerAttempts ||
-          []
+        aiEnhancementStatus: res?.aiEnhancementStatus,
+        providerAttempts: res?.providerAttempts || []
       }));
       setPreviewRenderKey((key) => key + 1);
 
-      const aiStatus =
-        res?.aiEnhancementStatus ||
-        res?.data?.aiEnhancementStatus ||
-        res?.pipelineDebug?.aiEnhancementStatus ||
-        res.report?.aiEnhancementStatus ||
-        null;
+      toast.success(
+        res.aiEnhancementStatus?.userMessage || "Report successfully updated with backend response."
+      );
 
-      if (
-        aiStatus?.status === "quota_exceeded" ||
-        res.report?.retryAfterSeconds
-      ) {
-        const seconds = res.report?.retryAfterSeconds || 60;
-        setGeminiCooldownSeconds(seconds);
-        toast.info(formatGeminiQuotaMessage(seconds));
-      } else {
-        const expanded =
-          afterSummary.existingWords >= 250 ||
-          afterSummary.problemWords >= 250 ||
-          afterSummary.rationaleWords >= 250 ||
-          afterSummary.mvWords >= 250;
-
-        if (!expanded) {
-          toast.warning("Enhancement returned, but engineering expansion did not apply.");
-        } else {
-          toast.success("Report engineering narrative expanded successfully.");
-        }
-      }
     } catch (err) {
       console.error("[AI_ENHANCE_FAILED]", err);
-      const message =
-        err?.message ||
-        err?.data?.error ||
-        "AI enhancement could not be applied.";
-
-      toast.warning(`${message} Deterministic report is ready.`);
+      toast.warning(`Enhancement failed: ${err.message}. Deterministic report is ready.`);
     } finally {
-      stopAiCountdown();
       setAiEnhancing(false);
     }
   };
@@ -2909,7 +2843,7 @@ export default function PublicReports() {
               </h1>
             </div>
             <p className="ml-12 text-sm text-white/40">
-              SEE-Tech Solutions · Generate professional engineering reports in
+              SEE-Tech Solutions Â· Generate professional engineering reports in
               minutes.
             </p>
           </div>
@@ -3000,7 +2934,7 @@ export default function PublicReports() {
             )}
           </div>
 
-          {/* Navigation footer (steps 1–3) */}
+          {/* Navigation footer (steps 1â€“3) */}
           {step >= 1 && step <= 3 && (
             <div className="flex items-center justify-between mt-5 gap-x-3">
               <button
