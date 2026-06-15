@@ -55,6 +55,17 @@ const { sanitizeReportData } = require("../services/reportSanitizerService");
 const { validateFinalReportQuality } = require("../services/finalReportQualityService");
 const { buildExtractedDataContext } = require("../services/extractedDataContextService");
 const {
+  attachCorrectedDocx,
+  attachEnhancementArtifacts,
+  attachGeneratedDocx,
+  createTrainingExamplePackage,
+  safeParseJson,
+} = require("../services/trainingDataService");
+const {
+  generateEngineeringEnhancementWithProviders,
+  getProviderPriority,
+} = require("../services/aiProviderOrchestrator");
+const {
   buildVrChennaiClientReadyModel,
   isVrChennaiReport,
   renderVrChennaiClientReadyDocx,
@@ -66,6 +77,7 @@ const {
 } = require("../services/engineeringNarrativeExpander");
 const { filterReportProjects } = require("../services/projectQualityFilter");
 const { formatInr, formatKwh, formatPercent, formatMonths, formatYears, formatIndianNumber } = require("../services/reportFormattingService");
+const { normalizeReportCompleteness } = require("../services/reportCompletenessNormalizer");
 
 let enhanceReportNarrativesWithAi = null;
 
@@ -313,6 +325,91 @@ function parseStoredJson(value, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function buildTrainingMetadataPatch(trainingData = {}) {
+  return {
+    trainingData: {
+      packageDir: trainingData.packageDir || null,
+      packageDirRelative: trainingData.packageDirRelative || null,
+      manifestPath: trainingData.manifestPath || null,
+      manifestPathRelative: trainingData.manifestPathRelative || null,
+      projectSlug: trainingData.projectSlug || null,
+      packageTimestamp: trainingData.packageTimestamp || null,
+      completenessScore: trainingData.completenessScore ?? null,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function readTrainingMetadataFromReport(reportRecord = {}) {
+  const adminNotes = safeParseJson(reportRecord.adminNotes, {});
+  return adminNotes?.trainingData || null;
+}
+
+async function attachTrainingMetadataToReportRecord(reportId, trainingData) {
+  if (!Number.isInteger(Number(reportId))) return null;
+
+  const numericId = Number(reportId);
+  const existing = await prisma.generated_reports.findFirst({
+    where: { id: numericId },
+    select: { adminNotes: true },
+  });
+  if (!existing) return null;
+
+  const nextAdminNotes = {
+    ...safeParseJson(existing.adminNotes, {}),
+    ...buildTrainingMetadataPatch(trainingData),
+  };
+
+  return prisma.generated_reports.update({
+    where: { id: numericId },
+    data: { adminNotes: JSON.stringify(nextAdminNotes) },
+  });
+}
+
+function collectExtractionWarnings({
+  extractionAttempts = [],
+  extractionDebug = null,
+  reportData = {},
+  extractedDataContext = {},
+}) {
+  const values = [
+    ...(extractionAttempts || []).map((item) => item?.warning).filter(Boolean),
+    ...(extractionDebug?.validationWarnings || []),
+    ...(reportData?.extractionSummary?.validationWarnings || []),
+    reportData?.extractionSummary?.warning,
+    ...(extractedDataContext?.validationWarnings || []),
+  ];
+
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+}
+
+function buildProjectMetadata({
+  reportId,
+  templateId,
+  templateSlug,
+  reportDetails = {},
+  generationMode = "public",
+  user = null,
+  extractedProjects = [],
+  reportData = {},
+}) {
+  return {
+    reportId,
+    templateId,
+    templateSlug,
+    generationMode,
+    generatedAt: new Date().toISOString(),
+    userId: user?.id || null,
+    clientName: reportDetails?.clientName || null,
+    facilityName: reportDetails?.facilityName || null,
+    location: reportDetails?.location || null,
+    auditPeriod: reportDetails?.auditPeriod || null,
+    reportDate: reportDetails?.reportDate || null,
+    extractedProjectCount: extractedProjects.length,
+    finalProjectCount: getActiveReportProjectCount(reportData),
+  };
 }
 
 function buildImageMetadataFromUploads(uploadedFiles = []) {
@@ -2501,6 +2598,37 @@ function reportEndpoints(app) {
     }
   }
 
+  app.get("/ai/health", async (_request, response) => {
+    try {
+      const result = await generateEngineeringEnhancementWithProviders({
+        systemPrompt:
+          "Return ONLY valid JSON. Respond with {\"engineeringExpansion\":{\"projects\":[]},\"health\":\"ok\"}.",
+        userPrompt:
+          "Health check for AI provider priority order. Return valid JSON only.",
+        originalProjects: [],
+        reportData: {},
+      });
+
+      return response.status(result.success ? 200 : 503).json({
+        success: result.success,
+        providerUsed: result.providerUsed,
+        modelUsed: result.modelUsed,
+        attempts: result.providerAttempts,
+        providerPriority: getProviderPriority(),
+        parseMode: result.parseMode,
+      });
+    } catch (error) {
+      return response.status(500).json({
+        success: false,
+        providerUsed: "none",
+        modelUsed: null,
+        attempts: [],
+        providerPriority: getProviderPriority(),
+        error: error?.message || String(error),
+      });
+    }
+  });
+
   // REPLACE APP.POST("/reports/generate") WITH THIS EXACT FLOW
   app.post(
     "/reports/generate",
@@ -2972,9 +3100,14 @@ function reportEndpoints(app) {
           reportData.vrChennaiClientReadyReport = finalQuality.model;
         }
 
+        const resolvedTemplate = await resolveTemplate(templateId);
+        const templateSlug =
+          resolvedTemplate?.slug ||
+          (typeof templateId === "string" ? templateId : "commercial-building-energy-audit");
+
         // 6. Save fast record to DB safely
         const reportRecordData = {
-          templateId: Number(templateId) || 1, // Ensure integer
+          templateId: resolvedTemplate?.id || Number(templateId) || 1,
           generationMode: "public",
           status: "ready",
           publicForm: JSON.stringify(reportDetails || {}),
@@ -2989,6 +3122,57 @@ function reportEndpoints(app) {
           prisma,
           reportRecordData
         );
+
+        let trainingData = null;
+        try {
+          const extractionWarnings = collectExtractionWarnings({
+            extractionAttempts,
+            extractionDebug,
+            reportData,
+            extractedDataContext: finalExtractedDataContext,
+          });
+          trainingData = createTrainingExamplePackage({
+            reportId: reportRecord.id,
+            templateSlug,
+            reportDetails,
+            generationMode: "public",
+            uploadedFiles,
+            extractedReportData: reportData,
+            extractedDataContext: finalExtractedDataContext,
+            extractionTrace: {
+              extractionAttempts,
+              extractionDebug,
+              extractionSummary: reportData.extractionSummary,
+            },
+            missingFields: reportData.missingInputs || [],
+            qualityGateResult: {
+              ...normalizedQualityGate,
+              accuracySummary: finalQuality.accuracySummary,
+              gateLog: finalQuality.gateLog,
+            },
+            extractionWarnings,
+            completenessScore:
+              finalQuality?.accuracySummary?.extractionAccuracy?.finalReportReadiness,
+            projectMetadata: buildProjectMetadata({
+              reportId: reportRecord.id,
+              templateId: resolvedTemplate?.id || templateId,
+              templateSlug,
+              reportDetails,
+              generationMode: "public",
+              user,
+              extractedProjects,
+              reportData,
+            }),
+          });
+
+          await attachTrainingMetadataToReportRecord(reportRecord.id, trainingData);
+        } catch (trainingDataError) {
+          console.error("[TRAINING_DATA_CREATE_FAILED]", {
+            reportId: reportRecord.id,
+            message: trainingDataError?.message || String(trainingDataError),
+            stack: trainingDataError?.stack,
+          });
+        }
         
         console.log("[GENERATE_BACKEND_RETURN]", {
           hasReportData: Boolean(reportData),
@@ -3006,6 +3190,7 @@ function reportEndpoints(app) {
         console.log("API RESPONSE GROUPS");
         console.log(JSON.stringify(reportData.groupedProjects?.map(g => ({ groupNo: g.groupNo, title: g.groupTitle, ecmCount: g.projects?.length })) || []));
 
+        reportData = normalizeReportCompleteness(reportData);
         reportData = cleanupFinalReportData(reportData);
         logSafeCleanupCheck(reportData, "Generate");
 
@@ -3033,6 +3218,7 @@ function reportEndpoints(app) {
             outputContent: JSON.stringify(reportData),
             providerUsed: "deterministic",
           },
+          trainingData,
         });
       } catch (error) {
         console.error("[REPORT_GENERATION_FAILED]", {
@@ -3075,6 +3261,7 @@ function reportEndpoints(app) {
         }
 
         const requestBody = reqBody(request);
+        const trainingMetadata = readTrainingMetadataFromReport(report);
         let dbReportData = null;
         try {
           dbReportData = JSON.parse(report.outputContent);
@@ -3101,7 +3288,8 @@ function reportEndpoints(app) {
           );
         }
 
-        const normalizedExport = cleanupFinalReportData(normalizeActiveReportData(exportReportData));
+        const completenessNormalized = normalizeReportCompleteness(normalizeActiveReportData(exportReportData));
+        const normalizedExport = cleanupFinalReportData(completenessNormalized);
         const exportExtractedDataContext =
           normalizedExport.extractedDataContext ||
           buildExtractedDataContext({
@@ -3139,12 +3327,23 @@ function reportEndpoints(app) {
             "Content-Type",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           );
+          if (trainingMetadata?.packageDir) {
+            try {
+              attachGeneratedDocx(trainingMetadata.packageDir, buffer, filename);
+            } catch (trainingDataError) {
+              console.error("[TRAINING_DATA_EXPORT_ATTACH_FAILED]", {
+                reportId: id,
+                message: trainingDataError?.message || String(trainingDataError),
+              });
+            }
+          }
           return response.send(buffer);
         }
 
         exportReportData = normalizeActiveReportData(exportReportData);
         exportReportData = filterReportProjects(exportReportData);
         exportReportData = expandReportEngineeringNarratives(exportReportData);
+        exportReportData = normalizeReportCompleteness(exportReportData);
         exportReportData = cleanupFinalReportData(exportReportData);
         const sanitizedExport = sanitizeReportData(exportReportData);
         exportReportData = sanitizedExport.sanitizedReportData;
@@ -3223,6 +3422,16 @@ function reportEndpoints(app) {
           "Content-Type",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
+        if (trainingMetadata?.packageDir) {
+          try {
+            attachGeneratedDocx(trainingMetadata.packageDir, buffer, filename);
+          } catch (trainingDataError) {
+            console.error("[TRAINING_DATA_EXPORT_ATTACH_FAILED]", {
+              reportId: id,
+              message: trainingDataError?.message || String(trainingDataError),
+            });
+          }
+        }
         response.send(buffer);
       } catch (error) {
         console.error("[DOCX_EXPORT_FAILED]", {
@@ -3239,165 +3448,197 @@ function reportEndpoints(app) {
     }
   );
 
+  app.post(
+    "/reports/:id/training-data/corrected-docx",
+    [validatedRequest, flexUserRoleValid([ROLES.all]), handleFileUpload],
+    async (request, response) => {
+      try {
+        const id = parseInt(request.params.id, 10);
+        const report = await prisma.generated_reports.findFirst({
+          where: { id },
+          select: { id: true, adminNotes: true, userId: true },
+        });
+
+        if (!report) return response.sendStatus(404).end();
+
+        const user = await userFromSession(request, response);
+        if (user && user.role === "default" && report.userId !== user.id) {
+          return response.sendStatus(403).end();
+        }
+
+        const trainingMetadata = readTrainingMetadataFromReport(report);
+        if (!trainingMetadata?.packageDir) {
+          return response.status(409).json({
+            success: false,
+            error: "No training-data package is registered for this report.",
+          });
+        }
+
+        const uploadedFile = request.file;
+        const extension = path.extname(uploadedFile?.originalname || "").toLowerCase();
+        if (extension !== ".docx") {
+          return response.status(400).json({
+            success: false,
+            error: "Only corrected .docx uploads are supported.",
+          });
+        }
+
+        const correctionNotes =
+          request.body?.correctionNotes ||
+          request.body?.notes ||
+          "# Correction Notes\n\nNo notes provided.\n";
+
+        const manifest = attachCorrectedDocx(
+          trainingMetadata.packageDir,
+          uploadedFile.path,
+          {
+            fileName: uploadedFile.originalname || "userCorrectedReport.docx",
+            correctionNotes,
+          }
+        );
+
+        return response.status(200).json({
+          success: true,
+          reportId: id,
+          trainingData: trainingMetadata,
+          manifest,
+        });
+      } catch (error) {
+        console.error("[TRAINING_DATA_CORRECTED_DOCX_FAILED]", {
+          message: error?.message || String(error),
+          stack: error?.stack,
+        });
+        return response.status(500).json({
+          success: false,
+          error: "Failed to attach corrected DOCX to training package.",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
   async function enhanceAiHandler(req, res) {
     console.log("FUNCTION ENTERED:\nserver/endpoints/reports.js\nenhanceAiHandler");
     console.log("CACHE MISS: AI Enhancement generates a new report.");
+    console.log("[BACKEND_ENHANCE_ROUTE_HIT]", {
+      bodyKeys: Object.keys(req.body || {}),
+      reportDataKeys: Object.keys(req.body?.reportData || {}),
+      projectCount:
+        req.body?.projects?.length ||
+        req.body?.reportData?.projects?.length ||
+        req.body?.reportData?.ecms?.length ||
+        req.body?.reportData?.ecmSummary?.length ||
+        0
+    });
+
     try {
-      const reportId = req.params.reportId || req.body.reportId || null;
+      const reportData = req.body.reportData || {};
+      const originalProjects =
+        req.body.projects ||
+        reportData.projects ||
+        reportData.ecms ||
+        reportData.ecmSummary ||
+        [];
 
-      const rawReportData =
-        req.body.reportData ||
-        req.body.previewData ||
-        req.body.generatedReportData ||
-        req.body.report?.reportData ||
-        req.body.report ||
-        null;
-
-      if (!rawReportData) {
-        return res.status(422).json({
+      if (!originalProjects.length) {
+        return res.status(400).json({
           success: false,
-          error: "AI enhancement requires reportData.",
-          receivedKeys: Object.keys(req.body || {}),
+          error: "No ECM rows found for enhancement.",
           debug: {
-            bodyType: typeof req.body,
-            hasReportData: Boolean(req.body?.reportData),
-            hasPreviewData: Boolean(req.body?.previewData),
-            hasGeneratedReportData: Boolean(req.body?.generatedReportData)
+            bodyKeys: Object.keys(req.body || {}),
+            reportDataKeys: Object.keys(reportData || {})
           }
         });
       }
 
-      let reportData = normalizeActiveReportData(rawReportData);
-      reportData = filterReportProjects(reportData);
-      const projectCount = getActiveReportProjectCount(reportData);
-
-      console.log("[BACKEND_ENHANCE_RECEIVE_DEBUG]", {
-        reportId,
-        groups: reportData?.groups?.length || 0,
-        projects: projectCount,
-        rejectedProjects: reportData?.filteringMeta?.rejectedCount || 0,
-        firstProject: firstProjectSummary(reportData),
-        receivedKeys: Object.keys(req.body || {}),
+      console.log("[BACKEND_ENHANCE_CALLING_PROVIDER_CHAIN]", {
+        projectCount: originalProjects.length,
+        providerPriority: process.env.AI_PROVIDER_PRIORITY || "gemini,openai,openrouter",
+        hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+        hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+        hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY)
       });
 
-      if (projectCount <= 0) {
-        return res.status(422).json({
-          success: false,
-          error: "AI enhancement requires reportData with at least one extracted project.",
-          receivedKeys: Object.keys(req.body || {}),
-          debug: {
-            hasReportData: Boolean(reportData),
-            reportDataKeys: reportData ? Object.keys(reportData) : [],
-            groups: reportData?.groups?.length || 0,
-            projectCount
-          }
-        });
-      }
+      const systemPrompt = `You are an expert energy auditor and engineering consultant. You are provided with a list of Energy Conservation Measures (ECMs) identified during an energy audit. For each ECM, expand on the technical details, providing a detailed description of the existing condition, the problem or gap in the current setup, the proposed project or recommendation, the activities required to implement it, the expected benefits, and a conclusion. Be technical, objective, and clear. Format the output as a JSON object with an 'engineeringExpansion' property containing a 'projects' array of objects.`;
+      const userPrompt = JSON.stringify(originalProjects, null, 2);
 
-      if (typeof enhanceReportNarrativesWithAi !== "function") {
-        let finalReportData = expandReportEngineeringNarratives(reportData);
-        finalReportData = cleanupFinalReportData(finalReportData);
-        logSafeCleanupCheck(finalReportData, "Enhance Fallback");
-
-        const expansionSummary = firstProjectSummary(finalReportData);
-
-        console.log("[FORCED_ENGINEERING_EXPANSION_SUMMARY]", expansionSummary);
-        console.log("[FINAL_ECM_SPECIFIC_EXPANSION]", expansionSummary);
-
-        return res.status(200).json({
-          success: true,
-          aiEnhanced: false,
-          fallbackEnhanced: true,
-          reportData: finalReportData,
-          previewData: finalReportData,
-          enhancementSummary: expansionSummary,
-          aiEnhancementStatus: {
-            status: "engineering_expansion_success",
-            finalEnhancerUsed: "forced_engineering_narrative_expander",
-            userMessage: "Report engineering narrative expanded successfully.",
-            providerAttempts: [],
-          },
-        });
-      }
-
-      const result = await enhanceReportNarrativesWithAi({
-        reportData,
-        force: req.body.force === true
+      const aiResult = await generateEngineeringEnhancementWithProviders({
+        systemPrompt,
+        userPrompt,
+        originalProjects,
+        reportData
       });
 
-      let finalReportData = normalizeActiveReportData(result.reportData || reportData);
-      finalReportData = filterReportProjects(finalReportData);
-      finalReportData = enforceReportQuality(finalReportData);
-      if (getActiveReportProjectCount(finalReportData) <= 0) {
-        return res.status(422).json({
-          success: false,
-          error: "AI enhancement produced no valid ECM projects after filtering.",
-        });
+      if (!aiResult.success) {
+        throw new Error(aiResult.error || "AI provider chain failed to generate enhancement.");
       }
-      finalReportData = expandReportEngineeringNarratives(finalReportData);
-      finalReportData = cleanupFinalReportData(finalReportData);
-      logSafeCleanupCheck(finalReportData, "Enhance AI");
 
-      const expansionSummary = firstProjectSummary(finalReportData);
-      const finalEnhancementSummary = enhancementSummary(finalReportData);
-      finalReportData.enhancementMeta = {
-        enhancedAt: new Date().toISOString(),
-        enhancerUsed:
-          result.aiEnhancementStatus?.finalEnhancerUsed ||
-          (result.fallbackEnhanced ? "local_deterministic_narrative" : "ai"),
-        enhancementApplied: true,
-        summary: finalEnhancementSummary,
+      // Merge results
+      const mergedProjects = originalProjects.map((orig, index) => {
+        const aiRow = aiResult.parsedProjects.find(r => 
+          String(r.ecmNo) === String(orig.ecmNo) || 
+          String(r.ecmNumber) === String(orig.ecmNo) ||
+          String(r.no) === String(orig.ecmNo)
+        ) || aiResult.parsedProjects[index] || {};
+
+        return {
+          ...orig,
+          existingCondition: aiRow.existingCondition || aiRow.existing_condition || orig.existingCondition || "To be updated",
+          problemGap: aiRow.problemGap || aiRow.problemStatement || aiRow.problem || orig.problemGap || "To be updated",
+          proposedProject: aiRow.proposedProject || aiRow.recommendation || orig.proposedProject || orig.projectTitle || "To be updated",
+          projectActivities: Array.isArray(aiRow.projectActivities) ? aiRow.projectActivities : Array.isArray(aiRow.activities) ? aiRow.activities : orig.projectActivities || ["To be updated"],
+          benefits: Array.isArray(aiRow.benefits) ? aiRow.benefits : Array.isArray(aiRow.expectedBenefits) ? aiRow.expectedBenefits : orig.benefits || ["To be updated"],
+          conclusion: aiRow.conclusion || aiRow.summary || orig.conclusion || "To be updated",
+          enhancedNarrative: aiRow.enhancedNarrative || aiRow.rawText || orig.enhancedNarrative || null,
+          aiEnhanced: true,
+          enhancementMode: aiResult.enhancementMode || "ai-engineering"
+        };
+      });
+
+      const enhancedReportData = {
+        ...reportData,
+        projects: mergedProjects,
+        ecms: mergedProjects,
+        ecmSummary: mergedProjects,
+        aiEnhanced: true,
+        aiEnhancedCount: mergedProjects.length,
+        providerUsed: aiResult.providerUsed,
+        modelUsed: aiResult.modelUsed,
+        providerAttempts: aiResult.providerAttempts,
+        enhancementMode: aiResult.enhancementMode || "ai-engineering"
       };
 
-      console.log("[ENHANCE_RESPONSE_SUMMARY]", finalEnhancementSummary);
-      console.log("[FORCED_ENGINEERING_EXPANSION_SUMMARY]", expansionSummary);
-      console.log("[FINAL_ECM_SPECIFIC_EXPANSION]", expansionSummary);
-
       return res.status(200).json({
         success: true,
-        aiEnhanced: result.aiEnhanced === true,
-        fallbackEnhanced: true,
-        reportId,
-        reportData: finalReportData,
-        previewData: finalReportData,
-        enhancementSummary: expansionSummary,
-        aiEnhancementStatus: {
-          ...(result.aiEnhancementStatus || {}),
-          status: "engineering_expansion_success",
-          finalEnhancerUsed: "forced_engineering_narrative_expander",
-          userMessage: "Report engineering narrative expanded successfully.",
-        },
-        providerAttempts:
-          result.providerAttempts ||
-          result.aiEnhancementStatus?.providerAttempts ||
-          [],
-        extractionSummary: finalReportData.extractionSummary
+        reportData: enhancedReportData,
+        enhancedReportData,
+        providerUsed: aiResult.providerUsed,
+        modelUsed: aiResult.modelUsed,
+        providerAttempts: aiResult.providerAttempts,
+        enhancementMode: aiResult.enhancementMode || "ai-engineering",
       });
-    } catch (error) {
-      console.error("[enhance-ai] failed:", error);
 
-      return res.status(200).json({
-        success: true,
-        aiEnhanced: false,
-        error: error?.message || String(error),
-        reportData: normalizeActiveReportData(
-          req.body.reportData || req.body.previewData || {}
-        ),
-        previewData: normalizeActiveReportData(
-          req.body.reportData || req.body.previewData || {}
-        ),
+    } catch (error) {
+      console.error("[BACKEND_AI_ENHANCEMENT_ERROR]", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || String(error),
+        providerAttempts: error.providerAttempts || [],
+        reportData: req.body.reportData || {},
+        enhancedReportData: req.body.reportData || {},
         aiEnhancementStatus: {
-          status: "failed_non_blocking",
-          finalEnhancerUsed: "deterministic",
+          status: "failed",
+          enhancementMode: "deterministic-engineering-fallback",
           failureReason: "ai_enhancement_error",
           developerMessage: error?.stack || error?.message || String(error),
           userMessage:
-            "AI enhancement could not be applied. Deterministic report is ready.",
+            "AI providers failed. Engineering enhancement applied using deterministic fallback.",
         },
       });
     }
   }
 
+  app.post("/ai/enhance-report", enhanceAiHandler);
   app.post("/reports/enhance-ai", enhanceAiHandler);
   app.post("/reports/:reportId/enhance-ai", enhanceAiHandler);
 }

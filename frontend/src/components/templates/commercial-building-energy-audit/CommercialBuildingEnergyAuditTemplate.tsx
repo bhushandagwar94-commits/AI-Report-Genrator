@@ -144,7 +144,7 @@ function isMeaningful(value: any): boolean {
   return true;
 }
 
-function fallbackText(value: any, placeholder = "[To be updated after site data verification]"): string {
+function fallbackText(value: any, placeholder = "To be updated"): string {
   if (typeof value === "object" && value !== null) {
     if (value.value !== undefined) return fallbackText(value.value, placeholder);
     if (value.text !== undefined) return fallbackText(value.text, placeholder);
@@ -156,7 +156,7 @@ function firstNonEmpty(...values: any[]): string {
   for (const v of values) {
     if (isMeaningful(v)) return fallbackText(v);
   }
-  return "[To be updated after site data verification]";
+  return "To be updated";
 }
 
 function formatNumberDisplay(value: any, maxDecimals = 0): string {
@@ -168,7 +168,7 @@ function formatNumberDisplay(value: any, maxDecimals = 0): string {
 }
 
 function formatCurrencyDisplay(value: any): string {
-  if (!isMeaningful(value)) return "[To be updated after site data verification]";
+  if (!isMeaningful(value)) return "To be updated";
   const num = Number(String(value).replace(/[^\d.-]/g, ""));
   if (Number.isFinite(num)) return `₹${Math.round(num).toLocaleString("en-IN")}`;
   const str = String(value);
@@ -176,6 +176,9 @@ function formatCurrencyDisplay(value: any): string {
 }
 
 function formatPaybackDisplay(value: any): string {
+  if (value === null || value === undefined || value === "" || value === "To be updated") return "To be updated";
+  const num = Number(value);
+  if (Number.isFinite(num) && num === 0) return "Immediate";
   return formatNumberDisplay(value, 2);
 }
 
@@ -221,7 +224,7 @@ function getEcmNumberVal(valueOrProject: any) {
 
 function formatEcmNumber(valueOrProject: any) {
   const raw = String(getEcmNumberVal(valueOrProject) ?? "").trim();
-  if (!raw || raw === "[To be updated after site data verification]") return "";
+  if (!raw || raw === "To be updated") return "";
   const match = raw.match(/\d+/);
   if (!match) return "ECM";
   return `ECM ${match[0]}`;
@@ -265,7 +268,7 @@ function getProblemGapEntry(ecmType: string) {
   if (ecmType === "pump_flow_optimization") return { system: "Pump", gap: "Throttling, bypass or fixed-flow operation" };
   if (ecmType === "motor_retrofit_ie4_ie5") return { system: "Motor retrofit", gap: "Standard efficiency motor losses" };
   if (ecmType === "blower_direct_drive_retrofit") return { system: "Blower", gap: "Belt/transmission loss or non-optimized drive arrangement" };
-  return { system: "System", gap: "[To be updated after site data verification]" };
+  return { system: "System", gap: "To be updated" };
 }
 
 function getRationaleEntry(ecmType: string) {
@@ -280,7 +283,7 @@ function getRationaleEntry(ecmType: string) {
   if (ecmType === "pump_flow_optimization") return { projectType: "Pump VFD", savingRationale: "Pump affinity laws allow large power reduction when speed/flow is reduced." };
   if (ecmType === "motor_retrofit_ie4_ie5") return { projectType: "IE5 motor retrofit", savingRationale: "Higher motor efficiency reduces electrical losses." };
   if (ecmType === "blower_direct_drive_retrofit") return { projectType: "Blower direct drive", savingRationale: "Direct drive removes transmission losses and improves drive efficiency." };
-  return { projectType: "Project", savingRationale: "[To be updated after site data verification]" };
+  return { projectType: "Project", savingRationale: "To be updated" };
 }
 
 function getMvParamValue(ecmType: string) {
@@ -317,7 +320,7 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
   safe = safe.replace(/ecm\s+ecm/gi, "ECM");
   safe = safe.trim();
 
-  if (!safe || safe === "[To be updated after site data verification]") {
+  if (!safe || safe === "To be updated") {
     if (ecmType === "cooling_system_optimization") safe = "The existing cooling system includes equipment operating under conditions where flow, temperature differential, and load variation require verification for optimized energy performance.";
     else if (ecmType === "heat_recovery") safe = "The existing dryer system rejects usable heat through exhaust air, while incoming regeneration air continues to require primary heating energy.";
     else if (ecmType === "thermal_insulation") safe = "The existing hot duct surfaces are exposed or inadequately insulated, resulting in avoidable heat loss to the surrounding area.";
@@ -336,7 +339,7 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
 
 
 function safeText(val: any) {
-  if (val === null || val === undefined || val === "" || val === "[To be updated after site data verification]") return "";
+  if (val === null || val === undefined || val === "" || val === "To be updated") return "";
   return removeInternalPhrases(String(val)).trim();
 }
 
@@ -344,17 +347,17 @@ function buildProjectSummaryRows(ecm: any, cleanTitle: string, ecmNo: string) {
   return [
     { particular: "Project title", value: cleanTitle },
     { particular: "Project number", value: ecmNo || "" },
-    { particular: "System", value: safeText(ecm.system) || safeText(ecm.category) || "[To be updated after site data verification]" },
-    { particular: "Location", value: safeText(ecm.location) || "[To be updated after site data verification]" },
-    { particular: "Equipment covered", value: safeText(ecm.equipmentCovered) || safeText(ecm.equipment) || "[To be updated after site data verification]" },
+    { particular: "System", value: safeText(ecm.system) || safeText(ecm.category) || "To be updated" },
+    { particular: "Location", value: safeText(ecm.location) || "To be updated" },
+    { particular: "Equipment covered", value: safeText(ecm.equipmentCovered) || safeText(ecm.equipment) || "To be updated" },
     { particular: "Existing operating condition", value: sanitizePromptLeakageText(safeText(ecm.existingSystemDescription) || safeText(ecm.existingOperatingCondition), classifyEcmType(ecm)) },
     { particular: "Proposed intervention", value: sanitizePromptLeakageText(safeText(ecm.proposedProjectDescription) || safeText(ecm.proposedIntervention), classifyEcmType(ecm)) },
     { particular: "Expected energy saving", value: safeText(ecm.expectedEnergySaving) ? `${formatNumberDisplay(ecm.expectedEnergySaving)} kWh/year` : "[Calculation pending]" },
     { particular: "Expected annual cost saving", value: safeText(ecm.expectedAnnualCostSaving) ? formatCurrencyDisplay(ecm.expectedAnnualCostSaving) : "[Calculation pending]" },
     { particular: "Estimated investment", value: safeText(ecm.estimatedInvestment) ? formatCurrencyDisplay(ecm.estimatedInvestment) : "[Calculation pending]" },
     { particular: "Simple payback period", value: safeText(ecm.simplePaybackPeriod) ? `${formatPaybackDisplay(ecm.simplePaybackPeriod)} years` : "[Calculation pending]" },
-    { particular: "Implementation duration", value: safeText(ecm.implementationDuration) || "[To be updated after site data verification]" },
-    { particular: "Implementation priority", value: safeText(ecm.priority) || safeText(ecm.implementationPriority) || "[To be updated after site data verification]" }
+    { particular: "Implementation duration", value: safeText(ecm.implementationDuration) || "To be updated" },
+    { particular: "Implementation priority", value: safeText(ecm.priority) || safeText(ecm.implementationPriority) || "To be updated" }
   ];
 }
 
@@ -362,15 +365,15 @@ function buildBaselineDataRows(ecm: any) {
   let rows = ecm.baselineData || [];
   if (rows.length < 3) {
     rows = [
-      { parameter: "Equipment rating", unit: "kW / TR / HP", value: "[To be updated after site data verification]" },
-      { parameter: "Quantity", unit: "Nos.", value: "[To be updated after site data verification]" },
-      { parameter: "Operating hours", unit: "hours/day", value: "[To be updated after site data verification]" },
-      { parameter: "Operating days", unit: "days/year", value: "[To be updated after site data verification]" },
-      { parameter: "Existing power consumption", unit: "kW", value: "[To be updated after site data verification]" },
-      { parameter: "Annual operating hours", unit: "hours/year", value: "[To be updated after site data verification]" },
-      { parameter: "Baseline annual consumption", unit: "kWh/year", value: safeText(ecm.baselineConsumption) || "[To be updated after site data verification]" },
-      { parameter: "Average tariff", unit: "₹/kWh", value: "[To be updated after site data verification]" },
-      { parameter: "Baseline annual energy cost", unit: "₹/year", value: "[To be updated after site data verification]" }
+      { parameter: "Equipment rating", unit: "kW / TR / HP", value: "To be updated" },
+      { parameter: "Quantity", unit: "Nos.", value: "To be updated" },
+      { parameter: "Operating hours", unit: "hours/day", value: "To be updated" },
+      { parameter: "Operating days", unit: "days/year", value: "To be updated" },
+      { parameter: "Existing power consumption", unit: "kW", value: "To be updated" },
+      { parameter: "Annual operating hours", unit: "hours/year", value: "To be updated" },
+      { parameter: "Baseline annual consumption", unit: "kWh/year", value: safeText(ecm.baselineConsumption) || "To be updated" },
+      { parameter: "Average tariff", unit: "₹/kWh", value: "To be updated" },
+      { parameter: "Baseline annual energy cost", unit: "₹/year", value: "To be updated" }
     ];
   }
   return rows;
@@ -380,15 +383,15 @@ function buildMeasurementRows(ecm: any) {
   let rows = ecm.baselineMeasurements || [];
   if (rows.length < 3) {
     rows = [
-      { measurement: "Voltage", unit: "V", value: "[To be updated after site data verification]" },
-      { measurement: "Current", unit: "A", value: "[To be updated after site data verification]" },
-      { measurement: "Power factor", unit: "-", value: "[To be updated after site data verification]" },
-      { measurement: "Measured power", unit: "kW", value: "[To be updated after site data verification]" },
-      { measurement: "Flow / airflow", unit: "m3/hr / CFM", value: "[To be updated after site data verification]" },
-      { measurement: "Pressure / head / static pressure", unit: "m / mmWC / bar", value: "[To be updated after site data verification]" },
-      { measurement: "Temperature inlet", unit: "°C", value: "[To be updated after site data verification]" },
-      { measurement: "Temperature outlet", unit: "°C", value: "[To be updated after site data verification]" },
-      { measurement: "Operating frequency", unit: "Hz", value: "[To be updated after site data verification]" }
+      { measurement: "Voltage", unit: "V", value: "To be updated" },
+      { measurement: "Current", unit: "A", value: "To be updated" },
+      { measurement: "Power factor", unit: "-", value: "To be updated" },
+      { measurement: "Measured power", unit: "kW", value: "To be updated" },
+      { measurement: "Flow / airflow", unit: "m3/hr / CFM", value: "To be updated" },
+      { measurement: "Pressure / head / static pressure", unit: "m / mmWC / bar", value: "To be updated" },
+      { measurement: "Temperature inlet", unit: "°C", value: "To be updated" },
+      { measurement: "Temperature outlet", unit: "°C", value: "To be updated" },
+      { measurement: "Operating frequency", unit: "Hz", value: "To be updated" }
     ];
   }
   return rows;
@@ -411,7 +414,7 @@ function buildScopeOfWorkRows(ecmType: string, ecm: any) {
 }
 
 function buildKeyActivityRows(ecmType: string, ecm: any) {
-  let rows = ecm.keyActivities || ecm.keyActivitiesNarrative || ecm.activities || [];
+  let rows = ecm.projectActivities || ecm.enhancedProjectActivities || ecm.keyActivities || ecm.keyActivitiesNarrative || ecm.activities || [];
   if (rows.length < 3) {
     rows = [
       { activity: "Site verification", details: "Confirm equipment rating, location and operating condition", responsibility: "SEE-Tech + Client" },
@@ -431,12 +434,12 @@ function buildEnergySavingCalculationRows(ecm: any) {
   let rows = ecm.energySavingCalculation || ecm.calculation || ecm.calculationBasis || ecm.assumptions || [];
   if (rows.length < 3) {
     rows = [
-      { parameter: "Existing connected load / measured load", unit: "kW", value: "[To be updated after site data verification]" },
-      { parameter: "Proposed load after project", unit: "kW", value: "[To be updated after site data verification]" },
-      { parameter: "Load reduction", unit: "kW", value: "[To be updated after site data verification]" },
-      { parameter: "Operating hours", unit: "hours/year", value: "[To be updated after site data verification]" },
+      { parameter: "Existing connected load / measured load", unit: "kW", value: "To be updated" },
+      { parameter: "Proposed load after project", unit: "kW", value: "To be updated" },
+      { parameter: "Load reduction", unit: "kW", value: "To be updated" },
+      { parameter: "Operating hours", unit: "hours/year", value: "To be updated" },
       { parameter: "Annual energy saving", unit: "kWh/year", value: safeText(ecm.expectedEnergySaving) || safeText(ecm.energySaving) || "[Calculation pending]" },
-      { parameter: "Average tariff", unit: "₹/kWh", value: "[To be updated after site data verification]" },
+      { parameter: "Average tariff", unit: "₹/kWh", value: "To be updated" },
       { parameter: "Annual cost saving", unit: "₹/year", value: safeText(ecm.expectedAnnualCostSaving) || safeText(ecm.annualSaving) || "[Calculation pending]" },
       { parameter: "Estimated investment", unit: "₹", value: safeText(ecm.estimatedInvestment) || safeText(ecm.investment) || "[Calculation pending]" },
       { parameter: "Simple payback", unit: "years", value: safeText(ecm.simplePaybackPeriod) ? Number(ecm.simplePaybackPeriod).toFixed(2) : "[Calculation pending]" }
@@ -461,17 +464,17 @@ function buildTechnicalSpecificationRows(ecmType: string, ecm: any) {
   let rows = ecm.technicalSpecificationTable || [];
   if (rows.length < 3) {
     rows = [
-      { item: "Equipment / technology", specification: "[To be updated after site data verification]" },
-      { item: "Capacity", specification: "[To be updated after site data verification]" },
-      { item: "Quantity", specification: "[To be updated after site data verification]" },
-      { item: "Motor efficiency class, if applicable", specification: "[To be updated after site data verification]" },
-      { item: "VFD rating, if applicable", specification: "[To be updated after site data verification]" },
-      { item: "Sensor type", specification: "[To be updated after site data verification]" },
-      { item: "Controller / PLC / IoT system", specification: "[To be updated after site data verification]" },
-      { item: "Communication", specification: "[To be updated after site data verification]" },
-      { item: "Panel requirement", specification: "[To be updated after site data verification]" },
-      { item: "Civil / mechanical modification", specification: "[To be updated after site data verification]" },
-      { item: "Safety requirement", specification: "[To be updated after site data verification]" }
+      { item: "Equipment / technology", specification: "To be updated" },
+      { item: "Capacity", specification: "To be updated" },
+      { item: "Quantity", specification: "To be updated" },
+      { item: "Motor efficiency class, if applicable", specification: "To be updated" },
+      { item: "VFD rating, if applicable", specification: "To be updated" },
+      { item: "Sensor type", specification: "To be updated" },
+      { item: "Controller / PLC / IoT system", specification: "To be updated" },
+      { item: "Communication", specification: "To be updated" },
+      { item: "Panel requirement", specification: "To be updated" },
+      { item: "Civil / mechanical modification", specification: "To be updated" },
+      { item: "Safety requirement", specification: "To be updated" }
     ];
   }
   return rows;
@@ -581,7 +584,7 @@ function SectionHeader({ number, title, level = 2 }: { number?: string; title: s
 }
 
 
-function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string = "[To be updated after site data verification]") {
+function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string = "To be updated") {
   const safeColumns = asArray(columns).length ? asArray(columns) : [{ key: "value", label: "Value" }];
   const safeRows = normalizeTableRows(rowsData);
   
@@ -605,7 +608,7 @@ function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string
   return <ReportTable compact columns={safeColumns} rows={mappedRows} />;
 }
 
-function renderMandatoryKeyValueTable(dataObj: any, placeholder: string = "[To be updated after site data verification]") {
+function renderMandatoryKeyValueTable(dataObj: any, placeholder: string = "To be updated") {
   const safeObj = { ...(dataObj || {}) };
   const keys = Object.keys(safeObj);
   if (keys.length === 0) {
@@ -746,14 +749,24 @@ function TableOfContentsPage({ projectGroups, projects, hasExplicitEcmGrouping }
 
 function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
   const es = data.executiveSummary || {};
+  
   const purposeText =
-    es.purposeText || "[To be updated after site data verification]";
-  const keyObservations = Array.isArray(es.keyObservations)
-    ? es.keyObservations
+    es.purposeOfEnergyAudit ||
+    data.purposeOfEnergyAudit ||
+    es.purposeText ||
+    "To be updated";
+    
+  const keyObservationsRaw = es.keyObjectives || data.keyObjectives || es.keyObservations || data.keyObservations;
+  const keyObservations = Array.isArray(keyObservationsRaw)
+    ? keyObservationsRaw
+    : typeof keyObservationsRaw === "string"
+    ? keyObservationsRaw.split(/\n|;/).map(x => x.trim()).filter(Boolean)
     : [];
+    
   const conclusionAndWayForward =
     es.conclusionAndWayForward ||
-    "[To be updated after site data verification]";
+    data.conclusionAndWayForward ||
+    "To be updated";
   const categorySummaryRows = groupedProjects.map((group: any, index: number) => ({
     groupNo: group.groupNo || `GR-${index + 1}`,
     groupName: group.groupTitle || formatGroupHeading(group, index).replace(/^GR-\d+\s*/, ""),
@@ -797,14 +810,14 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
       {renderBulletTheory(conclusionAndWayForward)}
 
       <SectionHeader number="1.4" title="Expected Outcomes" />
-      {renderList(es.expectedOutcomes, [
+      {renderList(es.expectedOutcomes || data.expectedOutcomes, [
         "A prioritized portfolio of energy conservation measures (ECMs) categorized by technical feasibility and financial return.",
         "Clear recommendations for immediate operational improvements requiring minimal capital investment.",
         "Strategic guidance for long-term capital planning related to major equipment replacements and system retrofits."
       ])}
 
       <SectionHeader number="1.5" title="Strategic Importance" />
-      {renderList(es.strategicImportance, [
+      {renderList(es.strategicImportance || data.strategicImportance, [
         "Enhances operational resilience by reducing exposure to energy price volatility and supply constraints.",
         "Supports corporate sustainability goals through quantifiable reductions in carbon emissions and environmental impact.",
         "Improves overall facility competitiveness by lowering production costs and optimizing resource utilization."
@@ -880,7 +893,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
               { key: "saving", label: "Annual Saving" },
               { key: "energy", label: "Energy Saving" },
               { key: "payback", label: "Group Payback" },
-            ], data.projectGrouping || categorySummaryRows, "[To be updated after site data verification]")}
+            ], data.projectGrouping || categorySummaryRows, "To be updated")}
           </div>
         </>
       )}
@@ -895,7 +908,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
           { key: "saving", label: "Annual Saving" },
           { key: "payback", label: "Payback" },
           { key: "note", label: "Implementation Note" },
-        ], data.implementationPriority || priorityRows, "[To be updated after site data verification]")}
+        ], data.implementationPriority || priorityRows, "To be updated")}
       </div>
       
       <div className="mt-4 mb-4 font-bold text-sm">1.9.3 Action Plan</div>
@@ -1120,11 +1133,11 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "impact", label: "Impact" },
         { key: "recommendation", label: "Recommended Project" },
       ], asArray(data.auditObservations).length ? data.auditObservations : [
-        { srNo: 1, observation: "[To be updated after site data verification]", impact: "High energy consumption" },
-        { srNo: 2, observation: "[To be updated after site data verification]", impact: "Higher demand / kVAh billing" },
-        { srNo: 3, observation: "[To be updated after site data verification]", impact: "Excess operating hours" },
-        { srNo: 4, observation: "[To be updated after site data verification]", impact: "Inefficient equipment" },
-        { srNo: 5, observation: "[To be updated after site data verification]", impact: "Poor control / manual operation" }
+        { srNo: 1, observation: "To be updated", impact: "High energy consumption" },
+        { srNo: 2, observation: "To be updated", impact: "Higher demand / kVAh billing" },
+        { srNo: 3, observation: "To be updated", impact: "Excess operating hours" },
+        { srNo: 4, observation: "To be updated", impact: "Inefficient equipment" },
+        { srNo: 5, observation: "To be updated", impact: "Poor control / manual operation" }
       ])}
     </section>
   );
@@ -1136,7 +1149,7 @@ function renderBulletTheory(value: unknown) {
   if (!lines.length) {
     return (
       <p className="text-sm text-slate-600">
-        [To be updated after site data verification]
+        To be updated
       </p>
     );
   }
@@ -1165,12 +1178,35 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
   const rawCleanTitle = ecmTitleRaw.replace(/^(ECM|Ecm|ecm)\s*\d*\s*[-–:]*\s*/i, '').trim();
   const cleanTitle = sanitizePromptLeakageText(rawCleanTitle, ecmType);
 
-  const baselineDescription = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "existingSystemDescription"), project.existingCondition, project.baselineCondition, project.existingSystem, project.existingOperatingCondition, project.baselineDetails), ecmType);
-  const problemGap = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "problemGapIdentified"), project.problemGap, project.gapIdentified), ecmType);
-  const proposedDescription = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "proposedProject"), getTheoryField(project, "proposedProjectDescription"), project.proposedIntervention, project.proposedEnergyConservationMeasure, project.proposedMeasure, project.recommendedMeasure), ecmType);
+  const existingCondition =
+    project.existingCondition ||
+    project.enhancedExistingCondition ||
+    project.aiExistingCondition ||
+    "To be updated";
+
+  const problemGapRaw =
+    project.problemGap ||
+    project.problemStatement ||
+    project.enhancedProblemGap ||
+    "To be updated";
+
+  const proposedProjectRaw =
+    project.proposedProject ||
+    project.proposed_project ||
+    project.enhancedProposedProject ||
+    "To be updated";
+
+  const conclusionRaw =
+    project.conclusion ||
+    project.enhancedConclusion ||
+    "To be updated";
+
+  const baselineDescription = sanitizePromptLeakageText(existingCondition, ecmType);
+  const problemGap = sanitizePromptLeakageText(problemGapRaw, ecmType);
+  const proposedDescription = sanitizePromptLeakageText(proposedProjectRaw, ecmType);
   const rationale = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "rationaleForEnergySaving"), project.rationale, project.savingRationale, "The recommendation reduces avoidable losses and improves alignment between system demand and energy input."), ecmType);
   const caseStudy = sanitizePromptLeakageText(firstNonEmpty(project.caseStudy, project.referenceApplication, "Similar measures are commonly implemented in comparable industrial utility/process systems after site-specific engineering validation. Project-specific case evidence shall be updated after implementation or vendor confirmation."), ecmType);
-  const conclusion = sanitizePromptLeakageText(firstNonEmpty(getTheoryField(project, "conclusion"), project.finalConclusion, project.projectConclusion, `This project is technically feasible and financially attractive for implementation. The proposed intervention will reduce annual energy consumption by approximately ${isMeaningful(project.expectedEnergySaving) ? `${formatNumberDisplay(project.expectedEnergySaving)} kWh` : "[energy saving]"}, resulting in annual cost saving of ${formatCurrencyDisplay(project.expectedAnnualCostSaving) || "[annual saving]"}. With an estimated investment of ${formatCurrencyDisplay(project.estimatedInvestment) || "[investment]"}, the simple payback period is expected to be ${isMeaningful(project.simplePaybackPeriod) ? `${formatPaybackDisplay(project.simplePaybackPeriod)} years` : "[payback]"}. Considering the energy saving, operational improvement and sustainability benefits, this project is recommended for implementation under ${safeText(project.priority) || safeText(project.implementationPriority) || "[priority]"}.`), ecmType);
+  const conclusion = sanitizePromptLeakageText(conclusionRaw, ecmType);
 
   const schematic = (project.schematicFramework && project.schematicFramework.length) ? project.schematicFramework : [
     { stage: "Stage 1: Current State", description: "Existing inefficient or non-optimized operation" },
@@ -1185,7 +1221,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
     { activity: "Installation", duration: "1-2 weeks" },
     { activity: "Testing and commissioning", duration: "1 week" },
     { activity: "Performance monitoring", duration: "2-4 weeks" },
-    { activity: "Total expected duration", duration: firstNonEmpty(project.implementationDuration, project.duration, project.timeline, "[To be updated after site data verification]") }
+    { activity: "Total expected duration", duration: firstNonEmpty(project.implementationDuration, project.duration, project.timeline, "To be updated") }
   ];
 
   const aspectsTable = (project.aspectsToBeTakenCareOfTable && project.aspectsToBeTakenCareOfTable.length) ? project.aspectsToBeTakenCareOfTable : [
@@ -1263,7 +1299,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       </div>
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`} />
-      {renderBulletTheory(firstNonEmpty(getTheoryField(project, "benefitsOtherThanEnergySaving"), project.benefits))}
+      {renderBulletTheory(firstNonEmpty(project.benefits, project.enhancedBenefits, getTheoryField(project, "benefitsOtherThanEnergySaving"), ["To be updated"]))}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.16 Carbon Footprint Reduction`} />
       <p className="text-sm leading-snug mb-2">{carbonText}</p>

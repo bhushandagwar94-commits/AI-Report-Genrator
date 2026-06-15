@@ -178,7 +178,7 @@ function buildMonthlyBillRows(context) {
 function buildEcmDetail(project, context) {
   const baselineNotes = shortFallback(
     project.baselineNotes,
-    "Detailed existing condition is not available in uploaded data and is listed in Annexure B for site verification.",
+    "To be updated",
     context,
     "Detailed ECM Sheets",
     `${project.ecmNo} existing condition details`,
@@ -189,7 +189,7 @@ function buildEcmDetail(project, context) {
 
   const problemGap = shortFallback(
     project.rationaleForEnergySaving,
-    "Specific problem statement is not available in uploaded data and is listed in Annexure B.",
+    "To be updated",
     context,
     "Detailed ECM Sheets",
     `${project.ecmNo} problem statement`,

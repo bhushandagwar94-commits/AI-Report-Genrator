@@ -199,9 +199,10 @@ const Reports = {
   },
 
   enhanceReportWithAi: async (reportId, payload = {}) => {
-    const endpoint = reportId
-      ? `${API_BASE}/reports/${reportId}/enhance-ai`
-      : `${API_BASE}/reports/enhance-ai`;
+    const absoluteApiBase =
+      import.meta.env.VITE_API_BASE_URL ||
+      (API_BASE.startsWith("http") ? API_BASE.replace(/\/api$/, "") : "http://localhost:5000");
+    const endpoint = `${absoluteApiBase}/api/ai/enhance-report`;
 
     console.log("[enhanceReportWithAi] request:", {
       endpoint,
