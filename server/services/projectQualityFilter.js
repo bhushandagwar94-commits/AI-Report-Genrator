@@ -257,7 +257,7 @@ function filterReportProjects(reportData = {}) {
       const investment = project.investmentRaw ?? project.investment;
       const annualSaving = project.annualSavingRaw ?? project.annualSaving;
       const paybackCalculated = calculatePaybackMonths(investment, annualSaving);
-      if (paybackCalculated !== null && !project.paybackMonthsRaw && !project.simplePaybackPeriod) {
+      if (paybackCalculated !== null && project.paybackMonthsRaw == null && !project.simplePaybackPeriod) {
         project.paybackMonthsRaw = paybackCalculated;
         project.simplePaybackPeriod = paybackCalculated > 0 ? (paybackCalculated / 12).toFixed(2) : 0;
       }

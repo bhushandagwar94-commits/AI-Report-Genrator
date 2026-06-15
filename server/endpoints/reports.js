@@ -2624,8 +2624,9 @@ function reportEndpoints(app) {
              p.projectActivitiesText = p.projectActivities ? String(p.projectActivities).split("\n").filter(Boolean).map(a => a.replace(/^- /, "")).join("\n") : "";
              p.rationaleForSaving = (p.rationaleForEnergySaving || "") + " " + (p.savingPotentialRange || "");
              
+             const p_months = p.paybackMonthsRaw ?? p.paybackRaw;
              p.savingCalculation = `Baseline energy consumption is estimated. Based on the project implementation, the energy saving is expected to be ${p.savingPercentRaw ? (p.savingPercentRaw * 100).toFixed(0) + "%" : "significant"}. ` + 
-                 `Annual energy saving is calculated as ${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0)} kWh/year resulting in cost savings of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0)}/year with an estimated investment of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0)} and simple payback of ${p.paybackMonthsRaw ? (p.paybackMonthsRaw/12).toFixed(2) : "N/A"} years.`;
+                 `Annual energy saving is calculated as ${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0)} kWh/year resulting in cost savings of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0)}/year with an estimated investment of ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0)} and simple payback of ${p_months != null ? (p_months/12).toFixed(2) : "N/A"} years.`;
              p.mvPlan = `M&V Plan: Measure ${p.system || "the system"} parameters before and after implementation to verify energy savings over time.`;
              p.fallbackGenerated = false;
              p.isFallback = false;
@@ -2634,7 +2635,7 @@ function reportEndpoints(app) {
              p.energySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
              p.annualSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
              p.investment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
-             p.payback = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
+             p.payback = p_months != null ? `${(p_months/12).toFixed(2)} years` : p.payback ?? "N/A";
              p.baselineKwhPerYear = p.baselineKwhPerYearRaw ? new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.baselineKwhPerYearRaw) : "";
              p.savingPercent = p.savingPercentRaw ? `${(p.savingPercentRaw * 100).toFixed(1)}%` : "";
              
@@ -2712,10 +2713,11 @@ function reportEndpoints(app) {
              : (reportData.projects || []);
 
            projectsToFormat.forEach(p => {
+              const p_months = p.paybackMonthsRaw ?? p.paybackRaw;
               p.expectedEnergySaving = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(p.energySavingRaw || 0);
               p.expectedAnnualCostSaving = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.annualSavingRaw || 0);
               p.estimatedInvestment = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(p.investmentRaw || 0);
-              p.simplePaybackPeriod = p.paybackMonthsRaw ? `${(p.paybackMonthsRaw/12).toFixed(2)} years` : "N/A";
+              p.simplePaybackPeriod = p_months != null ? `${(p_months/12).toFixed(2)} years` : p.payback ?? "N/A";
               
               // Also ensure the basic fields are formatted to avoid decimals
               p.energySaving = p.expectedEnergySaving;
@@ -2810,10 +2812,10 @@ function reportEndpoints(app) {
             const investment = Number(project.investmentRaw || project.investment || 0);
             const annualSaving = Number(project.annualSavingRaw || project.annualSaving || 0);
 
-            if (!project.paybackMonthsRaw && investment > 0 && annualSaving > 0) {
+            if (project.paybackMonthsRaw == null && investment > 0 && annualSaving > 0) {
               project.paybackMonthsRaw = (investment / annualSaving) * 12;
             }
-            if (!project.paybackYearsRaw && project.paybackMonthsRaw) {
+            if (project.paybackYearsRaw == null && project.paybackMonthsRaw != null) {
               project.paybackYearsRaw = project.paybackMonthsRaw / 12;
             }
 

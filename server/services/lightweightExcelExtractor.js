@@ -435,6 +435,11 @@ function buildProjectFromRow({
     energySaving: formatEnergy(energySavingRaw),
     payback: formatPayback(paybackRaw),
 
+    ...(String(columnMap.payback?.header || "").toLowerCase().includes("month") && {
+      paybackMonthsRaw: paybackRaw,
+      paybackMonths: formatPayback(paybackRaw)
+    }),
+
     sourceFile: fileName,
     sourceSheet: sheetName,
     sourceRow: rowIndex,
