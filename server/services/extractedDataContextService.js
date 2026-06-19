@@ -348,6 +348,17 @@ function normalizeProject(project = {}) {
     paybackYearsRaw: cleanNumber(project.paybackYearsRaw ?? (cleanNumber(project.paybackMonthsRaw ?? project.paybackRaw) ? cleanNumber(project.paybackMonthsRaw ?? project.paybackRaw) / 12 : null)),
     sourceSheet: cleanText(project.sourceSheet),
     sourceRow: cleanNumber(project.sourceRow),
+    location: cleanText(project.location),
+    equipmentCovered: cleanText(project.equipmentCovered),
+    existingCondition: cleanText(project.existingCondition),
+    problemStatement: cleanText(project.problemStatement),
+    proposedProject: cleanText(project.proposedProject),
+    benefits: cleanText(project.benefits),
+    mvPlan: cleanText(project.mvPlan),
+    baselineConsumption: cleanText(project.baselineConsumption),
+    savingPercent: cleanPercent(project.savingPercent),
+    implementationDuration: cleanText(project.implementationDuration),
+    implementationPriority: cleanText(project.implementationPriority)
   };
 }
 

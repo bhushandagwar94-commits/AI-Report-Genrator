@@ -40,8 +40,10 @@ export interface CommercialBuildingEnergyAuditData {
   auditObservations?: Record<string, ReportValue>[];
   projects?: CommercialBuildingProject[];
   groupedProjects?: any[];
+  hasExplicitEcmGrouping?: boolean;
   fieldFlags?: any;
   missingFieldSummary?: any[];
+  ecmExtractionResults?: any[];
 }
 
 const colors = {
@@ -144,7 +146,22 @@ function isMeaningful(value: any): boolean {
   return true;
 }
 
-function fallbackText(value: any, placeholder = "To be updated"): string {
+function renderSourceAwareValue(value: any): string | React.ReactNode {
+  if (value && typeof value === "object" && value.value !== undefined) {
+    if (value.foundInSource === false) {
+      return "Not provided in source document";
+    }
+    return String(value.value);
+  }
+  return String(value);
+}
+
+function fallbackText(value: any, placeholder = "Not provided in source document"): string {
+  if (value && typeof value === "object" && "foundInSource" in value) {
+    const aware = renderSourceAwareValue(value);
+    if (typeof aware === "string" && (aware.includes("Not provided") || aware.includes("Extraction error"))) return aware;
+    value = value.value;
+  }
   if (typeof value === "object" && value !== null) {
     if (value.value !== undefined) return fallbackText(value.value, placeholder);
     if (value.text !== undefined) return fallbackText(value.text, placeholder);
@@ -156,19 +173,30 @@ function firstNonEmpty(...values: any[]): string {
   for (const v of values) {
     if (isMeaningful(v)) return fallbackText(v);
   }
-  return "To be updated";
+  return "Not provided in source document";
 }
 
 function formatNumberDisplay(value: any, maxDecimals = 0): string {
-  if (!isMeaningful(value)) return "[Calculation pending due to missing input data]";
+  if (value && typeof value === "object" && "foundInSource" in value) {
+    const aware = renderSourceAwareValue(value);
+    if (typeof aware === "string" && (aware.includes("Not provided") || aware.includes("Extraction error"))) return aware;
+    value = value.value;
+  }
+  if (!isMeaningful(value)) return "";
   const num = Number(String(value).replace(/[^\d.-]/g, ""));
   if (Number.isFinite(num)) {
     return num.toLocaleString("en-IN", { maximumFractionDigits: maxDecimals });
   }
+  return String(value);
 }
 
 function formatCurrencyDisplay(value: any): string {
-  if (!isMeaningful(value)) return "To be updated";
+  if (value && typeof value === "object" && "foundInSource" in value) {
+    const aware = renderSourceAwareValue(value);
+    if (typeof aware === "string" && (aware.includes("Not provided") || aware.includes("Extraction error"))) return aware;
+    value = value.value;
+  }
+  if (!isMeaningful(value)) return "";
   const num = Number(String(value).replace(/[^\d.-]/g, ""));
   if (Number.isFinite(num)) return `₹${Math.round(num).toLocaleString("en-IN")}`;
   const str = String(value);
@@ -176,10 +204,16 @@ function formatCurrencyDisplay(value: any): string {
 }
 
 function formatPaybackDisplay(value: any): string {
-  if (value === null || value === undefined || value === "" || value === "To be updated") return "To be updated";
+  if (value && typeof value === "object" && "foundInSource" in value) {
+    const aware = renderSourceAwareValue(value);
+    if (typeof aware === "string" && (aware.includes("Not provided") || aware.includes("Extraction error"))) return aware;
+    value = value.value;
+  }
+  if (!isMeaningful(value)) return "";
   const num = Number(value);
   if (Number.isFinite(num) && num === 0) return "Immediate";
-  return formatNumberDisplay(value, 2);
+  if (Number.isFinite(num)) return num.toFixed(2);
+  return String(value);
 }
 
 function numberFrom(value: ReportValue): number {
@@ -224,7 +258,7 @@ function getEcmNumberVal(valueOrProject: any) {
 
 function formatEcmNumber(valueOrProject: any) {
   const raw = String(getEcmNumberVal(valueOrProject) ?? "").trim();
-  if (!raw || raw === "To be updated") return "";
+  if (!raw || raw === "Not provided in source document") return "";
   const match = raw.match(/\d+/);
   if (!match) return "ECM";
   return `ECM ${match[0]}`;
@@ -268,7 +302,7 @@ function getProblemGapEntry(ecmType: string) {
   if (ecmType === "pump_flow_optimization") return { system: "Pump", gap: "Throttling, bypass or fixed-flow operation" };
   if (ecmType === "motor_retrofit_ie4_ie5") return { system: "Motor retrofit", gap: "Standard efficiency motor losses" };
   if (ecmType === "blower_direct_drive_retrofit") return { system: "Blower", gap: "Belt/transmission loss or non-optimized drive arrangement" };
-  return { system: "System", gap: "To be updated" };
+  return { system: "System", gap: "Not provided in source document" };
 }
 
 function getRationaleEntry(ecmType: string) {
@@ -283,7 +317,7 @@ function getRationaleEntry(ecmType: string) {
   if (ecmType === "pump_flow_optimization") return { projectType: "Pump VFD", savingRationale: "Pump affinity laws allow large power reduction when speed/flow is reduced." };
   if (ecmType === "motor_retrofit_ie4_ie5") return { projectType: "IE5 motor retrofit", savingRationale: "Higher motor efficiency reduces electrical losses." };
   if (ecmType === "blower_direct_drive_retrofit") return { projectType: "Blower direct drive", savingRationale: "Direct drive removes transmission losses and improves drive efficiency." };
-  return { projectType: "Project", savingRationale: "To be updated" };
+  return { projectType: "Project", savingRationale: "Not provided in source document" };
 }
 
 function getMvParamValue(ecmType: string) {
@@ -320,7 +354,7 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
   safe = safe.replace(/ecm\s+ecm/gi, "ECM");
   safe = safe.trim();
 
-  if (!safe || safe === "To be updated") {
+  if (!safe || safe === "Not provided in source document") {
     if (ecmType === "cooling_system_optimization") safe = "The existing cooling system includes equipment operating under conditions where flow, temperature differential, and load variation require verification for optimized energy performance.";
     else if (ecmType === "heat_recovery") safe = "The existing dryer system rejects usable heat through exhaust air, while incoming regeneration air continues to require primary heating energy.";
     else if (ecmType === "thermal_insulation") safe = "The existing hot duct surfaces are exposed or inadequately insulated, resulting in avoidable heat loss to the surrounding area.";
@@ -339,7 +373,7 @@ function sanitizePromptLeakageText(text: any, ecmType: string) {
 
 
 function safeText(val: any) {
-  if (val === null || val === undefined || val === "" || val === "To be updated") return "";
+  if (val === null || val === undefined || val === "" || val === "Not provided in source document") return "";
   return removeInternalPhrases(String(val)).trim();
 }
 
@@ -347,17 +381,17 @@ function buildProjectSummaryRows(ecm: any, cleanTitle: string, ecmNo: string) {
   return [
     { particular: "Project title", value: cleanTitle },
     { particular: "Project number", value: ecmNo || "" },
-    { particular: "System", value: safeText(ecm.system) || safeText(ecm.category) || "To be updated" },
-    { particular: "Location", value: safeText(ecm.location) || "To be updated" },
-    { particular: "Equipment covered", value: safeText(ecm.equipmentCovered) || safeText(ecm.equipment) || "To be updated" },
+    { particular: "System", value: safeText(ecm.system) || safeText(ecm.category) || "Not provided in source document" },
+    { particular: "Location", value: safeText(ecm.location) || "Not provided in source document" },
+    { particular: "Equipment covered", value: safeText(ecm.equipmentCovered) || safeText(ecm.equipment) || "Not provided in source document" },
     { particular: "Existing operating condition", value: sanitizePromptLeakageText(safeText(ecm.existingSystemDescription) || safeText(ecm.existingOperatingCondition), classifyEcmType(ecm)) },
     { particular: "Proposed intervention", value: sanitizePromptLeakageText(safeText(ecm.proposedProjectDescription) || safeText(ecm.proposedIntervention), classifyEcmType(ecm)) },
-    { particular: "Expected energy saving", value: safeText(ecm.expectedEnergySaving) ? `${formatNumberDisplay(ecm.expectedEnergySaving)} kWh/year` : "[Calculation pending]" },
-    { particular: "Expected annual cost saving", value: safeText(ecm.expectedAnnualCostSaving) ? formatCurrencyDisplay(ecm.expectedAnnualCostSaving) : "[Calculation pending]" },
-    { particular: "Estimated investment", value: safeText(ecm.estimatedInvestment) ? formatCurrencyDisplay(ecm.estimatedInvestment) : "[Calculation pending]" },
-    { particular: "Simple payback period", value: safeText(ecm.simplePaybackPeriod) ? `${formatPaybackDisplay(ecm.simplePaybackPeriod)} years` : "[Calculation pending]" },
-    { particular: "Implementation duration", value: safeText(ecm.implementationDuration) || "To be updated" },
-    { particular: "Implementation priority", value: safeText(ecm.priority) || safeText(ecm.implementationPriority) || "To be updated" }
+    { particular: "Expected energy saving", value: (ecm.expectedEnergySaving || ecm.energySaving) ? `${formatNumberDisplay(ecm.expectedEnergySaving || ecm.energySaving)} kWh/year` : "Not provided in source document" },
+    { particular: "Expected annual cost saving", value: (ecm.expectedAnnualCostSaving || ecm.annualSaving) ? formatCurrencyDisplay(ecm.expectedAnnualCostSaving || ecm.annualSaving) : "Not provided in source document" },
+    { particular: "Estimated investment", value: (ecm.estimatedInvestment || ecm.investment) ? formatCurrencyDisplay(ecm.estimatedInvestment || ecm.investment) : "Not provided in source document" },
+    { particular: "Simple payback period", value: (ecm.simplePaybackPeriod || ecm.payback) ? `${formatPaybackDisplay(ecm.simplePaybackPeriod || ecm.payback)} ${String(ecm.simplePaybackPeriod || ecm.payback).includes("Month") ? "" : "years"}`.trim() : "Not provided in source document" },
+    { particular: "Implementation duration", value: safeText(ecm.implementationDuration) || "Not provided in source document" },
+    { particular: "Implementation priority", value: safeText(ecm.priority) || safeText(ecm.implementationPriority) || "Not provided in source document" }
   ];
 }
 
@@ -365,15 +399,15 @@ function buildBaselineDataRows(ecm: any) {
   let rows = ecm.baselineData || [];
   if (rows.length < 3) {
     rows = [
-      { parameter: "Equipment rating", unit: "kW / TR / HP", value: "To be updated" },
-      { parameter: "Quantity", unit: "Nos.", value: "To be updated" },
-      { parameter: "Operating hours", unit: "hours/day", value: "To be updated" },
-      { parameter: "Operating days", unit: "days/year", value: "To be updated" },
-      { parameter: "Existing power consumption", unit: "kW", value: "To be updated" },
-      { parameter: "Annual operating hours", unit: "hours/year", value: "To be updated" },
-      { parameter: "Baseline annual consumption", unit: "kWh/year", value: safeText(ecm.baselineConsumption) || "To be updated" },
-      { parameter: "Average tariff", unit: "₹/kWh", value: "To be updated" },
-      { parameter: "Baseline annual energy cost", unit: "₹/year", value: "To be updated" }
+      { parameter: "Equipment rating", unit: "kW / TR / HP", value: ecm.baseline?.equipmentRating ?? "Not provided in source document" },
+      { parameter: "Quantity", unit: "Nos.", value: ecm.baseline?.quantity ?? "Not provided in source document" },
+      { parameter: "Operating hours", unit: "hours/day", value: ecm.baseline?.operatingHours ?? "Not provided in source document" },
+      { parameter: "Operating days", unit: "days/year", value: ecm.baseline?.operatingDays ?? "Not provided in source document" },
+      { parameter: "Existing power consumption", unit: "kW", value: ecm.baseline?.existingPowerConsumption ?? "Not provided in source document" },
+      { parameter: "Annual operating hours", unit: "hours/year", value: "Not provided in source document" },
+      { parameter: "Baseline annual consumption", unit: "kWh/year", value: ecm.baseline?.annualConsumption ?? "Not provided in source document" },
+      { parameter: "Average tariff", unit: "₹/kWh", value: "Not provided in source document" },
+      { parameter: "Baseline annual energy cost", unit: "₹/year", value: "Not provided in source document" }
     ];
   }
   return rows;
@@ -383,15 +417,15 @@ function buildMeasurementRows(ecm: any) {
   let rows = ecm.baselineMeasurements || [];
   if (rows.length < 3) {
     rows = [
-      { measurement: "Voltage", unit: "V", value: "To be updated" },
-      { measurement: "Current", unit: "A", value: "To be updated" },
-      { measurement: "Power factor", unit: "-", value: "To be updated" },
-      { measurement: "Measured power", unit: "kW", value: "To be updated" },
-      { measurement: "Flow / airflow", unit: "m3/hr / CFM", value: "To be updated" },
-      { measurement: "Pressure / head / static pressure", unit: "m / mmWC / bar", value: "To be updated" },
-      { measurement: "Temperature inlet", unit: "°C", value: "To be updated" },
-      { measurement: "Temperature outlet", unit: "°C", value: "To be updated" },
-      { measurement: "Operating frequency", unit: "Hz", value: "To be updated" }
+      { measurement: "Voltage", unit: "V", value: "Not provided in source document" },
+      { measurement: "Current", unit: "A", value: "Not provided in source document" },
+      { measurement: "Power factor", unit: "-", value: "Not provided in source document" },
+      { measurement: "Measured power", unit: "kW", value: "Not provided in source document" },
+      { measurement: "Flow / airflow", unit: "m3/hr / CFM", value: "Not provided in source document" },
+      { measurement: "Pressure / head / static pressure", unit: "m / mmWC / bar", value: "Not provided in source document" },
+      { measurement: "Temperature inlet", unit: "°C", value: "Not provided in source document" },
+      { measurement: "Temperature outlet", unit: "°C", value: "Not provided in source document" },
+      { measurement: "Operating frequency", unit: "Hz", value: "Not provided in source document" }
     ];
   }
   return rows;
@@ -434,15 +468,15 @@ function buildEnergySavingCalculationRows(ecm: any) {
   let rows = ecm.energySavingCalculation || ecm.calculation || ecm.calculationBasis || ecm.assumptions || [];
   if (rows.length < 3) {
     rows = [
-      { parameter: "Existing connected load / measured load", unit: "kW", value: "To be updated" },
-      { parameter: "Proposed load after project", unit: "kW", value: "To be updated" },
-      { parameter: "Load reduction", unit: "kW", value: "To be updated" },
-      { parameter: "Operating hours", unit: "hours/year", value: "To be updated" },
-      { parameter: "Annual energy saving", unit: "kWh/year", value: safeText(ecm.expectedEnergySaving) || safeText(ecm.energySaving) || "[Calculation pending]" },
-      { parameter: "Average tariff", unit: "₹/kWh", value: "To be updated" },
-      { parameter: "Annual cost saving", unit: "₹/year", value: safeText(ecm.expectedAnnualCostSaving) || safeText(ecm.annualSaving) || "[Calculation pending]" },
-      { parameter: "Estimated investment", unit: "₹", value: safeText(ecm.estimatedInvestment) || safeText(ecm.investment) || "[Calculation pending]" },
-      { parameter: "Simple payback", unit: "years", value: safeText(ecm.simplePaybackPeriod) ? Number(ecm.simplePaybackPeriod).toFixed(2) : "[Calculation pending]" }
+      { parameter: "Existing connected load / measured load", unit: "kW", value: "Not provided in source document" },
+      { parameter: "Proposed load after project", unit: "kW", value: "Not provided in source document" },
+      { parameter: "Load reduction", unit: "kW", value: "Not provided in source document" },
+      { parameter: "Operating hours", unit: "hours/year", value: "Not provided in source document" },
+      { parameter: "Annual energy saving", unit: "kWh/year", value: ecm.financials?.energySaving ?? "Not provided in source document" },
+      { parameter: "Average tariff", unit: "₹/kWh", value: "Not provided in source document" },
+      { parameter: "Annual cost saving", unit: "₹/year", value: ecm.financials?.annualCostSaving ?? "Not provided in source document" },
+      { parameter: "Estimated investment", unit: "₹", value: ecm.financials?.estimatedInvestment ?? "Not provided in source document" },
+      { parameter: "Simple payback", unit: "years", value: ecm.financials?.simplePaybackPeriod ? Number(ecm.financials.simplePaybackPeriod).toFixed(2) : "Not provided in source document" }
     ];
   }
   return rows;
@@ -450,13 +484,13 @@ function buildEnergySavingCalculationRows(ecm: any) {
 
 function buildKeyMetricRows(ecm: any) {
   return [
-    { srNo: 1, parameter: "Baseline consumption", value: safeText(ecm.baselineConsumption) || "[Calculation pending]" },
-    { srNo: 2, parameter: "Energy saving", value: safeText(ecm.expectedEnergySaving) ? `${formatNumberDisplay(ecm.expectedEnergySaving)} kWh/year` : "[Calculation pending]" },
-    { srNo: 3, parameter: "Percentage saving", value: safeText(ecm.percentSaving) ? `${formatNumberDisplay(ecm.percentSaving, 2)}%` : "[Calculation pending]" },
-    { srNo: 4, parameter: "Cost saving", value: safeText(ecm.expectedAnnualCostSaving) ? formatCurrencyDisplay(ecm.expectedAnnualCostSaving) : "[Calculation pending]" },
-    { srNo: 5, parameter: "Estimated investment", value: safeText(ecm.estimatedInvestment) ? formatCurrencyDisplay(ecm.estimatedInvestment) : "[Calculation pending]" },
-    { srNo: 6, parameter: "Payback period", value: safeText(ecm.simplePaybackPeriod) ? `${formatPaybackDisplay(ecm.simplePaybackPeriod)} years` : "[Calculation pending]" },
-    { srNo: 7, parameter: "CO2 reduction", value: safeText(ecm.co2ReductionPotential) ? `${formatNumberDisplay(ecm.co2ReductionPotential)} kgCO2/year` : "[Calculation pending]" }
+    { srNo: 1, parameter: "Baseline consumption", value: ecm.baseline?.annualConsumption ?? "Not provided in source document" },
+    { srNo: 2, parameter: "Energy saving", value: ecm.financials?.energySaving ? `${formatNumberDisplay(ecm.financials.energySaving)} kWh/year` : "Not provided in source document" },
+    { srNo: 3, parameter: "Percentage saving", value: safeText(ecm.percentSaving) ? `${formatNumberDisplay(ecm.percentSaving, 2)}%` : "Not provided in source document" },
+    { srNo: 4, parameter: "Cost saving", value: ecm.financials?.annualCostSaving ? formatCurrencyDisplay(ecm.financials.annualCostSaving) : "Not provided in source document" },
+    { srNo: 5, parameter: "Estimated investment", value: ecm.financials?.estimatedInvestment ? formatCurrencyDisplay(ecm.financials.estimatedInvestment) : "Not provided in source document" },
+    { srNo: 6, parameter: "Payback period", value: ecm.financials?.simplePaybackPeriod ? `${formatPaybackDisplay(ecm.financials.simplePaybackPeriod)} years` : "Not provided in source document" },
+    { srNo: 7, parameter: "CO2 reduction", value: safeText(ecm.co2ReductionPotential) ? `${formatNumberDisplay(ecm.co2ReductionPotential)} kgCO2/year` : "Not provided in source document" }
   ];
 }
 
@@ -464,17 +498,17 @@ function buildTechnicalSpecificationRows(ecmType: string, ecm: any) {
   let rows = ecm.technicalSpecificationTable || [];
   if (rows.length < 3) {
     rows = [
-      { item: "Equipment / technology", specification: "To be updated" },
-      { item: "Capacity", specification: "To be updated" },
-      { item: "Quantity", specification: "To be updated" },
-      { item: "Motor efficiency class, if applicable", specification: "To be updated" },
-      { item: "VFD rating, if applicable", specification: "To be updated" },
-      { item: "Sensor type", specification: "To be updated" },
-      { item: "Controller / PLC / IoT system", specification: "To be updated" },
-      { item: "Communication", specification: "To be updated" },
-      { item: "Panel requirement", specification: "To be updated" },
-      { item: "Civil / mechanical modification", specification: "To be updated" },
-      { item: "Safety requirement", specification: "To be updated" }
+      { item: "Equipment / technology", specification: "Not provided in source document" },
+      { item: "Capacity", specification: "Not provided in source document" },
+      { item: "Quantity", specification: "Not provided in source document" },
+      { item: "Motor efficiency class, if applicable", specification: "Not provided in source document" },
+      { item: "VFD rating, if applicable", specification: "Not provided in source document" },
+      { item: "Sensor type", specification: "Not provided in source document" },
+      { item: "Controller / PLC / IoT system", specification: "Not provided in source document" },
+      { item: "Communication", specification: "Not provided in source document" },
+      { item: "Panel requirement", specification: "Not provided in source document" },
+      { item: "Civil / mechanical modification", specification: "Not provided in source document" },
+      { item: "Safety requirement", specification: "Not provided in source document" }
     ];
   }
   return rows;
@@ -584,7 +618,7 @@ function SectionHeader({ number, title, level = 2 }: { number?: string; title: s
 }
 
 
-function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string = "To be updated") {
+function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string = "Not provided in source document") {
   const safeColumns = asArray(columns).length ? asArray(columns) : [{ key: "value", label: "Value" }];
   const safeRows = normalizeTableRows(rowsData);
   
@@ -608,7 +642,7 @@ function renderMandatoryTable(columns: any[], rowsData: any, placeholder: string
   return <ReportTable compact columns={safeColumns} rows={mappedRows} />;
 }
 
-function renderMandatoryKeyValueTable(dataObj: any, placeholder: string = "To be updated") {
+function renderMandatoryKeyValueTable(dataObj: any, placeholder: string = "Not provided in source document") {
   const safeObj = { ...(dataObj || {}) };
   const keys = Object.keys(safeObj);
   if (keys.length === 0) {
@@ -754,7 +788,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
     es.purposeOfEnergyAudit ||
     data.purposeOfEnergyAudit ||
     es.purposeText ||
-    "To be updated";
+    "Not provided in source document";
     
   const keyObservationsRaw = es.keyObjectives || data.keyObjectives || es.keyObservations || data.keyObservations;
   const keyObservations = Array.isArray(keyObservationsRaw)
@@ -766,7 +800,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
   const conclusionAndWayForward =
     es.conclusionAndWayForward ||
     data.conclusionAndWayForward ||
-    "To be updated";
+    "Not provided in source document";
   const categorySummaryRows = groupedProjects.map((group: any, index: number) => ({
     groupNo: group.groupNo || `GR-${index + 1}`,
     groupName: group.groupTitle || formatGroupHeading(group, index).replace(/^GR-\d+\s*/, ""),
@@ -845,7 +879,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
           { particular: "Total annual cost saving potential", value: formatCurrencyDisplay(es.totalAnnualCostSavingPotential || totalSavings(projects)) },
           { particular: "Total estimated investment", value: formatCurrencyDisplay(es.totalEstimatedInvestment || totalInvestment(projects)) },
           { particular: "Simple payback period", value: formatPaybackDisplay(es.simplePaybackPeriod || weightedPayback(projects)) },
-          { particular: "CO2 reduction potential", value: formatNumberDisplay(es.co2ReductionPotential) || "[Calculation pending]" },
+          { particular: "CO2 reduction potential", value: formatNumberDisplay(es.co2ReductionPotential) || "Not provided in source document" },
         ]} />
       </div>
 
@@ -893,7 +927,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
               { key: "saving", label: "Annual Saving" },
               { key: "energy", label: "Energy Saving" },
               { key: "payback", label: "Group Payback" },
-            ], data.projectGrouping || categorySummaryRows, "To be updated")}
+            ], data.projectGrouping || categorySummaryRows, "Not provided in source document")}
           </div>
         </>
       )}
@@ -908,7 +942,7 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
           { key: "saving", label: "Annual Saving" },
           { key: "payback", label: "Payback" },
           { key: "note", label: "Implementation Note" },
-        ], data.implementationPriority || priorityRows, "To be updated")}
+        ], data.implementationPriority || priorityRows, "Not provided in source document")}
       </div>
       
       <div className="mt-4 mb-4 font-bold text-sm">1.9.3 Action Plan</div>
@@ -927,6 +961,10 @@ function ExecutiveSummaryPage({ data, projects, groupedProjects }: any) {
 }
 
 function BuildingEnergyProfilePage({ data }: any) {
+  console.log(
+    '[CHAPTER2_DATA]',
+    JSON.stringify(data, null, 2)
+  );
   const bp = data.buildingProfile || {};
   const esd = data.electricalSupplyDetails || {};
   const benchmark = data.specificEnergyBenchmark || {};
@@ -1038,12 +1076,14 @@ function BuildingEnergyProfilePage({ data }: any) {
       })}
 
       <SectionHeader number="2.7" title="Major Energy-Consuming Systems" />
-      {renderMandatoryTable([
-        { key: "system", label: "System" },
-        { key: "majorEquipment", label: "Major Equipment" },
-        { key: "estimatedShare", label: "Estimated Share of Energy Consumption" },
-        { key: "remarks", label: "Remarks" },
-      ], asArray(data.majorEnergyConsumingSystems).length ? data.majorEnergyConsumingSystems : [
+      {(() => {
+        console.log('[SECTION_2_7_PAYLOAD]', JSON.stringify(data.majorEnergyConsumingSystems, null, 2));
+        return renderMandatoryTable([
+          { key: "system", label: "System Name" },
+          { key: "connectedLoad", label: "Connected Load" },
+          { key: "annualConsumption", label: "Annual Consumption" },
+          { key: "percentageShare", label: "Share %" },
+        ], asArray(data.majorEnergyConsumingSystems).length ? data.majorEnergyConsumingSystems : [
         { system: "Production areas", majorEquipment: "ASB / EBM / molding machines / process drives" },
         { system: "Utility block", majorEquipment: "Chillers / cooling towers / pumps / AHUs" },
         { system: "Compressed air system", majorEquipment: "Air compressors / dryers / receivers / piping network" },
@@ -1052,7 +1092,8 @@ function BuildingEnergyProfilePage({ data }: any) {
         { system: "Pumps and motors", majorEquipment: "Process pumps / utility pumps / motor-driven auxiliaries" },
         { system: "Cooling tower", majorEquipment: "Cooling tower cells / fans / condenser water pumping" },
         { system: "Clean room / AHU", majorEquipment: "AHUs / FCUs / ventilation / clean room controls" }
-      ])}
+      ]);
+      })()}
 
       <SectionHeader number="2.8" title="HVAC System Details" />
       {renderMandatoryTable([
@@ -1133,11 +1174,11 @@ function BuildingEnergyProfilePage({ data }: any) {
         { key: "impact", label: "Impact" },
         { key: "recommendation", label: "Recommended Project" },
       ], asArray(data.auditObservations).length ? data.auditObservations : [
-        { srNo: 1, observation: "To be updated", impact: "High energy consumption" },
-        { srNo: 2, observation: "To be updated", impact: "Higher demand / kVAh billing" },
-        { srNo: 3, observation: "To be updated", impact: "Excess operating hours" },
-        { srNo: 4, observation: "To be updated", impact: "Inefficient equipment" },
-        { srNo: 5, observation: "To be updated", impact: "Poor control / manual operation" }
+        { srNo: 1, observation: "Not provided in source document", impact: "High energy consumption" },
+        { srNo: 2, observation: "Not provided in source document", impact: "Higher demand / kVAh billing" },
+        { srNo: 3, observation: "Not provided in source document", impact: "Excess operating hours" },
+        { srNo: 4, observation: "Not provided in source document", impact: "Inefficient equipment" },
+        { srNo: 5, observation: "Not provided in source document", impact: "Poor control / manual operation" }
       ])}
     </section>
   );
@@ -1182,24 +1223,24 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
     project.existingCondition ||
     project.enhancedExistingCondition ||
     project.aiExistingCondition ||
-    "To be updated";
+    "Not provided in source document";
 
   const problemGapRaw =
     project.problemGap ||
     project.problemStatement ||
     project.enhancedProblemGap ||
-    "To be updated";
+    "Not provided in source document";
 
   const proposedProjectRaw =
     project.proposedProject ||
     project.proposed_project ||
     project.enhancedProposedProject ||
-    "To be updated";
+    "Not provided in source document";
 
   const conclusionRaw =
     project.conclusion ||
     project.enhancedConclusion ||
-    "To be updated";
+    "Not provided in source document";
 
   const baselineDescription = sanitizePromptLeakageText(existingCondition, ecmType);
   const problemGap = sanitizePromptLeakageText(problemGapRaw, ecmType);
@@ -1221,7 +1262,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
     { activity: "Installation", duration: "1-2 weeks" },
     { activity: "Testing and commissioning", duration: "1 week" },
     { activity: "Performance monitoring", duration: "2-4 weeks" },
-    { activity: "Total expected duration", duration: firstNonEmpty(project.implementationDuration, project.duration, project.timeline, "To be updated") }
+    { activity: "Total expected duration", duration: firstNonEmpty(project.implementationDuration, project.duration, project.timeline, "Not provided in source document") }
   ];
 
   const aspectsTable = (project.aspectsToBeTakenCareOfTable && project.aspectsToBeTakenCareOfTable.length) ? project.aspectsToBeTakenCareOfTable : [
@@ -1234,7 +1275,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
     { area: "Shutdown planning", precaution: "Plan installation during low-load or non-operating hours" }
   ];
 
-  const carbonText = isMeaningful(project.co2ReductionPotential || project.co2Reduction || project.carbonFootprintReduction) ? `The estimated carbon footprint reduction is ${formatNumberDisplay(project.co2ReductionPotential || project.co2Reduction || project.carbonFootprintReduction)} kgCO2/year based on the projected energy savings.` : "[Calculation pending due to missing emission factor]";
+  const carbonText = isMeaningful(project.co2ReductionPotential || project.co2Reduction || project.carbonFootprintReduction) ? `The estimated carbon footprint reduction is ${formatNumberDisplay(project.co2ReductionPotential || project.co2Reduction || project.carbonFootprintReduction)} kgCO2/year based on the projected energy savings.` : "Not provided in source document";
 
   return (
     <div className="mb-4">
@@ -1299,7 +1340,7 @@ function ProjectChapterPage({ project, groupNumber, ecmIndexWithinGroup }: { pro
       </div>
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.15 Benefits Other Than Energy Saving`} />
-      {renderBulletTheory(firstNonEmpty(project.benefits, project.enhancedBenefits, getTheoryField(project, "benefitsOtherThanEnergySaving"), ["To be updated"]))}
+      {renderBulletTheory(firstNonEmpty(project.benefits, project.enhancedBenefits, getTheoryField(project, "benefitsOtherThanEnergySaving"), ["Not provided in source document"]))}
 
       <SectionHeader level={3} title={`${ecmSectionNumber}.16 Carbon Footprint Reduction`} />
       <p className="text-sm leading-snug mb-2">{carbonText}</p>
@@ -1360,10 +1401,29 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
   console.log("REPORT GROUPED PROJECTS");
   console.log(data.groupedProjects);
 
+  console.log('[CHAPTER3_ECM_PAYLOAD]', JSON.stringify(projects, null, 2));
   console.log("REPORT PROJECTS");
   console.log(data.projects);
   const projectGroups = groupedProjects.length ? groupedProjects : [];
   const hasExplicitEcmGrouping = data.hasExplicitEcmGrouping === true;
+  const ecmExtractionResults = asArray(data.ecmExtractionResults || data.projects);
+
+  console.log('[ECM_EXTRACTION_SUMMARY]');
+  ecmExtractionResults.forEach(ecm => {
+    console.log(`ECM ${ecm.ecmNo || ecm.projectNo}`);
+    const expectedFields = [
+      "projectTitle", "system", "location", "equipmentCovered",
+      "existingSystemDescription", "problemGapIdentified", "proposedProject", "keyActivities",
+      "energySaving", "annualSaving", "investment", "simplePaybackPeriodMonths", "simplePaybackPeriodYears",
+      "implementationDuration", "implementationPriority", "benefits", "measurementVerificationPlan"
+    ];
+    let found = 0;
+    expectedFields.forEach(f => {
+       if (ecm[f] && !String(ecm[f]).includes("Verify from ECM") && !String(ecm[f]).includes("Not provided") && !String(ecm[f]).includes("not available")) found++;
+    });
+    console.log(`${found}/${expectedFields.length} fields extracted`);
+    console.log('');
+  });
 
   return (
     <div className="commercial-building-energy-audit-report report-print-area text-sm text-gray-900">
@@ -1421,7 +1481,7 @@ export default function CommercialBuildingEnergyAuditTemplate({ data }: { data: 
           })
         ) : (
           <div className="mt-4">
-            {projects.map((project, pIndex) => (
+            {ecmExtractionResults.map((project, pIndex) => (
               <ProjectChapterPage key={pIndex} project={project} groupNumber="3" ecmIndexWithinGroup={pIndex + 1} />
             ))}
           </div>

@@ -43,6 +43,92 @@ const FIELD_SYNONYMS = {
     "units saving",
   ],
   payback: ["payback", "simple payback", "roi", "spb", "years", "months"],
+  existingCondition: [
+    "existing condition",
+    "current condition",
+    "existing system",
+    "observed condition",
+    "site observation",
+    "baseline"
+  ],
+  problemStatement: [
+    "problem",
+    "issue",
+    "gap",
+    "observation",
+    "finding",
+    "rationale",
+    "deficiency"
+  ],
+  projectActivities: [
+    "activities",
+    "scope of work",
+    "implementation steps",
+    "project activities",
+    "recommended actions",
+    "action plan",
+    "solution"
+  ],
+  proposedProject: [
+    "proposed project",
+    "proposed system",
+    "recommendation detail",
+    "proposed condition"
+  ],
+  location: [
+    "location",
+    "area",
+    "department",
+    "zone",
+    "plant area",
+    "installation area"
+  ],
+  equipmentCovered: [
+    "equipment",
+    "asset",
+    "covered equipment",
+    "affected equipment",
+    "existing equipment",
+    "machine"
+  ],
+  benefits: [
+    "benefits",
+    "expected benefits",
+    "advantages",
+    "impact",
+    "other benefits"
+  ],
+  mvPlan: [
+    "mv plan",
+    "m&v plan",
+    "measurement and verification",
+    "verification plan",
+    "measurement"
+  ],
+  baselineConsumption: [
+    "baseline consumption",
+    "current consumption",
+    "baseline kwh",
+    "existing consumption"
+  ],
+  savingPercent: [
+    "saving percent",
+    "% saving",
+    "saving %",
+    "percentage saving",
+    "percent saving"
+  ],
+  implementationDuration: [
+    "duration",
+    "implementation duration",
+    "timeline",
+    "time needed",
+    "time to implement"
+  ],
+  implementationPriority: [
+    "priority",
+    "implementation priority"
+  ]
 };
 
 const KNOWN_MTL_BADDI_COLUMN_MAP = {
@@ -56,11 +142,20 @@ const KNOWN_MTL_BADDI_COLUMN_MAP = {
 
 const KNOWN_VR_CHENNAI_COLUMN_MAP = {
   ecmNo: 0,
+  equipmentCovered: 1,
   title: 3,
-  investment: 13,
-  annualSaving: 12,
+  proposedProject: 3,
+  problemStatement: 4,
+  benefits: 6,
+  projectActivities: 7,
+  existingCondition: 8,
+  baselineConsumption: 9,
+  savingPercent: 10,
   energySaving: 11,
+  annualSaving: 12,
+  investment: 13,
   payback: 14,
+  implementationPriority: 15,
 };
 
 function normalizeHeader(value) {
@@ -409,6 +504,20 @@ function buildProjectFromRow({
   const energySavingValue = row[columnMap.energySaving?.columnIndex];
   const paybackValue = row[columnMap.payback?.columnIndex];
 
+  const existingConditionValue = row[columnMap.existingCondition?.columnIndex];
+  const problemStatementValue = row[columnMap.problemStatement?.columnIndex];
+  const projectActivitiesValue = row[columnMap.projectActivities?.columnIndex];
+  const proposedProjectValue = row[columnMap.proposedProject?.columnIndex];
+  
+  const locationValue = row[columnMap.location?.columnIndex];
+  const equipmentCoveredValue = row[columnMap.equipmentCovered?.columnIndex];
+  const benefitsValue = row[columnMap.benefits?.columnIndex];
+  const mvPlanValue = row[columnMap.mvPlan?.columnIndex];
+  const baselineConsumptionValue = row[columnMap.baselineConsumption?.columnIndex];
+  const savingPercentValue = row[columnMap.savingPercent?.columnIndex];
+  const implementationDurationValue = row[columnMap.implementationDuration?.columnIndex];
+  const implementationPriorityValue = row[columnMap.implementationPriority?.columnIndex];
+
   const investmentRaw = parseNumberOrNull(investmentValue);
   const annualSavingRaw = parseNumberOrNull(annualSavingValue);
   const energySavingRaw = parseNumberOrNull(energySavingValue);
@@ -417,6 +526,12 @@ function buildProjectFromRow({
   const ecmNo = String(ecmNoValue || "").trim() || String(rowIndex);
   const title = String(titleValue || "").trim();
 
+  console.log('[ECM_RAW]', {
+    ecmNo,
+    sourceFile: fileName,
+    rawText: JSON.stringify(row)
+  });
+
   return {
     ecmNo,
     projectNo: ecmNo,
@@ -424,6 +539,20 @@ function buildProjectFromRow({
     projectTitle: title,
     description: title,
     system: "Energy Saving Measures",
+
+    existingCondition: String(existingConditionValue || "").trim() || null,
+    problemStatement: String(problemStatementValue || "").trim() || null,
+    projectActivities: String(projectActivitiesValue || "").trim() || null,
+    proposedProject: String(proposedProjectValue || "").trim() || null,
+
+    location: String(locationValue || "").trim() || null,
+    equipmentCovered: String(equipmentCoveredValue || "").trim() || null,
+    benefits: String(benefitsValue || "").trim() || null,
+    mvPlan: String(mvPlanValue || "").trim() || null,
+    baselineConsumption: String(baselineConsumptionValue || "").trim() || null,
+    savingPercent: String(savingPercentValue || "").trim() || null,
+    implementationDuration: String(implementationDurationValue || "").trim() || null,
+    implementationPriority: String(implementationPriorityValue || "").trim() || null,
 
     investmentRaw,
     annualSavingRaw,
@@ -486,6 +615,9 @@ function projectCompletenessScore(project) {
   if (project.annualSavingRaw !== null) score += 50;
   if (project.energySavingRaw !== null) score += 50;
   if (project.paybackRaw !== null) score += 25;
+  if (project.existingCondition) score += 10;
+  if (project.problemStatement) score += 10;
+  if (project.projectActivities) score += 10;
   return score;
 }
 
@@ -503,7 +635,28 @@ function dedupeProjectsByEcmNo(projects = []) {
     }
 
     if (projectCompletenessScore(project) > projectCompletenessScore(existing)) {
+      // Merge narratives from existing to project
+      const fieldsToMerge = [
+        "existingCondition", "problemStatement", "projectActivities", "proposedProject",
+        "location", "equipmentCovered", "benefits", "mvPlan", "baselineConsumption",
+        "savingPercent", "implementationDuration", "implementationPriority"
+      ];
+      for (const f of fieldsToMerge) {
+        if (!project[f] && existing[f]) project[f] = existing[f];
+        else if (project[f] && existing[f] && project[f] !== existing[f]) project[f] += ". " + existing[f];
+      }
       bestByEcm.set(key, project);
+    } else {
+      // Merge narratives from project to existing
+      const fieldsToMerge = [
+        "existingCondition", "problemStatement", "projectActivities", "proposedProject",
+        "location", "equipmentCovered", "benefits", "mvPlan", "baselineConsumption",
+        "savingPercent", "implementationDuration", "implementationPriority"
+      ];
+      for (const f of fieldsToMerge) {
+        if (!existing[f] && project[f]) existing[f] = project[f];
+        else if (existing[f] && project[f] && existing[f] !== project[f]) existing[f] += ". " + project[f];
+      }
     }
   }
 
@@ -629,25 +782,25 @@ function extractMultiFileExcelData(files = [], baseStorageDir) {
   });
 
   const headerRow = bestSheet.rows[headerRowIndex] || [];
-  let columnMap = {};
+  const candidates = buildColumnCandidates(headerRow);
+  const usedColumns = new Set();
+  let semanticMap = {};
+  for (const field of Object.keys(FIELD_SYNONYMS)) {
+    semanticMap[field] = pickColumn(candidates, field, usedColumns);
+  }
+
+  let columnMap = { ...semanticMap };
 
   const forcedMapType = shouldForceKnownColumnMap(primaryFileName, headerRow);
   if (forcedMapType) {
-    columnMap = buildForcedKnownColumnMap(forcedMapType, headerRow);
-    console.log(`[FORCED_${forcedMapType.toUpperCase()}_ECM_COLUMN_MAP]`, columnMap);
-  } else {
-    const candidates = buildColumnCandidates(headerRow);
-    const usedColumns = new Set();
-    for (const field of [
-      "ecmNo",
-      "title",
-      "investment",
-      "annualSaving",
-      "energySaving",
-      "payback",
-    ]) {
-      columnMap[field] = pickColumn(candidates, field, usedColumns);
+    const forcedMapOverrides = buildForcedKnownColumnMap(forcedMapType, headerRow);
+    for (const [key, val] of Object.entries(forcedMapOverrides)) {
+      if (val && val.columnIndex !== null && val.columnIndex !== undefined) {
+         columnMap[key] = val;
+      }
     }
+    console.log(`[FORCED_${forcedMapType.toUpperCase()}_ECM_COLUMN_MAP]`, forcedMapOverrides);
+    console.log('[FORCED_MAP_COLUMNS]', Object.keys(forcedMapOverrides));
   }
 
   extractionDebug.columnMap = columnMap;
@@ -675,7 +828,24 @@ function extractMultiFileExcelData(files = [], baseStorageDir) {
   const dedupedProjects = dedupeProjectsByEcmNo(projects);
   const warnings = validateEcmExtraction(dedupedProjects);
   extractionDebug.validationWarnings.push(...warnings);
-  extractionDebug.extractedProjectsSample = dedupedProjects.slice(0, 5);
+  extractionDebug.extractedProjectsSample = projects.slice(0, 3);
+  extractionDebug.validationWarnings = validateEcmExtraction(projects);
+
+  console.log('[ECM_EXTRACTION_COVERAGE]');
+  projects.forEach((p) => {
+    const expectedFields = [
+      "ecmNo", "title", "location", "equipmentCovered", "existingCondition", "problemStatement", 
+      "proposedProject", "projectActivities", "energySavingRaw", "annualSavingRaw", "investmentRaw", 
+      "paybackMonthsRaw", "implementationDuration", "implementationPriority", "benefits", "mvPlan"
+    ];
+    let found = 0;
+    expectedFields.forEach(f => {
+      if (p[f] !== null && p[f] !== undefined && p[f] !== "") found++;
+    });
+    console.log(`ECM ${p.ecmNo || p.projectNo}`);
+    console.log(`Fields Found: ${found}/${expectedFields.length}`);
+    console.log('');
+  });
 
   if (warnings.length) {
     console.warn("[ECM_EXTRACTION_VALIDATION_WARNINGS]", warnings);

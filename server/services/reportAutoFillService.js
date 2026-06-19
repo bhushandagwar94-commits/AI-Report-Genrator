@@ -96,6 +96,17 @@ function mapMonthlyBills(context, reportData, summary) {
   const profile = context.electricalProfile;
   const info = context.projectInfo;
 
+  console.log("[CHAPTER2_EXTRACTION_LOG]", JSON.stringify({
+    clientInfo: info,
+    billingInfo: profile,
+    monthlyBillsCount: context.monthlyBills?.length,
+    tariffData: profile?.averageTariff,
+    demandData: profile?.contractDemandKva
+  }, null, 2));
+
+  const buildingProfile = ensure(reportData, "buildingProfile", {});
+  const electricalSupplyDetails = ensure(reportData, "electricalSupplyDetails", {});
+
   fill(general, "facilityName", info.facilityName, summary, context, {
     missing: {
       section: "Facility and Billing Profile",
@@ -119,6 +130,13 @@ function mapMonthlyBills(context, reportData, summary) {
   fill(general, "buildingType", info.buildingType, summary, context);
   fill(general, "auditPeriod", info.auditPeriod, summary, context);
 
+  fill(buildingProfile, "facilityName", info.facilityName, summary, context);
+  fill(buildingProfile, "clientName", info.clientName, summary, context);
+  fill(buildingProfile, "address", info.address, summary, context);
+  fill(buildingProfile, "location", info.location, summary, context);
+  fill(buildingProfile, "typeOfBuilding", info.buildingType, summary, context);
+  fill(buildingProfile, "auditPeriod", info.auditPeriod, summary, context);
+
   fill(electrical, "serviceNo", profile.serviceNo, summary, context, {
     missing: {
       section: "Facility and Billing Profile",
@@ -135,8 +153,25 @@ function mapMonthlyBills(context, reportData, summary) {
   fill(electrical, "transformerCapacity", formatKva(profile.transformerCapacityKva), summary, context);
   fill(electrical, "averageTariff", profile.averageTariff ? `${formatInr(profile.averageTariff)}/kWh` : "", summary, context);
 
+  fill(electricalSupplyDetails, "serviceNo", profile.serviceNo, summary, context);
+  fill(electricalSupplyDetails, "consumerNumber", profile.consumerNumber || profile.serviceNo, summary, context);
+  fill(electricalSupplyDetails, "tariffCategory", profile.tariffCategory, summary, context);
+  fill(electricalSupplyDetails, "contractDemand", formatKva(profile.contractDemandKva), summary, context);
+  fill(electricalSupplyDetails, "supplyVoltage", cleanText(profile.supplyVoltage || profile.supplyVoltageKv), summary, context);
+  fill(electricalSupplyDetails, "transformerCapacity", formatKva(profile.transformerCapacityKva), summary, context);
+  fill(electricalSupplyDetails, "averageElectricityTariff", profile.averageTariff ? `${formatInr(profile.averageTariff)}/kWh` : "", summary, context);
+
   fill(utility, "annualConsumption", formatKwh(profile.annualKwh, "kWh"), summary, context);
   fill(utility, "annualCost", formatInr(profile.annualBillAmount), summary, context);
+
+  reportData.utilityAndEnergySources = [
+    {
+      energySource: "Grid electricity",
+      use: "Facility operations",
+      annualConsumption: formatKwh(profile.annualKwh, "kWh"),
+      annualCost: formatInr(profile.annualBillAmount)
+    }
+  ];
 
   const rows = context.monthlyBills.map((bill) => {
     let kwh = bill.totalKwh;
@@ -167,8 +202,10 @@ function mapMonthlyBills(context, reportData, summary) {
       kwh: formatKwh(kwh, "kWh"),
       kvah: typeof kvah === "string" ? kvah : formatKvah(kvah),
       maximumDemandKva: formatKva(bill.recordedDemandKva),
+      demand: formatKva(bill.recordedDemandKva),
       pf: typeof pf === "string" ? pf : formatPf(pf),
       billAmount: formatInr(bill.netAmountPayable),
+      bill: formatInr(bill.netAmountPayable),
       averageTariff: bill.totalKwh > 0 ? `${formatInr(bill.netAmountPayable / bill.totalKwh)}/kWh` : "",
     };
   });
@@ -189,12 +226,16 @@ function mapMonthlyBills(context, reportData, summary) {
 
 function mapConnectedLoad(context, reportData) {
   reportData.connectedLoad = context.connectedLoad;
-  const totalAnnualConsumption = (context.connectedLoad.majorSystems || []).reduce(
+  const majorSystems = context.connectedLoad?.majorSystems || [];
+
+  console.log('[MAJOR_SYSTEMS_RAW]', JSON.stringify(majorSystems, null, 2));
+
+  const totalAnnualConsumption = majorSystems.reduce(
     (sum, row) => sum + Number(row.totalAnnualConsumption || 0),
     0
   );
 
-  reportData.majorEnergyConsumingSystems = context.connectedLoad.majorSystems.map((row) => {
+  const majorEnergySystems = majorSystems.map((row) => {
     const sharePercentRaw = totalAnnualConsumption > 0
       ? (Number(row.totalAnnualConsumption || 0) / totalAnnualConsumption) * 100
       : null;
@@ -205,9 +246,15 @@ function mapConnectedLoad(context, reportData) {
       connectedLoad: formatKw(row.totalKw),
       annualConsumption: formatKwh(row.totalAnnualConsumption, "kWh"),
       percentageShare: sharePercentRaw !== null ? formatPercent(sharePercentRaw) : "",
+      estimatedShare: sharePercentRaw !== null ? formatPercent(sharePercentRaw) : "",
+      majorEquipment: row.assetType,
       remarks: row.remarks,
     };
   });
+
+  console.log('[MAJOR_SYSTEMS_FINAL]', JSON.stringify(majorEnergySystems, null, 2));
+
+  reportData.majorEnergyConsumingSystems = majorEnergySystems;
   reportData.hvacSystemDetails = context.connectedLoad.summaryByAssetType
     .filter((row) => /chiller|cooling tower|ahu|air washer|heat recovery/i.test(row.assetType))
     .map((row) => ({
@@ -280,9 +327,10 @@ function applyProjectMappings(context, reportData, summary) {
         connectedLoadText = `The connected-load summary identifies ${match.quantity} ${match.matchedAssetType} equipment rows with total connected load of ${formatKw(match.totalKw)} and annual consumption of ${formatKwh(match.annualConsumption, "kWh/year")}.`;
       }
 
-      project.equipmentCovered = source.equipmentName || project.equipmentCovered;
+      project.equipmentCovered = source.equipmentCovered || source.equipmentName || project.equipmentCovered;
+      project.location = source.location || project.location;
       
-      let existingCondition = source.baselineNotes;
+      let existingCondition = source.existingCondition || source.baselineNotes;
       if (!existingCondition && connectedLoadText) {
          existingCondition = `${source.equipmentName ? source.equipmentName + " is installed. " : ""}${connectedLoadText}`;
       }
@@ -290,24 +338,56 @@ function applyProjectMappings(context, reportData, summary) {
       
       project.existingSystemDescription = cleanText(existingCondition);
       
-      project.problemGapIdentified = cleanText(source.rationaleForEnergySaving || source.savingPotentialRange || project.problemGapIdentified);
-      project.proposedProject = cleanText([source.projectTitle, source.briefInformationAdvantages].filter(Boolean).join(". "));
+      project.problemGapIdentified = cleanText(source.problemStatement || source.rationaleForEnergySaving || source.savingPotentialRange || project.problemGapIdentified);
+      project.proposedProject = cleanText([source.proposedProject || source.projectTitle, source.briefInformationAdvantages].filter(Boolean).join(". "));
       project.proposedProjectDescription = project.proposedProject;
       project.rationaleForEnergySaving = cleanText([source.rationaleForEnergySaving, source.savingPotentialRange].filter(Boolean).join(". "));
-      project.keyActivities = bulletize(source.projectActivities);
-      if (!project.keyActivities || project.keyActivities.length === 0) {
-        project.keyActivities = ["Detailed implementation steps are not available in uploaded data and are listed in Annexure B for site verification."];
-      }
-      project.measurementVerificationPlan = bulletize(`Measure baseline and post-implementation performance for ${source.system || "the system"}; verify kW, operating hours, and key operating parameters; reconcile savings with real operating conditions.`);
-      project.benefits = bulletize(`Improved operating efficiency; reduced electricity cost; better system control for ${source.system || "the targeted system"}.`);
+      
+      const activitiesSrc = source.projectActivities || source.keyActivities;
+      project.keyActivities = activitiesSrc ? bulletize(activitiesSrc) : ["Detailed implementation steps are not available in uploaded data and are listed in Annexure B for site verification."];
+
+      console.log('[ECM_NARRATIVE]', {
+        ecmNo,
+        existingCondition: project.existingSystemDescription,
+        problemStatement: project.problemGapIdentified,
+        projectActivities: project.keyActivities,
+        proposedProject: project.proposedProject
+      });
+      const mvPlanSrc = source.mvPlan;
+      project.measurementVerificationPlan = mvPlanSrc ? bulletize(mvPlanSrc) : bulletize(`Measure baseline and post-implementation performance for ${source.system || "the system"}; verify kW, operating hours, and key operating parameters; reconcile savings with real operating conditions.`);
+      
+      const benefitsSrc = source.benefits;
+      project.benefits = benefitsSrc ? bulletize(benefitsSrc) : bulletize(`Improved operating efficiency; reduced electricity cost; better system control for ${source.system || "the targeted system"}.`);
+      
       project.conclusion = bulletize(`Technically aligned with the extracted ECM source; economics based on extracted saving and investment values; proceed after final field verification if remaining inputs are listed in Annexure B.`);
+      
+      project.implementationDuration = source.implementationDuration || project.implementationDuration;
+      project.implementationPriority = source.implementationPriority || project.implementationPriority;
+
+      if (String(ecmNo).trim() === "4" || ecmNo === "ECM 4") {
+        console.log("[SECTION_3_4_BEFORE]", Object.keys(project.baseline || {}).length);
+        console.log("[SECTION_3_4_CURRENT_PAYLOAD]", JSON.stringify(project.baseline || {}));
+      }
+
+      const existingBaseline = project.baseline || {};
+      project.baseline = {
+        ...existingBaseline,
+        annualConsumption: existingBaseline.annualConsumption || formatKwh(source.baselineKwhPerYearRaw, "kWh/year") || source.baselineConsumption,
+        existingPowerConsumption: existingBaseline.existingPowerConsumption || source.baselineKw || source.baselinePower,
+        operatingHours: existingBaseline.operatingHours || source.operatingHours,
+        baselineNotes: existingBaseline.baselineNotes || source.existingCondition || source.baselineNotes
+      };
+
+      if (String(ecmNo).trim() === "4" || ecmNo === "ECM 4") {
+        console.log("[SECTION_3_4_AFTER]", Object.keys(project.baseline).length);
+      }
 
       project.baselineTable = project.baselineTable || {};
-      project.baselineTable.baselineAnnualConsumption = formatKwh(source.baselineKwhPerYearRaw, "kWh/year") || "Verify from ECM sheet";
+      project.baselineTable.baselineAnnualConsumption = source.baselineConsumption || formatKwh(source.baselineKwhPerYearRaw, "kWh/year") || "Verify from ECM sheet";
       project.baselineTable.expectedEnergySaving = formatKwh(source.energySavingRaw, "kWh/year");
       project.baselineTable.expectedAnnualCostSaving = formatInr(source.annualSavingRaw);
       project.baselineTable.estimatedInvestment = formatInr(source.investmentRaw);
-      project.baselineTable.percentageSaving = formatPercent(source.savingPercentRaw) || "Verify from ECM sheet";
+      project.baselineTable.percentageSaving = source.savingPercent || formatPercent(source.savingPercentRaw) || "Verify from ECM sheet";
       project.baselineTable.simplePaybackPeriodMonths = formatMonths(source.paybackMonthsRaw);
       project.baselineTable.simplePaybackPeriodYears = formatYears(source.paybackYearsRaw);
 
@@ -339,14 +419,37 @@ function applyProjectMappings(context, reportData, summary) {
       if (!source.projectActivities) {
         addMissingInput(context, "Detailed ECM Sheets", `${ecmNo} project activities`, "Required to create the implementation activity list.", "ECM sheet", "Medium");
       }
-      if (!source.baselineKwhPerYearRaw) {
+      if (!source.baselineKwhPerYearRaw && !source.baselineConsumption) {
         addMissingInput(context, "Detailed ECM Sheets", `${ecmNo} baseline kWh/year`, "Required to present the baseline in the ECM summary.", "ECM sheet", "High");
       }
+
+      const expectedFields = [
+        "projectTitle", "system", "location", "equipmentCovered",
+        "existingSystemDescription", "problemGapIdentified", "proposedProject", "keyActivities",
+        "baselineTable.baselineAnnualConsumption", "baselineTable.percentageSaving", "energySaving", "annualSaving",
+        "investment", "simplePaybackPeriodMonths", "simplePaybackPeriodYears",
+        "implementationDuration", "implementationPriority", "benefits", "measurementVerificationPlan"
+      ];
+      
+      let fieldsFound = 0;
+      expectedFields.forEach(f => {
+         const val = f.split('.').reduce((o, i) => o?.[i], project);
+         if (val && !String(val).includes("Verify from ECM") && !String(val).includes("Not provided") && !String(val).includes("not available")) fieldsFound++;
+      });
+      project.fieldsFound = fieldsFound;
+      project.totalExpectedFields = expectedFields.length;
 
       summary.fieldsFilled += 1;
       return project;
     });
   });
+
+  console.log("--- EXTRACTION COVERAGE STATISTICS ---");
+  groups.flatMap((g) => g.projects || []).forEach(p => {
+    console.log(`ECM ${p.projectNo || p.ecmNo}`);
+    console.log(`Fields Found: ${p.fieldsFound}/${p.totalExpectedFields}`);
+  });
+  console.log("--------------------------------------");
 
   const regrouped = [];
   const hasGrouping = Boolean(context.hasExplicitEcmGrouping);
@@ -388,8 +491,10 @@ function applyProjectMappings(context, reportData, summary) {
     const allProjects = groups.flatMap((group) => group.projects || []);
     if (allProjects.length) {
       reportData.projects = allProjects;
+      reportData.ecmExtractionResults = allProjects;
     } else {
       reportData.projects = context.ecmProjects;
+      reportData.ecmExtractionResults = context.ecmProjects;
     }
   }
 }

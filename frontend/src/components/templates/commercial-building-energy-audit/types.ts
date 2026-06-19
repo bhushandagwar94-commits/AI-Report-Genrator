@@ -219,6 +219,9 @@ export interface CommercialBuildingEnergyAuditData {
   buildingAutomationControls: BuildingAutomationControl[];
   auditObservations: AuditObservation[];
   projects: CommercialBuildingProject[];
+  hasExplicitEcmGrouping?: boolean;
+  groupedProjects?: any[];
+  ecmExtractionResults?: any[];
 }
 
 export interface ReportTableColumn {
