@@ -1129,25 +1129,38 @@ function generateTableOfContents(groupedProjects) {
   ];
 
   let globalEcmIndex = 0;
-  asArray(groupedProjects).forEach((group, index) => {
-    lines.push(tocLine(formatGroupHeading(group, index), 1, true));
+  
+  if (groupedProjects.some(g => g.groupNo && g.groupName) || groupedProjects.length > 1) {
+    asArray(groupedProjects).forEach((group, index) => {
+      lines.push(tocLine(formatGroupHeading(group, index), 1, true));
 
-    asArray(group.projects).forEach((project) => {
-      globalEcmIndex++;
-      const ecmTitleRaw =
-        displayText(project.projectTitle) ||
-        displayText(project.title) ||
-        "ECM";
-      const ecmNoRaw = getEcmNumberVal(project);
-      const finalTitleString = formatEcmHeading(
-        `3.${globalEcmIndex}`,
-        ecmNoRaw,
-        ecmTitleRaw
-      );
+      asArray(group.projects).forEach((project) => {
+        globalEcmIndex++;
+        const ecmTitleRaw =
+          displayText(project.projectTitle) ||
+          displayText(project.title) ||
+          "ECM";
+        const ecmNoRaw = getEcmNumberVal(project);
+        const finalTitleString = formatEcmHeading(
+          `3.${globalEcmIndex}`,
+          ecmNoRaw,
+          ecmTitleRaw
+        );
 
-      lines.push(tocLine(finalTitleString, 2, false));
+        lines.push(tocLine(finalTitleString, 2, false));
+      });
     });
-  });
+  } else {
+    // Flat TOC
+    const allProjects = groupedProjects.flatMap(g => g.projects || []);
+    allProjects.forEach((project) => {
+      globalEcmIndex++;
+      const ecmTitleRaw = displayText(project.projectTitle) || displayText(project.title) || "ECM";
+      const ecmNoRaw = getEcmNumberVal(project);
+      const finalTitleString = formatEcmHeading(`3.${globalEcmIndex}`, ecmNoRaw, ecmTitleRaw);
+      lines.push(tocLine(finalTitleString, 1, false));
+    });
+  }
 
   lines.push(tocLine("Chapter 4. Annexures", 0, true));
   lines.push(pageBreak());
@@ -1186,10 +1199,11 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
   const investment = es.totalEstimatedInvestment || totalInvestment(projects);
   const saving = es.totalAnnualCostSavingPotential || totalSavings(projects);
   const energy = es.totalEnergySavingPotential || totalEnergy(projects);
+  const hasExplicitEcmGroups = report.hasExplicitEcmGroups === true;
   const categoryRows = (
-    groupedProjects.length
+    hasExplicitEcmGroups && groupedProjects.length > 0
       ? groupedProjects
-      : [{ groupNo: "GR-1", groupTitle: "Energy Saving Projects", projects }]
+      : []
   ).map((group, index) => ({
     groupNo: displayText(group.groupNo) || `GR-${index + 1}`,
     groupName: formatGroupHeading(group, index),
@@ -1379,49 +1393,81 @@ function generateExecutiveSummary(report, projects, groupedProjects) {
       ]
     ),
 
-    heading3("1.9.1 Project Grouping"),
-    optionalTable(
-      [
-        { key: "groupNo", label: "Group No." },
-        { key: "groupName", label: "Group Name" },
-        { key: "ecmsIncluded", label: "ECMs Included" },
-        { key: "count", label: "No. of ECMs" },
-        { key: "investment", label: "Total Investment" },
-        { key: "saving", label: "Annual Saving" },
-        { key: "energy", label: "Energy Saving" },
-        { key: "payback", label: "Group Payback" },
-      ],
-      categoryRows
-    ),
-
-    heading3("1.9.2 Recommended Implementation Priority"),
-    optionalTable(
-      [
-        { key: "level", label: "Priority Level" },
-        { key: "ecms", label: "ECM Numbers" },
-        { key: "reason", label: "Reason for Priority" },
-        { key: "investment", label: "Investment" },
-        { key: "saving", label: "Annual Saving" },
-        { key: "payback", label: "Payback" },
-        { key: "note", label: "Implementation Note" },
-      ],
-      priorityRows
-    ),
-
-    heading3("1.9.3 Action Plan"),
-    optionalTable(
-      [
-        { key: "step", label: "Step" },
-        { key: "action", label: "Action" },
-      ],
-      report.summary || [
-        { step: 1, action: "Site verification" },
-        { step: 2, action: "Vendor quotation / detailed engineering" },
-        { step: 3, action: "Implementation scheduling" },
-        { step: 4, action: "M&V baseline confirmation" },
-        { step: 5, action: "Execution" },
-        { step: 6, action: "Post-implementation verification" },
-      ]
+    ...(hasExplicitEcmGroups
+      ? [
+          heading3("1.9.1 Project Grouping"),
+          optionalTable(
+            [
+              { key: "groupNo", label: "Group No." },
+              { key: "groupName", label: "Group Name" },
+              { key: "ecmsIncluded", label: "ECMs Included" },
+              { key: "count", label: "No. of ECMs" },
+              { key: "investment", label: "Total Investment" },
+              { key: "saving", label: "Annual Saving" },
+              { key: "energy", label: "Energy Saving" },
+              { key: "payback", label: "Group Payback" },
+            ],
+            categoryRows
+          ),
+          heading3("1.9.2 Recommended Implementation Priority"),
+          optionalTable(
+            [
+              { key: "level", label: "Priority Level" },
+              { key: "ecms", label: "ECM Numbers" },
+              { key: "reason", label: "Reason for Priority" },
+              { key: "investment", label: "Investment" },
+              { key: "saving", label: "Annual Saving" },
+              { key: "payback", label: "Payback" },
+              { key: "note", label: "Implementation Note" },
+            ],
+            priorityRows
+          ),
+          heading3("1.9.3 Action Plan"),
+          optionalTable(
+            [
+              { key: "step", label: "Step" },
+              { key: "action", label: "Action" },
+            ],
+            report.summary || [
+              { step: 1, action: "Site verification" },
+              { step: 2, action: "Vendor quotation / detailed engineering" },
+              { step: 3, action: "Implementation scheduling" },
+              { step: 4, action: "M&V baseline confirmation" },
+              { step: 5, action: "Execution" },
+              { step: 6, action: "Post-implementation verification" },
+            ]
+          )
+        ]
+      : [
+          heading3("1.9.1 Recommended Implementation Priority"),
+          optionalTable(
+            [
+              { key: "level", label: "Priority Level" },
+              { key: "ecms", label: "ECM Numbers" },
+              { key: "reason", label: "Reason for Priority" },
+              { key: "investment", label: "Investment" },
+              { key: "saving", label: "Annual Saving" },
+              { key: "payback", label: "Payback" },
+              { key: "note", label: "Implementation Note" },
+            ],
+            priorityRows
+          ),
+          heading3("1.9.2 Action Plan"),
+          optionalTable(
+            [
+              { key: "step", label: "Step" },
+              { key: "action", label: "Action" },
+            ],
+            report.summary || [
+              { step: 1, action: "Site verification" },
+              { step: 2, action: "Vendor quotation / detailed engineering" },
+              { step: 3, action: "Implementation scheduling" },
+              { step: 4, action: "M&V baseline confirmation" },
+              { step: 5, action: "Execution" },
+              { step: 6, action: "Post-implementation verification" },
+            ]
+          )
+        ]
     ),
 
     pageBreak(),
@@ -2276,17 +2322,7 @@ async function buildCommercialBuildingEnergyAuditDocx(rawReportData) {
   const projects = asArray(report.projects);
   const groupedProjects = asArray(report.groupedProjects).length
     ? asArray(report.groupedProjects)
-    : [
-        {
-          groupNo: "GR-1",
-          groupTitle: "Energy Saving Projects",
-          projects,
-          totalInvestment: totalInvestment(projects),
-          totalAnnualSaving: totalSavings(projects),
-          totalEnergySaving: totalEnergy(projects),
-          weightedPayback: weightedPayback(projects),
-        },
-      ];
+    : [{ projects }];
 
   if (!projects.length) {
     throw new Error("No valid ECM projects available for export.");
@@ -2298,64 +2334,81 @@ async function buildCommercialBuildingEnergyAuditDocx(rawReportData) {
     ...generateExecutiveSummary(report, projects, groupedProjects),
     ...generateBuildingProfile(report),
     heading1("Chapter 3: Energy Saving Projects"),
-    paragraph(
-      "This chapter presents the identified energy conservation measures grouped by system and application area. Each group includes a summary table followed by detailed ECM descriptions."
-    ),
-    pageBreak(),
   ];
 
-  let globalStartIndex = 0;
-  groupedProjects.forEach((group, index) => {
-    const groupProjects = asArray(group.projects);
-    children.push(heading2(formatGroupHeading(group, index)));
+  const hasExplicitEcmGroups = exportReportData.hasExplicitEcmGroups === true;
+  
+  if (hasExplicitEcmGroups && groupedProjects.some(g => g.groupNo && g.groupName)) {
     children.push(
       paragraph(
-        group.summaryParagraph ||
-          `This section covers ${groupProjects.length} energy conservation measures under the ${safeText(group.groupTitle)} category.`
-      )
+        "This chapter presents the identified energy conservation measures grouped by system and application area. Each group includes a summary table followed by detailed ECM descriptions."
+      ),
+      pageBreak()
     );
-    children.push(heading3("Group Observation"));
-    children.push(
-      paragraph(
-        group.technicalObservation ||
-          "The measures in this group focus on improving system control discipline, reducing avoidable losses, and supporting a more structured implementation roadmap."
-      )
-    );
-    children.push(heading3("Implementation Focus"));
-    children.push(
-      paragraph(
-        group.implementationStrategy ||
-          "Implementation should combine site verification, detailed engineering, coordinated execution, and post-commissioning performance review."
-      )
-    );
-    children.push(
-      createTable(
-        [
-          { key: "projectNo", label: "ECM No." },
-          { key: "projectTitle", label: "ECM Name" },
-          { key: "investment", label: "Investment INR" },
-          { key: "saving", label: "Annual Saving INR/year" },
-          { key: "energy", label: "Energy Saving kWh/year" },
-          { key: "payback", label: "Payback" },
-        ],
-        groupProjects.map((project) => ({
-          projectNo: formatEcmNumber(project),
-          projectTitle:
-            displayText(project.projectTitle) || safeText(project.projectTitle),
-          investment: formatINR(project.estimatedInvestment),
-          saving: formatINR(project.expectedAnnualCostSaving),
-          energy: safeText(project.expectedEnergySaving),
-          payback: safeText(project.simplePaybackPeriod),
-        }))
-      )
-    );
-    children.push(pageBreak());
-    groupProjects.forEach((project, pIndex) => {
-      const globalEcmIndex = globalStartIndex + pIndex + 1;
-      children.push(...generateProjectChapter(project, "3", globalEcmIndex));
+    let globalStartIndex = 0;
+    groupedProjects.forEach((group, index) => {
+      const groupProjects = asArray(group.projects);
+      children.push(heading2(formatGroupHeading(group, index)));
+      children.push(
+        paragraph(
+          group.summaryParagraph ||
+            `This section covers ${groupProjects.length} energy conservation measures under the ${safeText(group.groupTitle || group.groupName)} category.`
+        )
+      );
+      children.push(heading3("Group Observation"));
+      children.push(
+        paragraph(
+          group.technicalObservation ||
+            "The measures in this group focus on improving system control discipline, reducing avoidable losses, and supporting a more structured implementation roadmap."
+        )
+      );
+      children.push(heading3("Implementation Focus"));
+      children.push(
+        paragraph(
+          group.implementationStrategy ||
+            "Implementation should combine site verification, detailed engineering, coordinated execution, and post-commissioning performance review."
+        )
+      );
+      children.push(
+        createTable(
+          [
+            { key: "projectNo", label: "ECM No." },
+            { key: "projectTitle", label: "ECM Name" },
+            { key: "investment", label: "Investment INR" },
+            { key: "saving", label: "Annual Saving INR/year" },
+            { key: "energy", label: "Energy Saving kWh/year" },
+            { key: "payback", label: "Payback" },
+          ],
+          groupProjects.map((project) => ({
+            projectNo: formatEcmNumber(project),
+            projectTitle:
+              displayText(project.projectTitle) || safeText(project.projectTitle),
+            investment: formatINR(project.estimatedInvestment),
+            saving: formatINR(project.expectedAnnualCostSaving),
+            energy: safeText(project.expectedEnergySaving),
+            payback: safeText(project.simplePaybackPeriod),
+          }))
+        )
+      );
+      children.push(pageBreak());
+      groupProjects.forEach((project, pIndex) => {
+        const globalEcmIndex = globalStartIndex + pIndex + 1;
+        children.push(...generateProjectChapter(project, "3", globalEcmIndex));
+      });
+      globalStartIndex += groupProjects.length;
     });
-    globalStartIndex += groupProjects.length;
-  });
+  } else {
+    children.push(
+      paragraph("This chapter presents the identified energy conservation measures in the sequence extracted from the uploaded ECM sheet."),
+      pageBreak()
+    );
+    const allProjects = groupedProjects.flatMap(g => g.projects || []);
+    let globalStartIndex = 0;
+    allProjects.forEach((project, pIndex) => {
+      globalStartIndex++;
+      children.push(...generateProjectChapter(project, "3", globalStartIndex));
+    });
+  }
 
   children.push(...generateAnnexures());
 

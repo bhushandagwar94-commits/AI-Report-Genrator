@@ -16,21 +16,15 @@ function normalizeReportGroups(reportData) {
 
   if (!Array.isArray(normalized.groups)) {
     if (Array.isArray(normalized.projects) && normalized.projects.length > 0) {
-      normalized.groups = [
-        {
-          groupNo: "GR-1",
-          groupName: "Energy Conservation Measures",
-          projects: normalized.projects
-        }
-      ];
+      normalized.groups = [];
     } else {
       normalized.groups = [];
     }
   }
 
   normalized.groups = normalized.groups.map((group, index) => ({
-    groupNo: group.groupNo || `GR-${index + 1}`,
-    groupName: group.groupName || group.name || "Energy Conservation Measures",
+    groupNo: group.groupNo || "",
+    groupName: group.groupName || group.name || group.groupTitle || "",
     projects: Array.isArray(group.projects) ? group.projects : []
   }));
 

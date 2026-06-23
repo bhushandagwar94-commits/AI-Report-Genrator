@@ -86,14 +86,9 @@ if (
   );
 }
 app.use(cors({ origin: true }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(bodyParser.text({ limit: FILE_LIMIT }));
-app.use(bodyParser.json({ limit: FILE_LIMIT }));
-app.use(
-  bodyParser.urlencoded({
-    limit: FILE_LIMIT,
-    extended: true,
-  })
-);
 
 if (!!process.env.ENABLE_HTTPS) {
   bootSSL(app, process.env.SERVER_PORT || 3001);
@@ -204,10 +199,9 @@ app.get("/api/health", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.json({
-    success: true,
-    status: "ok",
-    service: "backend",
-    timestamp: new Date().toISOString(),
+    ok: true,
+    service: "AI Report Generator backend",
+    time: new Date().toISOString()
   });
 });
 

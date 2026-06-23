@@ -128,6 +128,15 @@ const FIELD_SYNONYMS = {
   implementationPriority: [
     "priority",
     "implementation priority"
+  ],
+  groupName: [
+    "group",
+    "group no",
+    "group name",
+    "project group",
+    "ecm group",
+    "category",
+    "section"
   ]
 };
 
@@ -517,6 +526,7 @@ function buildProjectFromRow({
   const savingPercentValue = row[columnMap.savingPercent?.columnIndex];
   const implementationDurationValue = row[columnMap.implementationDuration?.columnIndex];
   const implementationPriorityValue = row[columnMap.implementationPriority?.columnIndex];
+  const groupNameValue = row[columnMap.groupName?.columnIndex];
 
   const investmentRaw = parseNumberOrNull(investmentValue);
   const annualSavingRaw = parseNumberOrNull(annualSavingValue);
@@ -553,6 +563,7 @@ function buildProjectFromRow({
     savingPercent: String(savingPercentValue || "").trim() || null,
     implementationDuration: String(implementationDurationValue || "").trim() || null,
     implementationPriority: String(implementationPriorityValue || "").trim() || null,
+    groupName: String(groupNameValue || "").trim() || null,
 
     investmentRaw,
     annualSavingRaw,
@@ -603,6 +614,11 @@ function buildProjectFromRow({
         column: columnMap.payback?.column,
         columnIndex: columnMap.payback?.columnIndex,
         rawValue: paybackValue,
+      },
+      groupName: {
+        column: columnMap.groupName?.column,
+        columnIndex: columnMap.groupName?.columnIndex,
+        rawValue: groupNameValue,
       },
     },
   };

@@ -1,0 +1,27 @@
+{
+  "rendererUsed": "safeDocxRenderer",
+  "validation": {
+    "valid": true,
+    "bufferLength": 15976,
+    "startsWithPK": true,
+    "hasContentTypes": true,
+    "hasDocumentXml": true,
+    "hasRootRels": true,
+    "hasDocumentRels": true,
+    "error": null
+  },
+  "finalValidation": {
+    "valid": true,
+    "bufferLength": 15976,
+    "startsWithPK": true,
+    "hasContentTypes": true,
+    "hasDocumentXml": true,
+    "hasRootRels": true,
+    "hasDocumentRels": true,
+    "error": null
+  },
+  "bufferLength": 15976,
+  "startsWithPK": true,
+  "ecmCount": 14,
+  "time": "2026-06-23T07:29:42.196Z"
+}

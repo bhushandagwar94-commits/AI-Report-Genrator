@@ -1,0 +1,5 @@
+{
+  "message": "Invalid DOCX generated: AdmZip is not defined",
+  "stack": "Error: Invalid DOCX generated: AdmZip is not defined\n    at D:\\GitHub\\AI-Report-Genrator\\server\\endpoints\\reports.js:3336:13",
+  "time": "2026-06-23T07:24:19.444Z"
+}

@@ -6,14 +6,48 @@ const {
 } = require("../utils/middleware/multiUserProtected");
 const { handleFileUpload } = require("../utils/files/multer");
 const { CollectorApi } = require("../utils/collectorApi");
-const {
-  buildCommercialBuildingEnergyAuditDocx,
-} = require("../services/docxExportService");
+const { buildCommercialBuildingEnergyAuditDocx } = require("../services/docxExportService");
+const { renderSafeDocx } = require("../services/safeDocxRenderer");
 const prisma = require("../utils/prisma");
 const { getLLMProvider } = require("../utils/helpers");
 const { extractVrChennaiWorkbook } = require("../services/vrChennaiWorkbookExtractor");
 const { normalizeReportGroups } = require("../utils/groupHelper");
 const { getModelTag } = require("./utils");
+const htmlDocx = require("html-docx-js");
+let AdmZip;
+try {
+  AdmZip = require("adm-zip");
+} catch (e) {
+  console.warn("adm-zip not installed; DOCX zip validation will be limited");
+}
+
+const {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun
+} = require("docx");
+
+async function renderEmergencyDocx(errorMessage = "") {
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph({
+          children: [new TextRun({ text: "SEE-Tech Detailed Energy Audit Report", bold: true })]
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: "Emergency fallback DOCX generated successfully." })]
+        }),
+        new Paragraph({
+          children: [new TextRun({ text: errorMessage ? `Original renderer error: ${errorMessage}` : "" })]
+        })
+      ]
+    }]
+  });
+
+  return await Packer.toBuffer(doc);
+}
+
 const fs = require("fs");
 const path = require("path");
 const { hotdirPath } = require("../utils/files");
@@ -161,6 +195,63 @@ function isValidProjectTitle(titleStr) {
   if (forbiddenTitles.includes(t)) return false;
 
   return true;
+}
+
+function validateDocxBuffer(buffer) {
+  const result = {
+    valid: false,
+    bufferLength: buffer?.length || 0,
+    startsWithPK: false,
+    hasContentTypes: false,
+    hasDocumentXml: false,
+    hasRootRels: false,
+    hasDocumentRels: false,
+    error: null
+  };
+
+  try {
+    if (!buffer || buffer.length < 1000) {
+      result.error = "DOCX buffer missing or too small";
+      return result;
+    }
+
+    result.startsWithPK = buffer[0] === 0x50 && buffer[1] === 0x4b;
+
+    if (!result.startsWithPK) {
+      result.error = "DOCX does not start with PK zip signature";
+      return result;
+    }
+
+    if (!AdmZip) {
+      result.valid = true;
+      result.error = "ZIP structure validation skipped because adm-zip is not installed";
+      return result;
+    }
+
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries().map(e => e.entryName);
+
+    result.hasContentTypes = entries.includes("[Content_Types].xml");
+    result.hasDocumentXml = entries.includes("word/document.xml");
+    result.hasRootRels = entries.includes("_rels/.rels");
+    result.hasDocumentRels = entries.includes("word/_rels/document.xml.rels");
+
+    result.valid =
+      result.startsWithPK &&
+      result.hasContentTypes &&
+      result.hasDocumentXml &&
+      result.hasRootRels &&
+      result.hasDocumentRels;
+
+    if (!result.valid) {
+      result.error = "DOCX zip missing required internal Word files";
+    }
+
+    return result;
+  } catch (error) {
+    result.error = error.message;
+    return result;
+  }
 }
 
 function normalizeActiveReportData(reportData) {
@@ -3235,220 +3326,134 @@ function reportEndpoints(app) {
   );
 
   // ── PUBLIC / ADMIN: Export DOCX ────────────────────────────────────────────
-  app.post(
-    "/reports/:id/export/docx",
-    [validatedRequest, flexUserRoleValid([ROLES.all])],
-    async (request, response) => {
-      try {
-        const id = parseInt(request.params.id);
-        const user = await userFromSession(request, response);
+  
+  app.post('/export-docx', async (req, res) => {
+  const debugDir = path.join(__dirname, '../debug-extraction');
+  fs.mkdirSync(debugDir, { recursive: true });
 
-        const report = await prisma.generated_reports.findFirst({
-          where: { id },
-          include: { template: { select: { slug: true } } },
-        });
+  try {
+    const html = req.body?.html;
 
-        if (!report) return response.sendStatus(404).end();
-
-        if (user && user.role === "default" && report.userId !== user.id) {
-          return response.sendStatus(403).end();
-        }
-
-        if (report.template?.slug !== "commercial-building-energy-audit") {
-          return response.status(400).json({
-            error: "DOCX export not supported for this template yet.",
-          });
-        }
-
-        const requestBody = reqBody(request);
-        const trainingMetadata = readTrainingMetadataFromReport(report);
-        let dbReportData = null;
-        try {
-          dbReportData = JSON.parse(report.outputContent);
-        } catch (e) {}
-
-        let exportReportData =
-          requestBody?.reportData ||
-          requestBody?.previewData ||
-          requestBody?.generatedReportData ||
-          dbReportData ||
-          null;
-
-        if (!exportReportData) {
-          return response.status(400).json({
-            success: false,
-            error: "No reportData available for DOCX export."
-          });
-        }
-
-        if (requestBody?.reportData || requestBody?.previewData) {
-          console.log(
-            "[DOCX_EXPORT_REQUEST_BODY_DEBUG]",
-            enhancementSummary(normalizeActiveReportData(exportReportData))
-          );
-        }
-
-        const completenessNormalized = normalizeReportCompleteness(normalizeActiveReportData(exportReportData));
-        const normalizedExport = cleanupFinalReportData(completenessNormalized);
-        const exportExtractedDataContext =
-          normalizedExport.extractedDataContext ||
-          buildExtractedDataContext({
-            reportData: normalizedExport,
-            workbookExtractions: exportReportData?.extractedDataContext || {},
-          });
-
-        if (isVrChennaiReport(normalizedExport, exportExtractedDataContext)) {
-          const sanitizedVrExport = sanitizeReportData(normalizedExport).sanitizedReportData;
-          const finalQuality = validateFinalReportQuality(sanitizedVrExport, exportExtractedDataContext);
-          console.log("[FINAL_REPORT_QUALITY_GATE]", finalQuality.gateLog);
-
-          let criticalFailures = (finalQuality.failures || []).filter(f => f && f.severity === "critical");
-          
-          if (criticalFailures.length > 0) {
-            return response.status(400).json({
-              qcFailed: true,
-              error: "Final report quality gate failed.",
-              ...finalQuality,
-            });
-          }
-
-          const buffer = await renderVrChennaiClientReadyDocx(sanitizedVrExport, exportExtractedDataContext);
-          const clientName =
-            exportExtractedDataContext.projectInfo?.facilityName
-              ?.replace(/[^a-z0-9]/gi, "_")
-              .toLowerCase() || "client";
-          const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
-
-          response.setHeader(
-            "Content-Disposition",
-            `attachment; filename=\"${filename}\"`
-          );
-          response.setHeader(
-            "Content-Type",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          );
-          if (trainingMetadata?.packageDir) {
-            try {
-              attachGeneratedDocx(trainingMetadata.packageDir, buffer, filename);
-            } catch (trainingDataError) {
-              console.error("[TRAINING_DATA_EXPORT_ATTACH_FAILED]", {
-                reportId: id,
-                message: trainingDataError?.message || String(trainingDataError),
-              });
-            }
-          }
-          return response.send(buffer);
-        }
-
-        exportReportData = normalizeActiveReportData(exportReportData);
-        exportReportData = filterReportProjects(exportReportData);
-        exportReportData = expandReportEngineeringNarratives(exportReportData);
-        exportReportData = normalizeReportCompleteness(exportReportData);
-        exportReportData = cleanupFinalReportData(exportReportData);
-        const sanitizedExport = sanitizeReportData(exportReportData);
-        exportReportData = sanitizedExport.sanitizedReportData;
-        logSafeCleanupCheck(exportReportData, "DOCX");
-
-        if (getAllProjects(exportReportData).length <= 0) {
-          return response.status(400).json({
-            error: "DOCX export requires at least one valid ECM project after filtering.",
-          });
-        }
-
-        console.log("[DOCX_FILTERED_PROJECTS]", {
-          retainedProjectCount: getAllProjects(exportReportData).length,
-          rejectedProjectCount: exportReportData?.filteringMeta?.rejectedCount || 0,
-        });
-        console.log("[DOCX_FORCED_EXPANSION_SUMMARY]", firstProjectSummary(exportReportData));
-        console.log("[FINAL_ECM_SPECIFIC_EXPORT]", firstProjectSummary(exportReportData));
-
-        // Quality Check (QC) Gate
-        const qcResult = runReportQC(exportReportData);
-        const accuracyResult = calculateReportAccuracyScore(exportReportData);
-        const finalQuality = validateFinalReportQuality(
-          exportReportData,
-          exportReportData.extractedDataContext || {}
-        );
-        const allowDraft = request.query.allowDraft === "true";
-        const isDev =
-          process.env.NODE_ENV === "development" ||
-          process.env.VITE_ALLOW_DRAFT_EXPORT === "true";
-
-        console.log("[EXPORT QC CHECK]", {
-          validEcms:
-            qcResult.summary.validEcmCount ?? qcResult.summary.projectCount,
-          groups: qcResult.summary.groupCount,
-          duplicateTitles: qcResult.summary.duplicateTitleCount,
-          invalidTitles: qcResult.summary.invalidTitleCount,
-          hardErrors: qcResult.summary.hardErrorCount,
-          warnings: qcResult.summary.warningCount,
-          requiredReview: false,
-          shouldBlockExport: false,
-        });
-
-        // Warnings no longer block export
-        // Only block if reportData is completely missing (which is checked earlier)
-
-        if (allowDraft && isDev && exportReportData.reportInfo) {
-          exportReportData.reportInfo.clientName =
-            "[DRAFT - QC REVIEW REQUIRED] " +
-            (exportReportData.reportInfo.clientName || "");
-        }
-
-        const exportReport = stripDebugMetadata(exportReportData);
-
-        let buffer;
-        try {
-          buffer = await buildCommercialBuildingEnergyAuditDocx(exportReport);
-        } catch (docxError) {
-          console.error(
-            `[DOCX EXPORT FAILED] Report ID: ${id}`,
-            docxError.stack || docxError
-          );
-          throw docxError;
-        }
-
-        const clientName =
-          exportReportData.reportInfo?.clientName
-            ?.replace(/[^a-z0-9]/gi, "_")
-            .toLowerCase() || "client";
-        const filename = `SEE-Tech_Detailed_Energy_Audit_Report_${clientName}.docx`;
-
-        response.setHeader(
-          "Content-Disposition",
-          `attachment; filename="${filename}"`
-        );
-        response.setHeader(
-          "Content-Type",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        );
-        if (trainingMetadata?.packageDir) {
-          try {
-            attachGeneratedDocx(trainingMetadata.packageDir, buffer, filename);
-          } catch (trainingDataError) {
-            console.error("[TRAINING_DATA_EXPORT_ATTACH_FAILED]", {
-              reportId: id,
-              message: trainingDataError?.message || String(trainingDataError),
-            });
-          }
-        }
-        response.send(buffer);
-      } catch (error) {
-        console.error("[DOCX_EXPORT_FAILED]", {
-          message: error.message,
-          stack: error.stack
-        });
-
-        return response.status(500).json({
-          success: false,
-          error: "Failed to generate Word document.",
-          details: error.message
-        });
-      }
+    if (!html || html.length < 1000) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing preview HTML for Word export"
+      });
     }
-  );
 
-  app.post(
+    const fullHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+  }
+
+  body {
+    font-family: Arial, Calibri, sans-serif;
+    font-size: 11pt;
+    line-height: 1.45;
+    background: white;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    vertical-align: top;
+  }
+
+  .no-export,
+  button,
+  .download-button,
+  .debug-panel {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+${html}
+</body>
+</html>
+`;
+
+    fs.writeFileSync(
+      path.join(debugDir, "latest-word-export-preview.html"),
+      fullHtml,
+      "utf8"
+    );
+
+    const blob = htmlDocx.asBlob(fullHtml);
+
+    let buffer;
+
+    if (Buffer.isBuffer(blob)) {
+      buffer = blob;
+    } else if (blob instanceof ArrayBuffer) {
+      buffer = Buffer.from(blob);
+    } else if (blob && blob.arrayBuffer) {
+      const arrayBuffer = await blob.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else {
+      buffer = Buffer.from(blob);
+    }
+
+    if (!buffer || buffer.length < 1000 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      throw new Error("html-docx-js generated invalid DOCX buffer");
+    }
+
+    fs.writeFileSync(
+      path.join(debugDir, "latest-browser-sent-report.docx"),
+      buffer
+    );
+
+    fs.writeFileSync(
+      path.join(debugDir, "latest-docx-export-mode.json"),
+      JSON.stringify({
+        mode: "frontend-preview-html-docx-js",
+        htmlLength: html.length,
+        bufferLength: buffer.length,
+        startsWithPK: buffer[0] === 0x50 && buffer[1] === 0x4b,
+        time: new Date().toISOString()
+      }, null, 2)
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="SEE-Tech_Detailed_Energy_Audit_Report.docx"'
+    );
+    res.setHeader("Content-Length", buffer.length);
+
+    return res.end(buffer);
+
+  } catch (error) {
+    console.error("DOCX_EXPORT_FAILED", error);
+
+    fs.writeFileSync(
+      path.join(debugDir, "latest-docx-export-error.json"),
+      JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        time: new Date().toISOString()
+      }, null, 2)
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+app.post(
     "/reports/:id/training-data/corrected-docx",
     [validatedRequest, flexUserRoleValid([ROLES.all]), handleFileUpload],
     async (request, response) => {

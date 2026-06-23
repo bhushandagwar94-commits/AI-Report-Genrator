@@ -1338,6 +1338,7 @@ function Step4({
   const [wordExportMode, setWordExportMode] = useState(null);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const reportRef = useRef(null);
+  const reportPreviewRef = useRef(null);
   const wordExportToastRef = useRef(null);
   const pdfExportToastRef = useRef(null);
 
@@ -1455,6 +1456,70 @@ function Step4({
     showToast("Report downloaded!", "success");
   };
 
+function copyComputedStyles(sourceEl, targetEl) {
+  const computed = window.getComputedStyle(sourceEl);
+
+  const styleProps = [
+    "color",
+    "backgroundColor",
+    "fontSize",
+    "fontWeight",
+    "fontFamily",
+    "lineHeight",
+    "textAlign",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "marginTop",
+    "marginRight",
+    "marginBottom",
+    "marginLeft",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+    "borderTopStyle",
+    "borderRightStyle",
+    "borderBottomStyle",
+    "borderLeftStyle",
+    "borderTopColor",
+    "borderRightColor",
+    "borderBottomColor",
+    "borderLeftColor",
+    "backgroundImage",
+    "borderCollapse",
+    "width",
+    "maxWidth",
+    "minWidth"
+  ];
+
+  styleProps.forEach((prop) => {
+    targetEl.style[prop] = computed[prop];
+  });
+}
+
+function cloneWithInlineStyles(node) {
+  const clone = node.cloneNode(true);
+
+  const walk = (source, target) => {
+    if (!source || !target) return;
+    if (source.nodeType === 1 && target.nodeType === 1) {
+      copyComputedStyles(source, target);
+    }
+
+    const sourceChildren = source.childNodes || [];
+    const targetChildren = target.childNodes || [];
+
+    for (let i = 0; i < sourceChildren.length; i++) {
+      walk(sourceChildren[i], targetChildren[i]);
+    }
+  };
+
+  walk(node, clone);
+  return clone;
+}
+
   const handleDownloadWord = async (allowDraft = false) => {
     if (!report?.id) {
       showToast("Please generate the report before downloading Word.", "info");
@@ -1482,58 +1547,111 @@ function Step4({
     );
 
     try {
-      const res = await Reports.downloadDocx(
-        report.id,
-        allowDraft,
-        exportReportData
-      );
-      if (res.success) {
-        setQcResult(null);
-        toast.update(wordExportToastRef.current, {
-          render: "Word document downloaded.",
-          type: "success",
-          isLoading: false,
-          autoClose: 5000,
-          closeButton: true,
-        });
-      } else {
-        if (isDev) {
-          console.error("[DOCX EXPORT ERROR]", res);
-        }
-        if (res.qcFailed) {
-          setQcResult(res);
-          toast.update(wordExportToastRef.current, {
-            render:
-              "Report requires review before final export. Please check QC details.",
-            type: "error",
-            isLoading: false,
-            autoClose: 5000,
-            closeButton: true,
-          });
-        } else if (String(res.error || "").includes(".map is not a function")) {
-          toast.update(wordExportToastRef.current, {
-            render:
-              "Export failed because report data is not normalized. Please click Re-run Cleanup & QC.",
-            type: "error",
-            isLoading: false,
-            autoClose: 5000,
-            closeButton: true,
-          });
-        } else {
-          toast.update(wordExportToastRef.current, {
-            render:
-              "Failed to generate Word document. Please check QC details or backend logs.",
-            type: "error",
-            isLoading: false,
-            autoClose: 5000,
-            closeButton: true,
-          });
-        }
+      const { API_BASE } = await import("@/utils/constants");
+      let axios;
+      try {
+        axios = (await import("axios")).default;
+      } catch (e) {
+        console.warn("axios not found");
       }
+      
+      const exportUrl = `${API_BASE}/export-docx`;
+      const previewElement =
+        reportPreviewRef.current ||
+        document.getElementById("report-preview-content");
+
+      if (!previewElement) {
+        throw new Error("Preview element not found.");
+      }
+
+      const styledClone = cloneWithInlineStyles(previewElement);
+      styledClone.querySelectorAll("button").forEach(el => el.remove());
+      const previewHtml = styledClone.outerHTML;
+
+      if (!previewHtml || previewHtml.trim().length < 1000) {
+        throw new Error("Preview HTML not found. Please generate the report before downloading Word.");
+      }
+
+      const exportPayload = {
+        generationTraceId:
+          generatedReport?.generationTraceId ||
+          generatedReport?.reportData?.generationTraceId,
+        exportSource: "frontend-preview-inline-styled-html",
+        html: previewHtml,
+        reportData: generatedReport
+      };
+
+      console.log("WORD_EXPORT_COLOR_DEBUG", {
+        htmlLength: previewHtml.length,
+        htmlStart: previewHtml.slice(0, 500),
+        exportSource: exportPayload.exportSource
+      });
+
+      const response = await axios.post(exportUrl, exportPayload, {
+        responseType: "blob",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        timeout: 180000
+      });
+
+      const contentType = response.headers["content-type"] || "";
+
+      if (!contentType.includes("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) {
+        const text = await response.data.text();
+        throw new Error(`Backend returned non-DOCX response: ${text}`);
+      }
+
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      });
+
+      if (blob.size < 1000) {
+        throw new Error(`Downloaded file too small: ${blob.size}`);
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "SEE-Tech_Detailed_Energy_Audit_Report.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setQcResult(null);
+      toast.update(wordExportToastRef.current, {
+        render: "Word document downloaded.",
+        type: "success",
+        isLoading: false,
+        autoClose: 5000,
+        closeButton: true,
+      });
+    } catch (error) {
+      let message = error.message;
+
+      if (error?.response?.data instanceof Blob) {
+        message = await error.response.data.text();
+      } else if (error?.response?.data) {
+        message = JSON.stringify(error.response.data);
+      }
+
+      console.error("WORD_DOWNLOAD_FAILED", {
+        status: error?.response?.status,
+        message
+      });
+
+      alert(message);
+      toast.update(wordExportToastRef.current, {
+        render: error.message || "Failed to generate Word document.",
+        type: "error",
+        isLoading: false,
+        autoClose: 5000,
+        closeButton: true,
+      });
     } finally {
       setIsWordExporting(false);
       setWordExportMode(null);
-      wordExportToastRef.current = null;
     }
   };
 
@@ -2089,10 +2207,12 @@ function Step4({
           <div className="report-viewer">
             <div className="report-page-shell">
               <div ref={reportRef} className="report-print-area">
-                <CommercialBuildingEnergyAuditTemplate
-                  key={previewRenderKey}
-                  data={reportData}
-                />
+                <div id="report-preview-content" ref={reportPreviewRef}>
+                  <CommercialBuildingEnergyAuditTemplate
+                    key={previewRenderKey}
+                    data={reportData}
+                  />
+                </div>
               </div>
             </div>
           </div>

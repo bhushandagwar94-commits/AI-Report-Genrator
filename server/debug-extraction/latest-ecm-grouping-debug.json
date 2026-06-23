@@ -1,0 +1,44 @@
+{
+  "ecmCount": 14,
+  "hasExplicitEcmGroups": false,
+  "detectedGroupColumns": [],
+  "uniqueGroupNames": [],
+  "groupingMode": "flat-no-groups",
+  "firstFiveEcms": [
+    {
+      "ecmNo": "1",
+      "projectTitle": "Contract Demand Optimization",
+      "groupName": "",
+      "sourceSheet": "ECM",
+      "sourceRow": 5
+    },
+    {
+      "ecmNo": "2",
+      "projectTitle": "Energy Saving in Chiller by CT Performance Improvement, fan blade angle improvement, damaged fins replacement",
+      "groupName": "",
+      "sourceSheet": "ECM",
+      "sourceRow": 6
+    },
+    {
+      "ecmNo": "3",
+      "projectTitle": "Cooling tower motor retrofit with high efficiency PMS motor wirh VFD and automation",
+      "groupName": "",
+      "sourceSheet": "ECM",
+      "sourceRow": 7
+    },
+    {
+      "ecmNo": "4",
+      "projectTitle": "Increase the set point of chiller as the return water is 9.4 deg C and delta t is 2.9 deg c (chilled water supply is 6.5 deg c)",
+      "groupName": "",
+      "sourceSheet": "ECM",
+      "sourceRow": 8
+    },
+    {
+      "ecmNo": "5",
+      "projectTitle": "Optimization of chiller plant operation through automated chiller sequencing, PRV optimization, condenser water temperature control, and primary/secondary pump flow optimization based on actual cooling demand",
+      "groupName": "",
+      "sourceSheet": "ECM",
+      "sourceRow": 9
+    }
+  ]
+}
