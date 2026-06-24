@@ -10,6 +10,7 @@ import DeveloperPipelinePanel from "@/components/DeveloperPipelinePanel";
 import CommercialBuildingEnergyAuditTemplate, {
   sampleCommercialBuildingEnergyAuditData,
 } from "@/components/templates/commercial-building-energy-audit/CommercialBuildingEnergyAuditTemplate";
+import PaginatedViewer from "@/components/common/PaginatedViewer";
 import {
   CheckCircle,
   ArrowRight,
@@ -2275,14 +2276,16 @@ function cloneWithInlineStyles(node) {
 
         {/* Report content */}
         {shouldRenderEnergyAuditTemplate ? (
-          <div className="report-viewer">
+          <div className="report-viewer bg-[#F3F4F6] rounded-b-2xl">
             <div className="report-page-shell">
-              <div ref={reportRef} className="report-print-area">
-                <div id="report-preview-content" ref={reportPreviewRef}>
-                  <CommercialBuildingEnergyAuditTemplate
-                    key={previewRenderKey}
-                    data={reportData}
-                  />
+              <div ref={reportRef} className="report-print-area w-full">
+                <div id="report-preview-content" ref={reportPreviewRef} className="w-full">
+                  <PaginatedViewer>
+                    <CommercialBuildingEnergyAuditTemplate
+                      key={previewRenderKey}
+                      data={reportData}
+                    />
+                  </PaginatedViewer>
                 </div>
               </div>
             </div>

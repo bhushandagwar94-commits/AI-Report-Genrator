@@ -1516,3 +1516,42 @@ does not extend the close button beyond the viewport. */
   fill: #FFFFFF !important;
   stroke: #FFFFFF !important;
 }
+
+/* Pagination Engine Styles */
+.report-page {
+  width: 794px;
+  min-height: 1123px;
+  background: white;
+  margin: 24px auto;
+  padding: 20mm;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  position: relative;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+
+.page-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+@media print {
+  .report-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+  }
+  .paginated-pages-wrapper {
+    background: transparent !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+}
