@@ -135,7 +135,7 @@ export default function PaginatedViewer({ children }) {
   }, [children]);
 
   return (
-    <div className="paginated-viewer-container">
+    <div className="paginated-viewer-container mx-auto w-fit">
       {isPaginating && (
         <div 
           ref={hiddenContainerRef} 
@@ -152,18 +152,25 @@ export default function PaginatedViewer({ children }) {
       )}
 
       {!isPaginating && pages.length > 0 && (
-        <div className="paginated-pages-wrapper bg-[#F3F4F6] p-4 md:p-8 flex flex-col items-center">
-          {pages.map((pageHtml, index) => (
-            <div key={index} className="report-page">
+        <div className="flex flex-col items-center w-fit py-8 gap-8 mx-auto px-4 md:px-8">
+          {pages.map((pageHtml, index) => {
+            // Inject the page footer perfectly inside the .report-page container before its closing tag
+            const footerHtml = `<div class="page-footer" style="position: absolute; bottom: 25px; left: 0; right: 0; text-align: center; font-size: 12px; color: #9CA3AF;">Page ${index + 1} of ${pages.length}</div>`;
+            const injectedHtml = pageHtml.trim().replace(/(<\/[a-zA-Z0-9]+>)$/, `${footerHtml}$1`);
+
+            return (
               <div 
-                className="page-content"
-                dangerouslySetInnerHTML={{ __html: pageHtml }}
-              />
-              <div className="page-footer">
-                Page {index + 1} of {pages.length}
+                key={index} 
+                className="preview-page-wrapper flex flex-col items-center w-fit"
+                style={{ background: 'transparent', boxShadow: 'none', padding: 0, border: 'none', borderRadius: 0 }}
+              >
+                <div 
+                  className="page-content w-fit"
+                  dangerouslySetInnerHTML={{ __html: injectedHtml }}
+                />
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       

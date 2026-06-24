@@ -2276,17 +2276,15 @@ function cloneWithInlineStyles(node) {
 
         {/* Report content */}
         {shouldRenderEnergyAuditTemplate ? (
-          <div className="report-viewer bg-[#F3F4F6] rounded-b-2xl">
-            <div className="report-page-shell">
-              <div ref={reportRef} className="report-print-area w-full">
-                <div id="report-preview-content" ref={reportPreviewRef} className="w-full">
-                  <PaginatedViewer>
-                    <CommercialBuildingEnergyAuditTemplate
-                      key={previewRenderKey}
-                      data={reportData}
-                    />
-                  </PaginatedViewer>
-                </div>
+          <div className="report-preview-area bg-[#F3F4F6] rounded-b-2xl mx-auto w-fit overflow-y-auto max-h-[78vh]">
+            <div ref={reportRef} className="w-fit">
+              <div id="report-preview-content" ref={reportPreviewRef} className="w-fit">
+                <PaginatedViewer>
+                  <CommercialBuildingEnergyAuditTemplate
+                    key={previewRenderKey}
+                    data={reportData}
+                  />
+                </PaginatedViewer>
               </div>
             </div>
           </div>
