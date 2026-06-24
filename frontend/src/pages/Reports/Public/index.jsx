@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
+import useLogo from "@/hooks/useLogo";
 import { isMobile } from "react-device-detect";
 import Reports from "@/models/reports";
 import showToast from "@/utils/toast";
@@ -13,6 +14,7 @@ import {
   CheckCircle,
   ArrowRight,
   ArrowLeft,
+  List,
   UploadSimple,
   SpinnerGap,
   DownloadSimple,
@@ -36,7 +38,10 @@ import {
   Copy,
   WarningCircle,
   Info,
+  MagnifyingGlass,
+  Moon,
 } from "@phosphor-icons/react";
+import { useThemeContext } from "@/ThemeContext";
 
 const USE_AI_DURING_GENERATION =
   import.meta.env.VITE_USE_AI_DURING_GENERATION === "true";
@@ -491,25 +496,25 @@ function StepIndicator({ currentStep }) {
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 ${
                   isCompleted
-                    ? "bg-primary-button border-primary-button text-white"
+                    ? "step-completed bg-primary-button border-primary-button text-white light:border-[#2563EB] light:bg-[#2563EB] light:text-white"
                     : isActive
-                      ? "bg-transparent border-primary-button text-primary-button ring-4 ring-primary-button/15"
-                      : "bg-transparent border-white/15 text-white/25"
+                      ? "step-completed bg-transparent border-primary-button text-primary-button ring-4 ring-primary-button/15 light:bg-[#2563EB] light:text-white light:border-transparent light:ring-0"
+                      : "bg-transparent border-white/15 text-white/25 light:bg-white light:border-[#94A3B8] light:text-[#334155]"
                 }`}
               >
                 {isCompleted ? (
-                  <CheckCircle size={18} weight="fill" />
+                  <CheckCircle size={18} weight="fill" className="text-white light:text-white" />
                 ) : (
-                  <span className="text-xs">{step.id}</span>
+                  <span className="text-xs text-inherit">{step.id}</span>
                 )}
               </div>
               <span
                 className={`mt-1.5 text-[10px] font-semibold text-center leading-tight transition-colors duration-300 ${
                   isActive
-                    ? "text-primary-button"
+                    ? "text-primary-button light:text-[#374151] light:font-medium"
                     : isCompleted
-                      ? "text-white/55"
-                      : "text-white/20"
+                      ? "text-white/55 light:text-[#374151] light:font-medium"
+                      : "text-white/20 light:text-[#374151] light:font-medium"
                 }`}
               >
                 {step.label}
@@ -518,7 +523,7 @@ function StepIndicator({ currentStep }) {
             {idx < STEPS.length - 1 && (
               <div
                 className={`flex-1 h-0.5 mt-4 mx-1 transition-all duration-500 ${
-                  currentStep > step.id ? "bg-primary-button" : "bg-white/10"
+                  currentStep > step.id ? "bg-primary-button light:bg-[#2563EB]" : "bg-white/10 light:bg-[#CBD5E1]"
                 }`}
               />
             )}
@@ -531,6 +536,7 @@ function StepIndicator({ currentStep }) {
 
 // â”€â”€â”€ STEP 1 â”€â”€ Select Template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Step1({ templates, selected, onSelect, loading }) {
+  const { isLight } = useThemeContext();
   // Match DB templates to catalog:
   // 1. By slug column (seetech-ea-001)  â€” primary
   // 2. By name fallback
@@ -591,28 +597,41 @@ function Step1({ templates, selected, onSelect, loading }) {
                   })
                 }
                 disabled={!isAvailable}
-                className={`group relative text-left p-4 rounded-2xl border-2 transition-all duration-200 ${
+                className={`group relative text-left p-4 rounded-2xl transition-all duration-200 ${
                   isSelected
                     ? "shadow-lg scale-[1.02]"
                     : isAvailable
                       ? "hover:scale-[1.015] hover:shadow-md cursor-pointer opacity-100"
-                      : "opacity-40 cursor-not-allowed grayscale"
+                      : isLight ? "cursor-not-allowed" : "opacity-40 cursor-not-allowed grayscale"
                 }`}
-                style={{
-                  borderColor: isSelected
-                    ? cat.color
-                    : isAvailable
-                      ? "rgba(255,255,255,0.15)"
-                      : "rgba(255,255,255,0.05)",
-                  background: isSelected
-                    ? cat.bg
-                    : isAvailable
-                      ? "rgba(255,255,255,0.04)"
-                      : "rgba(255,255,255,0.02)",
-                  boxShadow: isSelected
-                    ? `0 0 20px 0 ${cat.color}22`
-                    : undefined,
-                }}
+                style={
+                  isLight
+                    ? {
+                        borderWidth: isSelected ? "2px" : "1px",
+                        borderStyle: "solid",
+                        borderColor: isSelected ? "#F59E0B" : "#D1D5DB",
+                        background: isSelected ? "#FFF7ED" : isAvailable ? "#FFFFFF" : "#F9FAFB",
+                        boxShadow: isSelected ? "0 4px 12px rgba(0,0,0,0.08)" : undefined,
+                        opacity: 1,
+                      }
+                    : {
+                        borderWidth: "2px",
+                        borderStyle: "solid",
+                        borderColor: isSelected
+                          ? cat.color
+                          : isAvailable
+                            ? "rgba(255,255,255,0.15)"
+                            : "rgba(255,255,255,0.05)",
+                        background: isSelected
+                          ? cat.bg
+                          : isAvailable
+                            ? "rgba(255,255,255,0.04)"
+                            : "rgba(255,255,255,0.02)",
+                        boxShadow: isSelected
+                          ? `0 0 20px 0 ${cat.color}22`
+                          : undefined,
+                      }
+                }
               >
                 {/* Icon */}
                 <div
@@ -625,17 +644,25 @@ function Step1({ templates, selected, onSelect, loading }) {
                 <h3
                   className="text-sm font-bold leading-snug mb-1"
                   style={{
-                    color: isSelected || isAvailable ? cat.color : "#ffffff",
+                    color: isLight 
+                      ? (isSelected ? "#92400E" : isAvailable ? "#111827" : "#374151")
+                      : (isSelected || isAvailable ? cat.color : "#ffffff"),
                   }}
                 >
                   {cat.label}
                 </h3>
-                <p className="text-[11px] text-white/40 leading-relaxed line-clamp-2">
+                <p 
+                  className={`text-[11px] leading-relaxed line-clamp-2 ${isLight ? "" : "text-white/40"}`}
+                  style={isLight ? { color: isSelected ? "#78350F" : "#6B7280" } : {}}
+                >
                   {cat.description}
                 </p>
 
                 {cat.status === "coming_soon" && (
-                  <span className="absolute top-3 right-3 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-white/10 text-white/50 tracking-wider">
+                  <span 
+                    className="absolute top-3 right-3 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wider"
+                    style={isLight ? { background: "#E5E7EB", color: "#374151" } : { background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}
+                  >
                     Coming Soon
                   </span>
                 )}
@@ -649,7 +676,7 @@ function Step1({ templates, selected, onSelect, loading }) {
                 {isSelected && (
                   <span
                     className="absolute top-3 right-3 flex items-center gap-x-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ background: cat.bg, color: cat.color }}
+                    style={isLight ? { background: "#FEF3C7", color: "#92400E" } : { background: cat.bg, color: cat.color }}
                   >
                     <CheckCircle size={10} weight="fill" /> Selected
                   </span>
@@ -831,12 +858,28 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
   const dropRef = useRef(null);
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortKey, setSortKey] = useState("original");
 
   const processFiles = async (files) => {
     for (const f of Array.from(files)) {
       await onUpload(f);
     }
   };
+
+  // Process files
+  let processedFiles = safeUploadedFiles.map((f, i) => ({ ...f, originalIndex: i }));
+  
+  if (searchQuery) {
+    const query = searchQuery.toLowerCase();
+    processedFiles = processedFiles.filter(f => f.filename.toLowerCase().includes(query));
+  }
+
+  if (sortKey === "name") {
+    processedFiles.sort((a, b) => a.filename.localeCompare(b.filename));
+  } else if (sortKey === "size") {
+    processedFiles.sort((a, b) => (b.size || 0) - (a.size || 0));
+  }
 
   return (
     <div className="animate-fade-in">
@@ -863,7 +906,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
             }}
           >
             {name}
-            <span className="opacity-60 font-normal">Â· {meta.label}</span>
+            <span className="opacity-60 font-normal">· {meta.label}</span>
           </span>
         ))}
       </div>
@@ -915,7 +958,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
               : "Drag & drop files or click to browse"}
           </p>
           <p className="text-xs text-white/30 mt-0.5">
-            Excel Â· PDF Â· Word Â· PowerPoint Â· Images â€” multiple files supported
+            Excel · PDF · Word · PowerPoint · Images — multiple files supported
           </p>
         </div>
 
@@ -935,73 +978,104 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
                 size={30}
                 className="text-primary-button animate-spin"
               />
-              <p className="text-xs text-white/60">Processing fileâ€¦</p>
+              <p className="text-xs text-white/60">Processing file…</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* File list */}
+      {/* File list Toolbar */}
       {safeUploadedFiles.length > 0 && (
-        <div className="mt-4 flex flex-col gap-y-2">
-          <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">
-            {safeUploadedFiles.length} file
-            {safeUploadedFiles.length !== 1 ? "s" : ""} ready
-          </p>
-          {safeUploadedFiles.map((f, idx) => (
-            <div
-              key={idx}
-              className="flex flex-wrap items-center gap-x-3 px-3 py-2.5 bg-white/4 border border-white/8 rounded-xl group"
-            >
-              <FileTypeIcon name={f.filename} size={18} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-white font-medium truncate leading-tight">
-                  {f.filename}
-                </p>
-                <p className="text-[11px] text-white/30 leading-none mt-0.5">
-                  {(fileExt(f.filename) || "file").toUpperCase()} -{" "}
-                  {formatBytes(f.size) || "Size unavailable"} -{" "}
-                  {isExcelFileName(f.filename)
-                    ? `Validation: ${f.validation?.status || "pending"}`
-                    : f.parsingStatus === "uploaded_unparsed"
-                      ? "Uploaded; parsing unavailable"
-                      : "Uploaded"}
-                  {f.token_count_estimate > 0
-                    ? ` - ~${f.token_count_estimate.toLocaleString()} tokens`
-                    : ""}
-                </p>
-              </div>
-              {f.validation?.status === "error" ? (
-                <X size={14} className="text-red-400 shrink-0" />
-              ) : f.validation?.status === "warning" ? (
-                <WarningCircle size={14} className="text-yellow-400 shrink-0" />
-              ) : (
-                <CheckCircle
-                  size={14}
-                  weight="fill"
-                  className="text-green-400 shrink-0"
-                />
-              )}
-              <button
-                onClick={() => onRemove(idx)}
-                className="p-1 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                title="Remove"
-              >
-                <X size={14} />
-              </button>
-              {f.validation && (
-                <div className="basis-full">
-                  <ExcelValidationCard validation={f.validation} />
-                </div>
-              )}
+        <div className="mt-6 flex flex-col gap-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white/5 p-2 rounded-lg border border-white/10">
+            <div className="flex items-center gap-x-2 pl-1">
+              <span className="text-[14px]">📁</span>
+              <span className="text-[12px] font-semibold text-white/80 tracking-wider">
+                {processedFiles.length} Files Uploaded
+              </span>
             </div>
-          ))}
+            
+            <div className="flex items-center gap-x-2 w-full md:w-auto">
+              <div className="relative flex-1 md:flex-none">
+                <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-md pl-8 pr-2 py-1.5 text-[12px] text-white focus:outline-none focus:border-primary-button w-full md:w-48 placeholder-white/30"
+                />
+              </div>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-md px-2 py-1.5 text-[12px] text-white focus:outline-none focus:border-primary-button appearance-none cursor-pointer outline-none"
+              >
+                <option value="original" className="bg-theme-bg-secondary">Sort: Default</option>
+                <option value="name" className="bg-theme-bg-secondary">Sort: Name</option>
+                <option value="size" className="bg-theme-bg-secondary">Sort: Size</option>
+              </select>
+            </div>
+          </div>
+
+          <div className={`overflow-y-auto custom-scrollbar pr-1 ${safeUploadedFiles.length > 5 ? 'max-h-[350px]' : ''}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
+              {processedFiles.map(f => (
+                <div
+                  key={f.originalIndex}
+                  className="flex items-center gap-x-2.5 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg group transition-colors"
+                >
+                  <div className="shrink-0 opacity-80">
+                    <FileTypeIcon name={f.filename} size={16} />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0 flex items-center justify-between gap-x-2">
+                    <span className="text-[14px] text-white font-medium truncate" title={f.filename}>
+                      {f.filename}
+                    </span>
+                    <span className="text-[11px] text-white/40 shrink-0 whitespace-nowrap">
+                      {formatBytes(f.size) || "Unknown"}
+                    </span>
+                  </div>
+                  
+                  {/* Inline Badges */}
+                  <div className="flex items-center gap-x-1 shrink-0 ml-1">
+                    {f.validation?.status === "error" ? (
+                      <X size={14} className="text-red-400" title="Validation Error" />
+                    ) : f.validation?.status === "warning" ? (
+                      <WarningCircle size={14} className="text-yellow-400" title="Validation Warning" />
+                    ) : f.parsingStatus === "uploaded_unparsed" ? (
+                      <div className="flex items-center gap-x-1 text-white/40 text-[11px]" title="Uploaded (Unparsed)">
+                        <CheckCircle size={14} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-x-1 text-green-400 text-[11px]" title="Uploaded">
+                        <CheckCircle size={14} weight="fill" />
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => onRemove(f.originalIndex)}
+                    className="p-1 text-white/20 hover:text-red-400 transition-colors opacity-0 md:opacity-0 group-hover:opacity-100 md:focus:opacity-100 shrink-0 ml-1 rounded"
+                    title="Remove"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {processedFiles.length === 0 && searchQuery && (
+              <p className="text-center text-xs text-white/40 py-4 italic">No files match your search.</p>
+            )}
+          </div>
         </div>
       )}
 
       {safeUploadedFiles.length === 0 && !uploading && (
         <p className="mt-4 text-center text-xs text-white/25 italic">
-          Files are optional â€” you can generate from form details alone.
+          Files are optional — you can generate from form details alone.
         </p>
       )}
     </div>
@@ -1746,20 +1820,17 @@ function cloneWithInlineStyles(node) {
       <div className="report-ready-header">
         <div className="report-ready-status">
           <div className="report-ready-title-row">
-            <div className="status-dot w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
-              <CheckCircle size={12} weight="fill" className="text-green-400" />
+            <div className="status-dot w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center light:bg-[#DCFCE7]">
+              <CheckCircle size={12} weight="fill" className="text-green-400 light:text-[#15803D]" />
             </div>
-            <h2 className="text-xl font-bold text-white">Report Ready</h2>
+            <h2 className="text-xl font-bold text-white light:text-[#111827] light:text-[32px]">Report Ready</h2>
             {isFallbackMode && (
-              <span className="ml-3 px-2.5 py-1 rounded-full bg-red-900/40 text-red-400 text-xs border border-red-500/30 flex items-center gap-x-1.5 font-semibold shadow-[0_0_15px_rgba(239,68,68,0.15)]">
+              <span className="ml-3 px-2.5 py-1 rounded-full bg-red-900/40 text-red-400 text-xs border border-red-500/30 flex items-center gap-x-1.5 font-semibold shadow-[0_0_15px_rgba(239,68,68,0.15)] light:bg-[#FEE2E2] light:border-[#FCA5A5] light:text-[#B91C1C] light:shadow-none">
                 Deterministic report
               </span>
             )}
           </div>
-          <p className="report-ready-meta text-sm text-white/45">
-            {content.split("\n").length} lines generated â€¢{" "}
-            {(content.length / 1024).toFixed(1)} KB
-          </p>
+
           {isDev && report?.modelUsed && (
             <p className="text-xs text-white/30 mt-1">
               Model used: {report.modelUsed}
@@ -1814,7 +1885,7 @@ function cloneWithInlineStyles(node) {
                 disabled={
                   !canEnhanceWithAi || aiEnhancing || geminiCooldownSeconds > 0
                 }
-                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed light:bg-[#0284C7] light:hover:bg-[#0369A1] light:text-white light:shadow-none"
               >
                 <Sparkle size={18} weight="fill" />
                 {geminiCooldownSeconds > 0
@@ -1833,7 +1904,7 @@ function cloneWithInlineStyles(node) {
                 onClick={() => handleDownloadWord(true)}
                 title="Download Word"
                 disabled={isWordExporting || exportBlocked}
-                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed light:bg-[#EA580C] light:hover:bg-[#C2410C] light:text-white light:shadow-none"
               >
                 <FileDoc size={18} weight="fill" />
                 {isWordExporting && wordExportMode === "draft"
@@ -1845,7 +1916,7 @@ function cloneWithInlineStyles(node) {
                 onClick={handleDownloadPdf}
                 title="Print / Save as PDF"
                 disabled={isPdfExporting}
-                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all"
+                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all light:bg-[#DC2626] light:hover:bg-[#B91C1C] light:text-white light:shadow-none"
               >
                 <FilePdf size={18} weight="fill" />
                 {isPdfExporting ? "Preparing PDF..." : "Print / Save as PDF"}
@@ -1856,21 +1927,21 @@ function cloneWithInlineStyles(node) {
       </div>
 
       {shouldRenderEnergyAuditTemplate && (
-        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden">
-          <p className="text-sm text-sky-100">
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden light:bg-[#EFF6FF] light:border-[#93C5FD]">
+          <p className="text-sm text-sky-100 light:text-[#1E3A8A] light:font-medium">
             AI enhancement is optional. If models are slow, deterministic report
             will be used automatically.
           </p>
 
           {isDev && (
-            <details className="mt-4 rounded-lg bg-black/20 border border-white/10 p-3 animate-fade-in print:hidden">
-              <summary className="cursor-pointer text-sm font-bold text-white/80 flex items-center gap-x-2">
-                <Info size={16} />
+            <details className="mt-4 rounded-lg bg-black/20 border border-white/10 p-3 animate-fade-in print:hidden light:bg-[#F3F4F6] light:border-[#D1D5DB]">
+              <summary className="cursor-pointer text-sm font-bold text-white/80 flex items-center gap-x-2 light:text-[#374151] light:font-semibold">
+                <Info size={16} className="light:text-[#6B7280]" />
                 AI Enhancement Debug (Dev Only)
               </summary>
-              <div className="mt-3 text-xs text-white/70 space-y-2 font-mono">
+              <div className="mt-3 text-xs text-white/70 space-y-2 font-mono light:text-[#374151]">
                 <div>
-                  <span className="font-bold opacity-80 text-white">
+                  <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                     Enhancement Status:
                   </span>{" "}
                   {report?.aiEnhancementStatus?.status ||
@@ -1878,7 +1949,7 @@ function cloneWithInlineStyles(node) {
                     "unknown"}
                 </div>
                 <div>
-                  <span className="font-bold opacity-80 text-white">
+                  <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                     Provider Chain:
                   </span>{" "}
                   {report?.aiProviderAttempted ||
@@ -1886,7 +1957,7 @@ function cloneWithInlineStyles(node) {
                     "unknown"}
                 </div>
                 <div>
-                  <span className="font-bold opacity-80 text-white">
+                  <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                     Final Enhancer Used:
                   </span>{" "}
                   {report?.debug?.finalEnhancerUsed ||
@@ -1894,7 +1965,7 @@ function cloneWithInlineStyles(node) {
                     "unknown"}
                 </div>
                 <div>
-                  <span className="font-bold opacity-80 text-white">
+                  <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                     Model Used:
                   </span>{" "}
                   {report?.modelUsed ||
@@ -1902,7 +1973,7 @@ function cloneWithInlineStyles(node) {
                     "none"}
                 </div>
                 <div>
-                  <span className="font-bold opacity-80 text-white">
+                  <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                     Report Status:
                   </span>{" "}
                   Ready
@@ -1920,7 +1991,7 @@ function cloneWithInlineStyles(node) {
                 {typeof report?.retryAfterSeconds === "number" &&
                   report.retryAfterSeconds > 0 && (
                     <div>
-                      <span className="font-bold opacity-80 text-white">
+                      <span className="font-bold opacity-80 text-white light:text-[#111827] light:opacity-100">
                         Retry After:
                       </span>{" "}
                       {report.retryAfterSeconds}s
@@ -2474,8 +2545,11 @@ function normalizeReportDataFromResponse(response) {
   return normalizeReportDataShape(candidate);
 }
 
-// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————————————————————————————————————
 export default function PublicReports() {
+  const { logo: brandLogo } = useLogo();
+  const { theme, setTheme, isLight } = useThemeContext();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [templates, setTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -2928,12 +3002,20 @@ export default function PublicReports() {
 
   return (
     <div className="w-screen h-screen overflow-hidden bg-theme-bg-container flex">
-      <Sidebar />
+      {isSidebarOpen && <Sidebar />}
 
       <div
         style={{ height: isMobile ? "100%" : "calc(100% - 32px)" }}
-        className="relative md:ml-[2px] md:mr-[16px] md:my-[16px] md:rounded-[16px] bg-theme-bg-secondary w-full h-full overflow-y-auto"
+        className="relative flex-1 md:mx-[16px] md:my-[16px] md:rounded-[16px] bg-theme-bg-secondary w-full h-full overflow-y-auto transition-all duration-300"
       >
+        {/* Hamburger Menu on Left Edge */}
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="absolute left-4 top-4 z-[80] p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors text-white"
+        >
+          <List size={24} />
+        </button>
+
         {/* Subtle ambient gradient top */}
         <div
           className="pointer-events-none absolute top-0 left-0 right-0 h-72 opacity-25"
@@ -2944,28 +3026,51 @@ export default function PublicReports() {
         />
 
         <div
-          className={`relative mx-auto px-4 py-8 md:px-8 md:py-10 ${
-            step === 4 ? "report-preview-card" : "max-w-[820px]"
+          className={`relative mx-auto px-8 md:px-16 2xl:px-20 py-8 md:py-10 transition-all duration-300 w-full ${
+            step === 4 ? "report-preview-card" : "max-w-[1450px] 2xl:max-w-[1400px]"
           }`}
         >
           {/* Page header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-x-3 mb-1">
-              <div className="w-9 h-9 rounded-xl bg-primary-button/15 flex items-center justify-center">
-                <Sparkle
-                  size={18}
-                  weight="fill"
-                  className="text-primary-button"
+          <div className="mb-8 w-full relative">
+            <div className="branding-row">
+              {brandLogo ? (
+                <img 
+                  src={brandLogo} 
+                  alt="SEE-Tech Logo" 
+                  className="brand-logo"
+                  onError={(e) => console.error("Logo failed", e)}
+                  onLoad={() => console.log("Logo loaded")}
                 />
-              </div>
-              <h1 className="text-2xl font-extrabold text-white tracking-tight">
+              ) : (
+                <div style={{ color: "red" }}>No logo received</div>
+              )}
+              
+              <div className="branding-divider" />
+              
+              <h1 className="branding-title text-white tracking-tight">
                 AI Report Generator
               </h1>
             </div>
-            <p className="ml-12 text-sm text-white/40">
-              SEE-Tech Solutions Â· Generate professional engineering reports in
-              minutes.
-            </p>
+
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 hidden md:flex items-center">
+              <button
+                onClick={() => setTheme(isLight ? "dark" : "light")}
+                className="flex items-center gap-x-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors text-[13px] font-medium text-white/80 hover:text-white light:bg-white light:border-[#D1D5DB] light:text-[#111827] light:hover:bg-[#F3F4F6]"
+                title={`Switch to ${isLight ? "Dark" : "Light"} Mode`}
+              >
+                {isLight ? (
+                  <>
+                    <Moon size={16} weight="fill" className="text-blue-500" />
+                    <span>Dark Mode</span>
+                  </>
+                ) : (
+                  <>
+                    <Sun size={16} weight="fill" className="text-yellow-400" />
+                    <span>Light Mode</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Step indicator */}
@@ -2973,7 +3078,7 @@ export default function PublicReports() {
 
           {/* Card */}
           <div
-            className={`bg-white/3 border border-white/8 rounded-2xl p-5 md:p-7 backdrop-blur-sm ${
+            className={`bg-white/3 border border-white/8 rounded-2xl p-5 md:p-7 backdrop-blur-sm light:bg-white light:border-[#D1D5DB] light:shadow-[0_8px_24px_rgba(0,0,0,0.08)] light:rounded-[20px] ${
               step === 4 ? "report-preview-shell" : ""
             }`}
           >
@@ -3060,7 +3165,7 @@ export default function PublicReports() {
               <button
                 onClick={() => setStep((s) => s - 1)}
                 disabled={step === 1}
-                className="flex items-center gap-x-2 px-4 py-2.5 rounded-xl border border-white/10 hover:border-white/22 text-white/50 hover:text-white text-sm font-semibold transition-all disabled:opacity-25 disabled:pointer-events-none"
+                className="flex items-center gap-x-2 px-4 py-2.5 rounded-xl border border-white/10 hover:border-white/22 text-white/50 hover:text-white text-sm font-semibold transition-all disabled:opacity-25 disabled:pointer-events-none light:bg-white light:border-[#D1D5DB] light:text-[#111827] light:hover:bg-[#F3F4F6]"
               >
                 <ArrowLeft size={15} />
                 Back
@@ -3076,7 +3181,7 @@ export default function PublicReports() {
                         ? "w-5 h-1.5 bg-primary-button"
                         : step > s
                           ? "w-3 h-1.5 bg-primary-button/40"
-                          : "w-3 h-1.5 bg-white/12"
+                          : "w-3 h-1.5 bg-white/12 light:bg-[#D1D5DB]"
                     }`}
                   />
                 ))}
@@ -3085,7 +3190,7 @@ export default function PublicReports() {
               <button
                 onClick={() => setStep((s) => s + 1)}
                 disabled={!canNext()}
-                className="flex items-center gap-x-2 px-5 py-2.5 rounded-xl bg-primary-button hover:opacity-90 disabled:opacity-30 disabled:pointer-events-none text-white text-sm font-bold transition-all shadow-md shadow-primary-button/20"
+                className="flex items-center gap-x-2 px-5 py-2.5 rounded-xl bg-primary-button hover:opacity-90 disabled:opacity-30 disabled:pointer-events-none text-white text-sm font-bold transition-all shadow-md shadow-primary-button/20 light:bg-[#2563EB] light:hover:bg-[#1D4ED8]"
               >
                 {step === 3 ? "Review & Generate" : "Continue"}
                 <ArrowRight size={15} />
@@ -3098,7 +3203,7 @@ export default function PublicReports() {
             <div className="mt-5">
               <button
                 onClick={() => setStep(3)}
-                className="flex items-center gap-x-2 px-4 py-2.5 rounded-xl border border-white/10 hover:border-white/22 text-white/50 hover:text-white text-sm font-semibold transition-all"
+                className="flex items-center gap-x-2 px-4 py-2.5 rounded-xl border border-white/10 hover:border-white/22 text-white/50 hover:text-white text-sm font-semibold transition-all light:bg-white light:border-[#D1D5DB] light:text-[#111827] light:hover:bg-[#F3F4F6]"
               >
                 <ArrowLeft size={15} />
                 Back

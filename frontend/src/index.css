@@ -107,16 +107,16 @@
 
 [data-theme="light"] {
   --theme-loader: #000000;
-  --theme-bg-primary: #ffffff;
-  --theme-bg-secondary: #ffffff;
-  --theme-bg-sidebar: #edf2fa;
-  --theme-bg-container: #f9fbfd;
+  --theme-bg-primary: #F8FAFC;
+  --theme-bg-secondary: #F1F5F9;
+  --theme-bg-sidebar: #F8FAFC;
+  --theme-bg-container: #F8FAFC;
   --theme-popup-menu-bg: #c2e7fe;
 
   --theme-bg-chat: #ffffff;
   --theme-bg-chat-input: #eaeaea;
-  --theme-text-primary: #0e0f0f;
-  --theme-text-secondary: #7a7d7e;
+  --theme-text-primary: #111827;
+  --theme-text-secondary: #4B5563;
   --theme-placeholder: #9ca3af;
   --theme-sidebar-item-default: #ffffff;
   --theme-sidebar-item-selected: #ffffff;
@@ -1459,4 +1459,60 @@ does not extend the close button beyond the viewport. */
 .checklist-completed {
   -webkit-animation: fadein 0.3s linear forwards;
   animation: fadein 0.3s linear forwards;
+}
+
+/* Custom Header Branding */
+.branding-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+}
+
+.brand-logo {
+  height: 55px;
+  width: auto;
+  max-width: 350px;
+  object-fit: contain;
+}
+
+.branding-divider {
+  width: 1px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.branding-title {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 2.4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.subtitle {
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* Stepper Icon Contrast Fix */
+.step-completed {
+  background: #2563EB;
+  color: #FFFFFF;
+}
+
+[data-theme="light"] .step-completed,
+.light\:step-completed {
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+}
+
+.step-completed svg,
+.step-completed i,
+.step-completed .icon,
+.step-completed .checkmark {
+  color: #FFFFFF !important;
+  fill: #FFFFFF !important;
+  stroke: #FFFFFF !important;
 }
