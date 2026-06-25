@@ -861,11 +861,36 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
   const [dragging, setDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState("original");
+  const [uploadFeedback, setUploadFeedback] = useState(null);
 
   const processFiles = async (files) => {
-    for (const f of Array.from(files)) {
-      await onUpload(f);
+    const fileArray = Array.from(files);
+    let successCount = 0;
+    let errors = [];
+
+    setUploadFeedback(null);
+
+    for (const f of fileArray) {
+      const res = await onUpload(f);
+      if (res && res.success) {
+        successCount++;
+      } else if (res && res.error) {
+        errors.push(res.error);
+      }
     }
+
+    if (successCount > 0) {
+      const msg = successCount === 1 
+        ? `${fileArray[0].name} uploaded` 
+        : `${successCount} files uploaded successfully`;
+      setUploadFeedback({ type: "success", message: msg });
+    } else if (errors.length > 0) {
+      setUploadFeedback({ type: "error", message: `Upload failed: ${errors[0]}` });
+    }
+
+    setTimeout(() => {
+      setUploadFeedback(null);
+    }, 5000);
   };
 
   // Process files
@@ -1074,7 +1099,20 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
         </div>
       )}
 
-      {safeUploadedFiles.length === 0 && !uploading && (
+      {uploadFeedback && (
+        <div className="mt-4 flex justify-center animate-fade-in transition-all duration-300">
+          <div className="flex items-center gap-x-2 bg-[#1A1A1A] border border-white/10 px-4 py-2.5 rounded-full shadow-lg">
+            {uploadFeedback.type === "success" ? (
+              <CheckCircle size={18} weight="fill" className="text-green-500" />
+            ) : (
+              <WarningCircle size={18} weight="fill" className="text-red-500" />
+            )}
+            <span className="text-[13px] text-white font-medium leading-none tracking-wide">{uploadFeedback.message}</span>
+          </div>
+        </div>
+      )}
+
+      {safeUploadedFiles.length === 0 && !uploading && !uploadFeedback && (
         <p className="mt-4 text-center text-xs text-white/25 italic">
           Files are optional — you can generate from form details alone.
         </p>
@@ -2717,13 +2755,12 @@ export default function PublicReports() {
           validation: null,
         };
         setUploadedFiles((prev) => [...prev, uploadedFile]);
-        showToast("File uploaded. Extraction will be attempted during generation. Unsupported or unreadable files will be skipped with warnings.", "success");
-        return uploadedFile;
+        return { success: true, file: uploadedFile };
       } else {
-        showToast(`Upload failed: ${res.error}`, "error");
+        return { success: false, error: res.error };
       }
     } catch (err) {
-      showToast("Upload error: " + err.message, "error");
+      return { success: false, error: err.message };
     } finally {
       setUploading(false);
     }
