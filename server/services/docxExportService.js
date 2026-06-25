@@ -10,9 +10,13 @@ const {
   AlignmentType,
   WidthType,
   PageBreak,
+  ImageRun,
 } = require("docx");
+const fs = require("fs");
+const path = require("path");
 const { asArray, normalizeReportForExport } = require("./llmProviderService");
 const { enforceReportQuality } = require("./reportQualityEnforcer");
+const { cleanMetadataValue } = require("../utils/cleanMetadata");
 const {
   cleanBulletLines: sharedCleanBulletLines,
   removeInternalPhrases,
@@ -1041,7 +1045,27 @@ function mandatoryKeyValueTable(
 }
 
 function generateCoverPage(info) {
-  return [
+  const coverElements = [];
+
+  const logoPath = path.join(__dirname, "../../frontend/public/assets/seetech-logo.png");
+  if (fs.existsSync(logoPath)) {
+    coverElements.push(
+      new Paragraph({
+        children: [
+          new ImageRun({
+            data: fs.readFileSync(logoPath),
+            transformation: {
+              width: 180,
+              height: 40,
+            },
+          }),
+        ],
+        spacing: { after: 200 },
+      })
+    );
+  }
+
+  coverElements.push(
     new Paragraph({
       children: [
         new TextRun({
@@ -1052,7 +1076,10 @@ function generateCoverPage(info) {
         }),
       ],
       spacing: { after: 100 },
-    }),
+    })
+  );
+
+  coverElements.push(
     new Paragraph({
       children: [
         new TextRun({
@@ -1062,7 +1089,10 @@ function generateCoverPage(info) {
         }),
       ],
       spacing: { after: 1200 },
-    }),
+    })
+  );
+
+  coverElements.push(
     new Paragraph({
       children: [
         new TextRun({
@@ -1073,7 +1103,10 @@ function generateCoverPage(info) {
         }),
       ],
       spacing: { after: 400 },
-    }),
+    })
+  );
+
+  coverElements.push(
     new Paragraph({
       children: [
         new TextRun({
@@ -1083,18 +1116,23 @@ function generateCoverPage(info) {
         }),
       ],
       spacing: { after: 800 },
-    }),
+    })
+  );
+
+  coverElements.push(
     keyValueTable([
-      { label: "Prepared For", value: info.clientName },
-      { label: "Building Type", value: info.buildingType },
-      { label: "Location", value: info.location },
-      { label: "Audit Period", value: info.auditPeriod },
-      { label: "Report Date", value: info.reportDate },
-      { label: "Prepared By", value: info.preparedBy || "SEE-Tech Solutions" },
-      { label: "Document Version", value: info.documentVersion },
-    ]),
-    pageBreak(),
-  ];
+      { label: "Prepared For", value: cleanMetadataValue("Prepared For", info.clientName) },
+      { label: "Building Type", value: cleanMetadataValue("Building Type", info.buildingType) },
+      { label: "Location", value: cleanMetadataValue("Location", info.location) },
+      { label: "Audit Period", value: cleanMetadataValue("Audit Period", info.auditPeriod) },
+      { label: "Report Date", value: cleanMetadataValue("Report Date", info.reportDate) },
+      { label: "Prepared By", value: cleanMetadataValue("Prepared By", info.preparedBy || "SEE-Tech Solutions") },
+      { label: "Document Version", value: cleanMetadataValue("Document Version", info.documentVersion) },
+    ])
+  );
+
+  coverElements.push(pageBreak());
+  return coverElements;
 }
 
 function generateTableOfContents(groupedProjects) {

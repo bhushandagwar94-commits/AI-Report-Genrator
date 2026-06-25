@@ -1,7 +1,6 @@
 {
-  "mode": "frontend-preview-html-docx-js",
-  "htmlLength": 3396360,
-  "bufferLength": 3417527,
+  "mode": "backend-native-docx",
+  "bufferLength": 226959,
   "startsWithPK": true,
-  "time": "2026-06-24T05:51:23.381Z"
+  "time": "2026-06-25T09:14:59.842Z"
 }

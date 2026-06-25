@@ -1,6 +1,7 @@
 import React from "react";
 import type { ReportInfo } from "../types";
 import { safeValue } from "../utils/formatting";
+import { cleanMetadataValue } from "../../../../../utils/cleanMetadata";
 
 export default function CoverPage({ data }: { data: ReportInfo }) {
   return (
@@ -15,27 +16,27 @@ export default function CoverPage({ data }: { data: ReportInfo }) {
 
       <div className="cover-content">
         <p className="cover-label">Commercial Building Energy Audit</p>
-        <h2>{safeValue(data.clientName)}</h2>
-        <p>{safeValue(data.buildingType)}</p>
-        <p>{safeValue(data.location)}</p>
+        <h2>{cleanMetadataValue("Client Name", data.clientName)}</h2>
+        <p>{cleanMetadataValue("Building Type", data.buildingType)}</p>
+        <p>{cleanMetadataValue("Location", data.location)}</p>
       </div>
 
       <div className="cover-grid">
         <div>
           <span>Audit Period</span>
-          <strong>{safeValue(data.auditPeriod)}</strong>
+          <strong>{cleanMetadataValue("Audit Period", data.auditPeriod)}</strong>
         </div>
         <div>
           <span>Report Date</span>
-          <strong>{safeValue(data.reportDate)}</strong>
+          <strong>{cleanMetadataValue("Report Date", data.reportDate)}</strong>
         </div>
         <div>
           <span>Prepared By</span>
-          <strong>{safeValue(data.preparedBy)}</strong>
+          <strong>{cleanMetadataValue("Prepared By", data.preparedBy)}</strong>
         </div>
         <div>
           <span>Document Version</span>
-          <strong>{safeValue(data.documentVersion)}</strong>
+          <strong>{cleanMetadataValue("Document Version", data.documentVersion)}</strong>
         </div>
       </div>
     </section>

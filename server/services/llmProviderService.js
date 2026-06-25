@@ -1,4 +1,5 @@
 const { getLLMProvider } = require("../utils/helpers");
+const { formatReportDate } = require("./reportFormattingService");
 
 /**
  * Normalizes values to strings, safely extracts text from Excel objects,
@@ -137,6 +138,20 @@ function getProjectsForQC(reportData) {
 
 function normalizeReportForExport(reportData) {
   const source = reportData && typeof reportData === "object" ? reportData : {};
+  
+  if (source.reportInfo && source.reportInfo.reportDate) {
+    source.reportInfo.reportDate = formatReportDate(source.reportInfo.reportDate);
+  }
+  if (source.reportDate) {
+    source.reportDate = formatReportDate(source.reportDate);
+  }
+  if (source.projectInfo && source.projectInfo.reportDate) {
+    source.projectInfo.reportDate = formatReportDate(source.projectInfo.reportDate);
+  }
+  if (source.buildingProfile && source.buildingProfile.reportDate) {
+    source.buildingProfile.reportDate = formatReportDate(source.buildingProfile.reportDate);
+  }
+
   const groupedProjects = asArray(source.groupedProjects);
   const rawProjects = asArray(source.projects);
   const flattenedProjects = groupedProjects.flatMap((group) =>

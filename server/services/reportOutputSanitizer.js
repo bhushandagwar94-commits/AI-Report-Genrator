@@ -37,8 +37,27 @@ function cleanBulletLines(text) {
     .filter(Boolean);
 }
 
+function normalizeTechnicalText(text) {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/\bwirh\b/gi, "with")
+    .replace(/\brefrofit\b/gi, "retrofit")
+    .replace(/\befficieny motor\b/gi, "efficiency motor")
+    .replace(/\befficieny\b/gi, "efficiency")
+    .replace(/\bdeg c\b/gi, "°C")
+    .replace(/\bdelta t\b/gi, "ΔT")
+    .replace(/\bdelta p\b/gi, "ΔP")
+    .replace(/\bkwh\b/gi, "kWh")
+    .replace(/\bkw\b/gi, "kW")
+    .replace(/\bco2\b/gi, "CO₂")
+    .replace(/\bvfd\b/gi, "VFD")
+    .replace(/\bie5\b/gi, "IE5")
+    .replace(/\bie4\b/gi, "IE4")
+    .replace(/\bpms motor\b/gi, "PMS motor");
+}
+
 function sanitizeNarrativeText(text) {
-  return removeInternalPhrases(cleanBulletLines(text).join("\n"));
+  return normalizeTechnicalText(removeInternalPhrases(cleanBulletLines(text).join("\n")));
 }
 
 function sanitizeReportOutput(value) {

@@ -14,6 +14,26 @@ const { extractVrChennaiWorkbook } = require("../services/vrChennaiWorkbookExtra
 const { normalizeReportGroups } = require("../utils/groupHelper");
 const { getModelTag } = require("./utils");
 const htmlDocx = require("html-docx-js");
+try {
+  const mhtDocumentTemplate = require("html-docx-js/build/templates/mht_document");
+  const htmlDocxUtils = require("html-docx-js/build/utils");
+  htmlDocxUtils.getMHTdocument = function(htmlSource) {
+    const ref = this._prepareImageParts(htmlSource);
+    const imageContentParts = ref.imageContentParts;
+    const encodedHtml = Buffer.from(ref.htmlSource, 'utf8').toString('base64');
+    const chunkedHtml = encodedHtml.match(/.{1,76}/g)?.join('\n') || '';
+    let mht = mhtDocumentTemplate({
+      htmlSource: chunkedHtml,
+      contentParts: imageContentParts.join('\n')
+    });
+    return mht.replace(
+      'Content-Transfer-Encoding: quoted-printable',
+      'Content-Transfer-Encoding: base64'
+    );
+  };
+} catch (e) {
+  console.warn("Failed to patch html-docx-js for base64:", e);
+}
 let AdmZip;
 try {
   AdmZip = require("adm-zip");
@@ -3328,131 +3348,70 @@ function reportEndpoints(app) {
   // ── PUBLIC / ADMIN: Export DOCX ────────────────────────────────────────────
   
   app.post('/export-docx', async (req, res) => {
-  const debugDir = path.join(__dirname, '../debug-extraction');
-  fs.mkdirSync(debugDir, { recursive: true });
+    const debugDir = path.join(__dirname, '../debug-extraction');
+    fs.mkdirSync(debugDir, { recursive: true });
 
-  try {
-    const html = req.body?.html;
+    try {
+      const reportData = req.body?.reportData?.reportData || req.body?.reportData?.outputContent ? JSON.parse(req.body.reportData.outputContent || JSON.stringify(req.body.reportData.reportData)) : req.body?.reportData;
 
-    if (!html || html.length < 1000) {
-      return res.status(400).json({
+      if (!reportData) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing reportData for Word export"
+        });
+      }
+
+      const buffer = await buildCommercialBuildingEnergyAuditDocx(reportData);
+
+      if (!buffer || buffer.length < 1000 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+        throw new Error("Native DOCX generator generated invalid DOCX buffer");
+      }
+
+      fs.writeFileSync(
+        path.join(debugDir, "latest-native-sent-report.docx"),
+        buffer
+      );
+
+      fs.writeFileSync(
+        path.join(debugDir, "latest-docx-export-mode.json"),
+        JSON.stringify({
+          mode: "backend-native-docx",
+          bufferLength: buffer.length,
+          startsWithPK: buffer[0] === 0x50 && buffer[1] === 0x4b,
+          time: new Date().toISOString()
+        }, null, 2)
+      );
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="SEE-Tech_Detailed_Energy_Audit_Report.docx"'
+      );
+      res.setHeader("Content-Length", buffer.length);
+
+      return res.end(buffer);
+
+    } catch (error) {
+      console.error("DOCX_EXPORT_FAILED", error);
+
+      fs.writeFileSync(
+        path.join(debugDir, "latest-docx-export-error.json"),
+        JSON.stringify({
+          message: error.message,
+          stack: error.stack,
+          time: new Date().toISOString()
+        }, null, 2)
+      );
+
+      return res.status(500).json({
         success: false,
-        error: "Missing preview HTML for Word export"
+        error: error.message
       });
     }
-
-    const fullHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  @page {
-    size: A4;
-    margin: 18mm 16mm 18mm 16mm;
-  }
-
-  body {
-    font-family: Arial, Calibri, sans-serif;
-    font-size: 11pt;
-    line-height: 1.45;
-    background: white;
-  }
-
-  table {
-    border-collapse: collapse;
-    width: 100%;
-  }
-
-  th, td {
-    vertical-align: top;
-  }
-
-  .no-export,
-  button,
-  .download-button,
-  .debug-panel {
-    display: none !important;
-  }
-</style>
-</head>
-<body>
-${html}
-</body>
-</html>
-`;
-
-    fs.writeFileSync(
-      path.join(debugDir, "latest-word-export-preview.html"),
-      fullHtml,
-      "utf8"
-    );
-
-    const blob = htmlDocx.asBlob(fullHtml);
-
-    let buffer;
-
-    if (Buffer.isBuffer(blob)) {
-      buffer = blob;
-    } else if (blob instanceof ArrayBuffer) {
-      buffer = Buffer.from(blob);
-    } else if (blob && blob.arrayBuffer) {
-      const arrayBuffer = await blob.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-    } else {
-      buffer = Buffer.from(blob);
-    }
-
-    if (!buffer || buffer.length < 1000 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
-      throw new Error("html-docx-js generated invalid DOCX buffer");
-    }
-
-    fs.writeFileSync(
-      path.join(debugDir, "latest-browser-sent-report.docx"),
-      buffer
-    );
-
-    fs.writeFileSync(
-      path.join(debugDir, "latest-docx-export-mode.json"),
-      JSON.stringify({
-        mode: "frontend-preview-html-docx-js",
-        htmlLength: html.length,
-        bufferLength: buffer.length,
-        startsWithPK: buffer[0] === 0x50 && buffer[1] === 0x4b,
-        time: new Date().toISOString()
-      }, null, 2)
-    );
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="SEE-Tech_Detailed_Energy_Audit_Report.docx"'
-    );
-    res.setHeader("Content-Length", buffer.length);
-
-    return res.end(buffer);
-
-  } catch (error) {
-    console.error("DOCX_EXPORT_FAILED", error);
-
-    fs.writeFileSync(
-      path.join(debugDir, "latest-docx-export-error.json"),
-      JSON.stringify({
-        message: error.message,
-        stack: error.stack,
-        time: new Date().toISOString()
-      }, null, 2)
-    );
-
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
+  });
 app.post(
     "/reports/:id/training-data/corrected-docx",
     [validatedRequest, flexUserRoleValid([ROLES.all]), handleFileUpload],

@@ -10,7 +10,7 @@ let tsx = fs.readFileSync(targetPath, 'utf8');
 
 const newTsx = `"use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 /**
  * SEE-Tech Commercial Building Energy Audit Report Template
@@ -111,12 +111,39 @@ function isMeaningful(value: any): boolean {
   return true;
 }
 
+function removeInternalPhrases(text: string): string {
+  if (typeof text !== "string") return "";
+  return text
+    .replace(/\s*\(data required\)/gi, "")
+    .replace(/\s*\(to be filled\)/gi, "")
+    .replace(/\[To be updated.*\]/gi, "");
+}
+
+export function cleanTechnicalText(text: string): string {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/\bwirh\b/gi, "with")
+    .replace(/\brefrofit\b/gi, "retrofit")
+    .replace(/\befficieny motor\b/gi, "efficiency motor")
+    .replace(/\befficieny\b/gi, "efficiency")
+    .replace(/\bdeg c\b/gi, "°C")
+    .replace(/\bdelta t\b/gi, "ΔT")
+    .replace(/\bdelta p\b/gi, "ΔP")
+    .replace(/\bkwh\b/gi, "kWh")
+    .replace(/\bkw\b/gi, "kW")
+    .replace(/\bco2\b/gi, "CO₂")
+    .replace(/\bvfd\b/gi, "VFD")
+    .replace(/\bie5\b/gi, "IE5")
+    .replace(/\bie4\b/gi, "IE4")
+    .replace(/\bpms motor\b/gi, "PMS motor");
+}
+
 function fallbackText(value: any, placeholder = "[To be updated after site data verification]"): string {
   if (typeof value === "object" && value !== null) {
     if (value.value !== undefined) return fallbackText(value.value, placeholder);
     if (value.text !== undefined) return fallbackText(value.text, placeholder);
   }
-  return isMeaningful(value) ? String(value).trim() : placeholder;
+  return isMeaningful(value) ? cleanTechnicalText(removeInternalPhrases(String(value)).trim()) : placeholder;
 }
 
 function firstNonEmpty(...values: any[]): string {
@@ -141,6 +168,16 @@ function formatCurrencyDisplay(value: any): string {
   if (Number.isFinite(num)) return \`₹\${Math.round(num).toLocaleString("en-IN")}\`;
   const str = String(value);
   return str.includes("₹") ? str : \`₹\${str}\`;
+}
+
+function cleanBulletLines(value: any): string[] {
+  if (!value) return [];
+  const str = typeof value === "string" ? value : String(value);
+  return str.split(/[\\n\\r]+/).map(line => line.replace(/^[-*•]\\s*/, "").trim()).filter(line => line.length > 0);
+}
+
+function cleanBulletText(value: unknown): string[] {
+  return cleanBulletLines(removeInternalPhrases(value)).map(line => cleanTechnicalText(line));
 }
 
 function formatPaybackDisplay(value: any): string {
@@ -185,10 +222,20 @@ function formatEcmNumber(project: CommercialBuildingProject) {
   return projectNo !== "[To be updated after site data verification]" ? \`ECM \${projectNo}\` : "";
 }
 
+function formatEcmHeading(sectionNumber: string, ecmNo: any, title: any) {
+  const cleanEcmNo = formatEcmNumber(ecmNo);
+  let cleanTitle = String(title ?? "").trim();
+  cleanTitle = cleanTitle.replace(/^(ECM|Ecm|ecm)\s*\d*\s*[-–:]*\s*/i, '').trim();
+  cleanTitle = cleanTechnicalText(cleanTitle);
+
+  return cleanTitle
+    ? \`\${sectionNumber} \${cleanEcmNo} – \${cleanTitle}\`
+    : \`\${sectionNumber} \${cleanEcmNo}\`;
+}
+
 function formatGroupHeading(group: any, index: number) {
-  const subChapter = \`3.\${index + 1}\`;
   const groupNo = group.groupNo || \`GR-\${index + 1}\`;
-  return \`\${subChapter} \${groupNo} \${group.groupTitle || ""}\`.trim();
+  return cleanTechnicalText(\`\${groupNo} \${group.groupTitle || ""}\`.trim());
 }
 
 function normalizeTableRows(rows: any) {
@@ -266,10 +313,27 @@ function renderOptionalKeyValueTable(dataObj: any, placeholder: string) {
 
 // Subcomponents
 function CoverPage({ data }: { data: ReportInfo }) {
+  const [logoSrc, setLogoSrc] = useState<string>("/api/system/logo");
+
+  useEffect(() => {
+    fetch("/api/system/logo")
+      .then(res => res.blob())
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (reader.result) {
+            setLogoSrc(reader.result as string);
+          }
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <section className="report-page" style={{ ...pageStyle, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <img src="/assets/seetech-logo.png" alt="SEE-Tech Logo" style={{ height: 40, objectFit: "contain" }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <img src={logoSrc} alt="SEE-Tech Logo" style={{ height: 40, objectFit: "contain" }} />
         <div>
           <div style={{ color: colors.primaryBlue, fontSize: 18, fontWeight: 800 }}>SEE-Tech Solutions</div>
           <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Commercial Building Energy Audit Report Format</div>

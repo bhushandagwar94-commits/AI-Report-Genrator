@@ -28,6 +28,7 @@ const {
   formatPf,
   formatYears,
 } = require("./reportFormattingService");
+const { cleanMetadataValue } = require("../utils/cleanMetadata");
 
 
 
@@ -227,8 +228,8 @@ function buildEcmDetail(project, context) {
     paybackYearsFormatted: formatYears(project.paybackYearsRaw ?? (project.paybackMonthsRaw ?? project.paybackRaw ?? project.paybackMonths ? (project.paybackMonthsRaw ?? project.paybackRaw ?? project.paybackMonths) / 12 : null)),
     existingCondition: cleanText([project.equipmentName, baselineNotes].filter(Boolean).join(". ")),
     problemGap,
-    proposedProject: proposedProject || "Proposed project description is not available in uploaded data and is listed in Annexure B.",
-    projectActivities: activities.length ? activities : ["Project activities are not available in uploaded data and are listed in Annexure B."],
+    proposedProject: proposedProject || "Proposed project description is To be confirmed and is listed in Annexure B.",
+    projectActivities: activities.length ? activities : ["Project activities are To be confirmed and are listed in Annexure B."],
     energySavingCalculationRows: [
       ["Baseline kWh/year", formatKwh(project.baselineKwhPerYearRaw, "kWh/year")],
       ["Saving %", formatPercent(project.savingPercentRaw)],
@@ -343,14 +344,14 @@ function buildVrChennaiClientReadyModel(reportData = {}, extractedDataInput = {}
   ].filter(([, value]) => cleanText(value));
 
   const facilityProfileRows = [
-    ["Client name", context.projectInfo.clientName],
-    ["Facility name", context.projectInfo.facilityName],
-    ["Address", context.projectInfo.address],
-    ["Location", context.projectInfo.location],
-    ["Building type", context.projectInfo.buildingType],
-    ["Audit period", context.projectInfo.auditPeriod],
-    ["Report date", context.projectInfo.reportDate],
-    ["Prepared by", context.projectInfo.preparedBy],
+    ["Client name", cleanMetadataValue("Client Name", context.projectInfo.clientName)],
+    ["Facility name", cleanMetadataValue("Facility Name", context.projectInfo.facilityName)],
+    ["Address", cleanMetadataValue("Address", context.projectInfo.address)],
+    ["Location", cleanMetadataValue("Location", context.projectInfo.location)],
+    ["Building type", cleanMetadataValue("Building Type", context.projectInfo.buildingType)],
+    ["Audit period", cleanMetadataValue("Audit Period", context.projectInfo.auditPeriod)],
+    ["Report date", cleanMetadataValue("Report Date", context.projectInfo.reportDate)],
+    ["Prepared by", cleanMetadataValue("Prepared By", context.projectInfo.preparedBy)],
     ["Service number", context.electricalProfile.serviceNo],
     ["Tariff", context.electricalProfile.tariffCategory],
     ["Contract demand", formatKva(context.electricalProfile.contractDemandKva)],

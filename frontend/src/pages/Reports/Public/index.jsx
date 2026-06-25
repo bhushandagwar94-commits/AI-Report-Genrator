@@ -1449,11 +1449,9 @@ function Step4({
   const [rechecking, setRechecking] = useState(false);
   const [isWordExporting, setIsWordExporting] = useState(false);
   const [wordExportMode, setWordExportMode] = useState(null);
-  const [isPdfExporting, setIsPdfExporting] = useState(false);
   const reportRef = useRef(null);
   const reportPreviewRef = useRef(null);
   const wordExportToastRef = useRef(null);
-  const pdfExportToastRef = useRef(null);
 
   const content = report?.outputContent || "";
   const shouldRenderEnergyAuditTemplate =
@@ -1496,13 +1494,7 @@ function Step4({
     import.meta.env.MODE === "development" ||
     import.meta.env.VITE_ALLOW_DRAFT_EXPORT === "true";
 
-  const handlePrint = useReactToPrint({
-    content: () => reportRef.current,
-    documentTitle: "SEE-Tech_Detailed_Energy_Audit_Report",
-    onPrintError: () => {
-      window.print();
-    },
-  });
+
 
   const runFrontendQC = () => {
     let failed = false;
@@ -1768,53 +1760,7 @@ function cloneWithInlineStyles(node) {
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (isPdfExporting) return;
 
-    if (!reportRef.current) {
-      showToast("Please generate the report before downloading PDF.", "info");
-      return;
-    }
-
-    const qc = runFrontendQC();
-    if (qc.failed) {
-      setQcResult({ qcFailed: true, qcErrors: qc.errors });
-      showToast(
-        "Report requires review before final export. Please check QC details.",
-        "error"
-      );
-      return;
-    }
-
-    setIsPdfExporting(true);
-    pdfExportToastRef.current = toast.loading("Preparing PDF...");
-
-    try {
-      await Promise.resolve(handlePrint?.());
-      toast.update(pdfExportToastRef.current, {
-        render: "PDF print dialog opened.",
-        type: "success",
-        isLoading: false,
-        autoClose: 3000,
-        closeButton: true,
-      });
-    } catch (error) {
-      if (isDev) {
-        console.error("[PDF EXPORT ERROR]", error);
-      }
-      window.print();
-      toast.update(pdfExportToastRef.current, {
-        render: "Failed to generate PDF, trying browser print...",
-        type: "warning",
-        isLoading: false,
-        autoClose: 5000,
-        closeButton: true,
-      });
-    } finally {
-      setIsPdfExporting(false);
-      pdfExportToastRef.current = null;
-    }
-  };
 
   const handleRecheck = async () => {
     if (!report?.id) return;
@@ -1950,16 +1896,7 @@ function cloneWithInlineStyles(node) {
                   ? "Generating Word..."
                   : "Download Word"}
               </button>
-              <button
-                type="button"
-                onClick={handleDownloadPdf}
-                title="Print / Save as PDF"
-                disabled={isPdfExporting}
-                className="report-export-button flex items-center gap-x-1.5 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold shadow-lg shadow-red-500/20 transition-all light:bg-[#DC2626] light:hover:bg-[#B91C1C] light:text-white light:shadow-none"
-              >
-                <FilePdf size={18} weight="fill" />
-                {isPdfExporting ? "Preparing PDF..." : "Print / Save as PDF"}
-              </button>
+
             </>
           )}
         </div>
