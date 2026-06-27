@@ -1101,7 +1101,7 @@ function Step2({ safeUploadedFiles, onUpload, onRemove, uploading }) {
 
       {uploadFeedback && (
         <div className="mt-4 flex justify-center animate-fade-in transition-all duration-300">
-          <div className="flex items-center gap-x-2 bg-[#1A1A1A] border border-white/10 px-4 py-2.5 rounded-full shadow-lg">
+          <div className="flex items-center gap-x-2 bg-theme-bg-secondary border border-white/10 px-4 py-2.5 rounded-full shadow-lg">
             {uploadFeedback.type === "success" ? (
               <CheckCircle size={18} weight="fill" className="text-green-500" />
             ) : (
@@ -1420,7 +1420,7 @@ function Step3({
           </p>
         </div>
       )}
-      <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+      <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100 light:bg-[#E0F2FE] light:border-[#7DD3FC] light:text-[#0F172A] light:font-medium">
         AI enhancement is optional. If models are slow, deterministic report
         will be used automatically.
       </div>
@@ -1903,8 +1903,8 @@ function cloneWithInlineStyles(node) {
       </div>
 
       {shouldRenderEnergyAuditTemplate && (
-        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden light:bg-[#EFF6FF] light:border-[#93C5FD]">
-          <p className="text-sm text-sky-100 light:text-[#1E3A8A] light:font-medium">
+        <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-4 print:hidden light:bg-[#E0F2FE] light:border-[#7DD3FC]">
+          <p className="text-sm text-sky-100 light:text-[#0F172A] light:font-medium">
             AI enhancement is optional. If models are slow, deterministic report
             will be used automatically.
           </p>

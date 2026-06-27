@@ -160,6 +160,10 @@ async function tryGeminiProvider({ systemPrompt, userPrompt }) {
     });
     attempts.push(attempt);
 
+    console.log("[AI_ENHANCEMENT] Provider selected: gemini");
+    console.log("[AI_ENHANCEMENT] Prompt generated", { promptLength: userPrompt?.length || 0 });
+    console.log(`[AI_ENHANCEMENT] Request sent to model: ${model}`);
+
     console.log("[AI_PROVIDER_ATTEMPT]", {
       provider: "gemini",
       model,
@@ -190,6 +194,7 @@ async function tryGeminiProvider({ systemPrompt, userPrompt }) {
       );
 
       const content = getFirstGeminiContent(result.responseData);
+      console.log("[AI_ENHANCEMENT] Response received", { contentLength: content?.length || 0, status: result.status });
       if (result.ok && content) {
         console.log("[AI_PROVIDER_SUCCESS]", {
           provider: "gemini",
@@ -226,6 +231,8 @@ async function tryGeminiProvider({ systemPrompt, userPrompt }) {
       attempt.httpStatus = result.status;
       attempt.error = errorMessage || "Gemini returned empty content";
     } catch (error) {
+      console.error("[AI_ENHANCEMENT] Exact exception:", error.message);
+      console.error("[AI_ENHANCEMENT] Stack trace:", error.stack);
       console.error("[AI_PROVIDER_FAILED]", {
         provider: "gemini",
         model,
@@ -270,6 +277,10 @@ async function tryOpenAiProvider({ systemPrompt, userPrompt }) {
   });
   attempts.push(attempt);
 
+  console.log("[AI_ENHANCEMENT] Provider selected: openai");
+  console.log("[AI_ENHANCEMENT] Prompt generated", { promptLength: userPrompt?.length || 0 });
+  console.log(`[AI_ENHANCEMENT] Request sent to model: ${model}`);
+
   console.log("[AI_PROVIDER_ATTEMPT]", {
     provider: "openai",
     model,
@@ -300,6 +311,7 @@ async function tryOpenAiProvider({ systemPrompt, userPrompt }) {
     );
 
     const content = getFirstOpenAiContent(result.responseData);
+    console.log("[AI_ENHANCEMENT] Response received", { contentLength: content?.length || 0, status: result.status });
     if (result.ok && content) {
       console.log("[AI_PROVIDER_SUCCESS]", {
         provider: "openai",
@@ -327,6 +339,8 @@ async function tryOpenAiProvider({ systemPrompt, userPrompt }) {
         : JSON.stringify(result.responseData || {})).slice(0, 500) ||
       "OpenAI returned empty content";
   } catch (error) {
+    console.error("[AI_ENHANCEMENT] Exact exception:", error.message);
+    console.error("[AI_ENHANCEMENT] Stack trace:", error.stack);
     attempt.status = "failed";
     attempt.httpStatus = error.response?.status || null;
     attempt.error = error.message;
@@ -366,6 +380,10 @@ async function tryOpenRouterProvider({ systemPrompt, userPrompt }) {
         keyConfigured: Boolean(apiKey),
       });
       attempts.push(attempt);
+      console.log("[AI_ENHANCEMENT] Provider selected: openrouter");
+      console.log("[AI_ENHANCEMENT] Prompt generated", { promptLength: userPrompt?.length || 0 });
+      console.log(`[AI_ENHANCEMENT] Request sent to model: ${model}`);
+
       console.log("[AI_PROVIDER_ATTEMPT]", {
         provider: "openrouter",
         model,
@@ -397,6 +415,16 @@ async function tryOpenRouterProvider({ systemPrompt, userPrompt }) {
         );
 
         const content = getFirstOpenAiContent(result.responseData);
+        console.log("[AI_ENHANCEMENT] Response received", { 
+          url: "https://openrouter.ai/api/v1/chat/completions",
+          model,
+          hasKey: Boolean(apiKey),
+          timeoutMs: getAiTimeoutMs(),
+          contentLength: content?.length || 0, 
+          status: result.status,
+          body: (typeof result.responseData === "string" ? result.responseData : JSON.stringify(result.responseData || {})).slice(0, 500)
+        });
+
         if (result.ok && content) {
           console.log("[AI_PROVIDER_SUCCESS]", {
             provider: "openrouter",
@@ -418,15 +446,35 @@ async function tryOpenRouterProvider({ systemPrompt, userPrompt }) {
 
         attempt.status = "failed";
         attempt.httpStatus = result.status;
-        attempt.error =
-          (typeof result.responseData === "string"
-            ? result.responseData
-            : JSON.stringify(result.responseData || {})).slice(0, 500) ||
-          "OpenRouter returned empty content";
+        
+        let rootCauseMessage = "OpenRouter returned empty content";
+        if (!result.ok) {
+           if (result.status === 401) rootCauseMessage = "401 Unauthorized";
+           else if (result.status === 403) rootCauseMessage = "403 Forbidden";
+           else if (result.status === 429) rootCauseMessage = "429 Rate Limit";
+           else if (result.status >= 500) rootCauseMessage = `${result.status} Provider Error`;
+           else rootCauseMessage = `HTTP ${result.status} Error`;
+           
+           const bodyStr = (typeof result.responseData === "string" ? result.responseData : JSON.stringify(result.responseData || {})).slice(0, 200);
+           rootCauseMessage += ` - ${bodyStr}`;
+        }
+        attempt.error = rootCauseMessage;
       } catch (error) {
+        const fetchCode = error.cause?.code || error.code;
+        let rootCauseMessage = error.message;
+
+        if (fetchCode === 'ENOTFOUND') rootCauseMessage = 'DNS Lookup failed (ENOTFOUND)';
+        else if (fetchCode === 'ECONNRESET') rootCauseMessage = 'Connection reset by peer (ECONNRESET)';
+        else if (fetchCode === 'ETIMEDOUT') rootCauseMessage = 'Connection timed out (ETIMEDOUT)';
+        else if (fetchCode === 'UND_ERR_CONNECT_TIMEOUT') rootCauseMessage = 'Connection timed out (UND_ERR_CONNECT_TIMEOUT)';
+        else if (error.message.includes('timed out')) rootCauseMessage = 'Request timed out (ETIMEDOUT)';
+        else if (fetchCode) rootCauseMessage = `Network error: ${fetchCode}`;
+
+        console.error("[AI_ENHANCEMENT] Exact exception:", rootCauseMessage, error.message);
+        console.error("[AI_ENHANCEMENT] Stack trace:", error.stack);
         attempt.status = "failed";
         attempt.httpStatus = error.response?.status || null;
-        attempt.error = error.message;
+        attempt.error = rootCauseMessage;
       }
     }
   }
@@ -578,6 +626,7 @@ async function generateEngineeringEnhancementWithProviders({
   originalProjects = [],
   reportData = {},
 }) {
+  console.log("[AI_ENHANCEMENT] Enhancement request received");
   const providerPriority = getProviderPriority();
   const providerAttempts = [];
 
@@ -598,6 +647,7 @@ async function generateEngineeringEnhancementWithProviders({
     if (result.success && result.rawResponse) {
       const { parsed, mode } = parseAiEnhancementResponse(result.rawResponse);
       const resolved = resolveProjectsFromParsed(parsed, originalProjects);
+      console.log("[AI_ENHANCEMENT] Parsed successfully", { mode, parsedProjectCount: resolved.projects.length });
 
       return {
         success: true,
@@ -619,6 +669,13 @@ async function generateEngineeringEnhancementWithProviders({
     throw new Error("AI provider chain did not execute. providerAttempts is empty.");
   }
 
+  const lastAttempt = providerAttempts.filter((a) => a.status === "failed").pop() || providerAttempts[providerAttempts.length - 1];
+  let detailedError = lastAttempt?.error ? `Enhancement failed using ${lastAttempt.provider} (${lastAttempt.model || 'unknown model'}): ${lastAttempt.error}` : "AI provider chain failed to generate enhancement.";
+
+  if (lastAttempt?.httpStatus === 429) {
+    detailedError = `Rate limit exceeded on ${lastAttempt.provider} (${lastAttempt.model}).`;
+  }
+
   return {
     success: false,
     providerUsed: "deterministic-fallback",
@@ -631,6 +688,7 @@ async function generateEngineeringEnhancementWithProviders({
     providerAttempts,
     enhancementMode: "deterministic-engineering-fallback",
     reportData,
+    error: detailedError,
   };
 }
 

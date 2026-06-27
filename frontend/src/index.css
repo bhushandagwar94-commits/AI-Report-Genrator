@@ -665,6 +665,23 @@ dialog::backdrop {
   white-space: pre-line;
 }
 
+/* Theme-aware Toast overrides */
+.Toastify__toast-theme--light {
+  background: #FFFFFF !important;
+  color: #111827 !important;
+  border: 1px solid #E5E7EB !important;
+}
+
+.Toastify__toast-theme--light.Toastify__toast--success svg {
+  fill: #22C55E !important;
+}
+
+.Toastify__toast-theme--dark {
+  background: #111827 !important;
+  color: #F9FAFB !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
 @keyframes slideDown {
   from {
     max-height: 0;
@@ -861,11 +878,21 @@ dialog::backdrop {
   color: #f8fafc;
 }
 
+.light .ai-generation-progress-card {
+  background: #FFF8E7;
+  border: 1px solid #FBBF24;
+}
+
 .ai-progress-title {
   font-size: 16px;
   font-weight: 800;
   color: #facc15;
   margin-bottom: 12px;
+}
+
+.light .ai-progress-title {
+  color: #92400E;
+  font-weight: 700;
 }
 
 .ai-progress-row {
@@ -880,9 +907,19 @@ dialog::backdrop {
   color: #cbd5e1;
 }
 
+.light .ai-progress-row span {
+  color: #374151;
+  font-weight: 500;
+}
+
 .ai-progress-row strong {
   color: #ffffff;
   text-align: right;
+}
+
+.light .ai-progress-row strong {
+  color: #111827;
+  font-weight: 600;
 }
 
 .ai-progress-bar {
@@ -894,11 +931,19 @@ dialog::backdrop {
   overflow: hidden;
 }
 
+.light .ai-progress-bar {
+  background: #E5E7EB;
+}
+
 .ai-progress-bar-fill {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #38bdf8, #2563eb);
   transition: width 0.3s ease;
+}
+
+.light .ai-progress-bar-fill {
+  background: #3B82F6;
 }
 
 .ai-progress-note {
